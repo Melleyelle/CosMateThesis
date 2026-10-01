@@ -124,11 +124,49 @@ export default function OrderPage() {
 
       {/* ความคืบหน้า */}
       {closed ? (
-        <div className="mb-6 flex items-center gap-3 rounded-2xl bg-gray-100 px-5 py-4 text-sm text-gray-600">
-          <XCircleIcon size={22} />
-          {order.status === 'cancelled'
-            ? 'ออเดอร์นี้ถูกยกเลิกแล้ว ชุดถูกปล่อยให้คนอื่นจองได้ตามปกติ'
-            : 'ออเดอร์นี้หมดอายุเพราะไม่ได้ชำระเงินภายในเวลาที่กำหนด'}
+        <div className="mb-6 space-y-3">
+          <div className="flex items-start gap-3 rounded-2xl bg-gray-100 px-5 py-4 text-sm text-gray-600">
+            <XCircleIcon size={22} className="flex-shrink-0" />
+            <div>
+              <p className="font-semibold text-[#263544]">
+                {order.status === 'cancelled' ? 'ออเดอร์นี้ถูกยกเลิกแล้ว' : 'ออเดอร์นี้หมดอายุ'}
+              </p>
+              <p className="mt-0.5">
+                {order.status === 'expired'
+                  ? 'ไม่ได้ชำระเงินภายในเวลาที่กำหนด'
+                  : order.cancelReason ?? 'ชุดถูกปล่อยให้คนอื่นจองได้ตามปกติ'}
+              </p>
+            </div>
+          </div>
+
+          {order.refundStatus && (
+            <div
+              className={`rounded-2xl border-2 px-5 py-4 text-sm ${
+                order.refundStatus === 'transferred'
+                  ? 'border-[#B8E2C8] bg-[#E3F5EA] text-[#1B6E45]'
+                  : order.refundStatus === 'failed'
+                    ? 'border-[#F5C2C0] bg-[#FDE8E8] text-[#B42318]'
+                    : 'border-[#263544] bg-[#FFF3B0] text-[#263544]'
+              }`}
+            >
+              <p className="font-bold">
+                {order.refundStatus === 'transferred'
+                  ? `คืนเงิน ${formatBaht(order.refundAmount ?? 0)} เรียบร้อยแล้ว`
+                  : order.refundStatus === 'failed'
+                    ? 'โอนเงินคืนไม่สำเร็จ'
+                    : `ร้านกำลังโอนเงินคืน ${formatBaht(order.refundAmount ?? 0)} เต็มจำนวน`}
+              </p>
+              <p className="mt-1">
+                {order.refundStatus === 'transferred'
+                  ? `โอนเมื่อ ${order.refundedAt ? formatDateTime(order.refundedAt) : '—'}`
+                  : order.refundStatus === 'failed'
+                    ? 'กรุณาตรวจเลขบัญชีในหน้า "บัญชีของฉัน" แล้วติดต่อร้าน'
+                    : 'เข้าบัญชีที่ระบุไว้ตอนจอง'}
+                {order.refundAccountNumber &&
+                  ` · ${order.refundBank} ลงท้าย ${order.refundAccountNumber.slice(-4)}`}
+              </p>
+            </div>
+          )}
         </div>
       ) : (
         <ol className="mb-6 flex overflow-x-auto rounded-2xl border-2 border-[#263544] bg-white p-4">

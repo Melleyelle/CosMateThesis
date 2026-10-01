@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
@@ -46,11 +45,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     if (!supabase) return
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null))
 
-    // งานที่ร้านต้องลงมือ: ตรวจสลิป + แพ็กส่ง + ตรวจสภาพชุดคืน
+    // งานที่ร้านต้องลงมือ: ตรวจสลิป + แพ็กส่ง + ตรวจสภาพชุดคืน + โอนเงินคืน
     supabase
       .from('orders')
       .select('id', { count: 'exact', head: true })
-      .in('status', ['manual_review', 'paid', 'returned', 'inspecting'])
+      .or('status.in.(manual_review,paid,returned,inspecting),refund_status.eq.pending')
       .then(({ count }) => setBadges((b) => ({ ...b, orders: count ?? 0 })))
 
     // รีวิวที่ยังไม่ตอบ (ถ้ายังไม่ได้รัน step 11 จะ error เงียบ ๆ แล้วไม่แสดงตัวเลข)
@@ -137,15 +136,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   )
 
   const brand = (
-    <Link href="/admin" aria-label="CosMate หลังร้าน" className="flex items-center gap-2 px-6 py-5">
-      <Image
-        src="/images/logo.png"
-        alt="CosMate logo"
-        width={160}
-        height={52}
-        className="h-auto w-full max-w-[150px] object-contain"
-        priority
-      />
+    <Link href="/admin" className="flex items-baseline gap-2 px-6 py-6">
+      <span className="text-2xl font-black tracking-tight text-[#E5457F]">
+        Cos<span className="text-[#263544]">Mate</span>
+      </span>
+      <span className="text-xs font-medium text-[#6B7280]">หลังร้าน</span>
     </Link>
   )
 

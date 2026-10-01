@@ -58,10 +58,21 @@ export default function AdminDashboardPage() {
     if (!data) return null
     const s = data.settings
 
-    const review: Task[] = data.orders
-      .filter((o) => o.status === 'manual_review')
-      .map((o) => ({ order: o, tone: 'action' as Tone, when: `แจ้งโอน ${relativeHours(o.updatedAt)}`, sort: Date.parse(o.updatedAt) }))
-      .sort((a, b) => a.sort - b.sort)
+    // เรื่องเงิน: คืนเงินที่ค้าง (ขึ้นก่อน เพราะเป็นเงินลูกค้า) + ตรวจยอดที่ลูกค้าแจ้งโอน
+    const refunds: Task[] = data.orders
+      .filter((o) => o.refundStatus === 'pending' || o.refundStatus === 'failed')
+      .map((o) => ({
+        order: o,
+        tone: (o.refundStatus === 'failed' ? 'problem' : 'action') as Tone,
+        when: o.refundStatus === 'failed' ? 'โอนคืนไม่สำเร็จ' : `คืนเงิน ${formatBaht(o.refundAmount ?? 0)}`,
+        sort: -1e15 + Date.parse(o.updatedAt),
+      }))
+    const review: Task[] = [
+      ...refunds,
+      ...data.orders
+        .filter((o) => o.status === 'manual_review')
+        .map((o) => ({ order: o, tone: 'action' as Tone, when: `แจ้งโอน ${relativeHours(o.updatedAt)}`, sort: Date.parse(o.updatedAt) })),
+    ].sort((a, b) => a.sort - b.sort)
 
     const ship: Task[] = data.orders
       .filter((o) => o.status === 'paid' && o.lines.length > 0)
@@ -168,6 +179,16 @@ export default function AdminDashboardPage() {
               {!queues ? 'กำลังโหลด…' : taskCount === 0 ? 'วันนี้ไม่มีงานค้าง' : `วันนี้มีงานรอ ${taskCount} รายการ`}
             </h1>
           </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/" target="_blank" className={secondaryButtonClass}>
+              <ArrowSquareOutIcon size={16} />
+              ดูหน้าร้าน
+            </Link>
+            <Link href="/admin/inventory/new" className={primaryButtonClass}>
+              <PlusIcon size={16} weight="bold" />
+              เพิ่มชุดใหม่
+            </Link>
+          </div>
         </header>
 
         {error && (
@@ -176,7 +197,7 @@ export default function AdminDashboardPage() {
           </p>
         )}
 
-        {/* ---------------- งานวันนี้---------------- */}
+        {/* ---------------- งานวันนี้: จุดเดียวในหน้าที่ใช้กรอบหนา เพราะเป็นสิ่งที่ต้องลงมือ ---------------- */}
         <section
           aria-label="งานวันนี้"
           className={`grid overflow-hidden rounded-2xl bg-white md:grid-cols-3 ${
@@ -187,8 +208,8 @@ export default function AdminDashboardPage() {
         >
           <QueueColumn
             icon={<ReceiptIcon size={18} />}
-            title="ตรวจยอดชำระ"
-            hint="ลูกค้าแจ้งโอนแล้ว ตรวจสลิปแล้วกดยืนยัน"
+            title="ตรวจยอดและคืนเงิน"
+            hint="ตรวจสลิปที่ลูกค้าแจ้งโอน และโอนคืนออเดอร์ที่ถูกยกเลิก"
             tasks={queues?.review}
             href="/admin/orders?tab=review"
           />

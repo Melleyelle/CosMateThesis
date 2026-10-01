@@ -5,14 +5,13 @@ import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { CaretDownIcon, MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { EmptyState, FilterTabs, Metric, MetricStrip, PageHeader, StatusBadge } from '../../components/admin/ui'
-import DateRangeFilter, { type DateRange } from '../../components/admin/inventory/DateRangeFilter'
 import { createClient } from '@/utils/client'
 import { fetchAllOrdersForAdmin, type OrderSummary } from '@/utils/customer/fetchOrders'
 import { translateRpcError } from '@/utils/bookingErrors'
 import { ADMIN_ACTIONS, type AdminAction, type OrderStatus } from '@/utils/orderStatus'
 import { ADMIN_STATUS_LABEL, ORDER_STATUS_TONE } from '@/utils/admin/statusTone'
 import { dayDiff, shipByDate } from '@/utils/admin/fetchDashboard'
-import { formatBaht, formatDateTime, formatThaiDateWithWeekday, toISODate, todayISO } from '@/utils/dateUtils'
+import { formatBaht, formatDateTime, formatThaiDateWithWeekday, todayISO } from '@/utils/dateUtils'
 import {
   DEFAULT_BOOKING_SETTINGS,
   fetchBookingSettings,
@@ -23,6 +22,7 @@ import {
 const TABS = [
   { value: 'all', label: 'ทั้งหมด', statuses: null },
   { value: 'review', label: 'ตรวจยอดชำระ', statuses: ['manual_review'] },
+  { value: 'refund', label: 'รอคืนเงิน', statuses: null }, // กรองด้วย refundStatus แทนสถานะ
   { value: 'to_ship', label: 'รอแพ็กส่ง', statuses: ['paid'] },
   { value: 'renting', label: 'อยู่กับลูกค้า', statuses: ['shipped', 'active'] },
   { value: 'returning', label: 'ตรวจสภาพ', statuses: ['returned', 'inspecting'] },
@@ -58,15 +58,6 @@ function keyDate(order: OrderSummary, s: BookingSettings, today: string) {
   return { label: 'วันใช้งาน', date: first.startDate, late: false, lateText: '' }
 }
 
-function countByStatusTab(list: OrderSummary[]) {
-  const counts = {} as Record<TabValue, number>
-  for (const t of TABS) {
-    const statuses = t.statuses as readonly OrderStatus[] | null
-    counts[t.value] = statuses ? list.filter((o) => statuses.includes(o.status)).length : list.length
-  }
-  return counts
-}
-
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<OrderSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -75,7 +66,6 @@ export default function AdminOrdersPage() {
 
   const [tab, setTab] = useState<TabValue>('all')
   const [search, setSearch] = useState('')
-  const [dateRange, setDateRange] = useState<DateRange>({ from: '', to: '' })
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const today = todayISO()
@@ -98,20 +88,19 @@ export default function AdminOrdersPage() {
     if (q) setSearch(q)
   }, [])
 
-  // การ์ดสรุปด้านบน = งานค้างทั้งหมด ไม่ขึ้นกับช่วงวันที่ ส่วนแท็บ/ตารางนับตามช่วงวันที่สั่ง
-  const countByTab = useMemo(() => countByStatusTab(orders), [orders])
-
-  const ordersInRange = useMemo(() => {
-    if (!dateRange.from && !dateRange.to) return orders
-    return orders.filter((o) => {
-      const created = toISODate(new Date(o.createdAt)) // วันที่ตามเวลาเครื่อง ไม่ใช่ UTC
-      if (dateRange.from && created < dateRange.from) return false
-      if (dateRange.to && created > dateRange.to) return false
-      return true
-    })
-  }, [orders, dateRange])
-
-  const tabCounts = useMemo(() => countByStatusTab(ordersInRange), [ordersInRange])
+  const countByTab = useMemo(() => {
+    const counts = {} as Record<TabValue, number>
+    for (const t of TABS) {
+      const statuses = t.statuses as readonly OrderStatus[] | null
+      counts[t.value] =
+        t.value === 'refund'
+          ? orders.filter((o) => o.refundStatus === 'pending' || o.refundStatus === 'failed').length
+          : statuses
+            ? orders.filter((o) => statuses.includes(o.status)).length
+            : orders.length
+    }
+    return counts
+  }, [orders])
 
   const lateCount = useMemo(
     () => orders.filter((o) => keyDate(o, settings, today)?.late && (o.status === 'paid' || o.status === 'shipped' || o.status === 'active')).length,
@@ -121,7 +110,8 @@ export default function AdminOrdersPage() {
   const filtered = useMemo(() => {
     const statuses = (TABS.find((t) => t.value === tab)?.statuses ?? null) as readonly OrderStatus[] | null
     const keyword = search.trim().toLowerCase()
-    return ordersInRange.filter((o) => {
+    return orders.filter((o) => {
+      if (tab === 'refund' && o.refundStatus !== 'pending' && o.refundStatus !== 'failed') return false
       if (statuses && !statuses.includes(o.status)) return false
       if (keyword) {
         const haystack = [o.orderNumber, o.shipName, o.shipPhone, ...o.lines.map((l) => `${l.productName} ${l.itemCode ?? ''}`)]
@@ -131,7 +121,7 @@ export default function AdminOrdersPage() {
       }
       return true
     })
-  }, [ordersInRange, tab, search])
+  }, [orders, tab, search])
 
   // ค้นหาด้วยเลขออเดอร์ตรงตัว (มาจากหน้าภาพรวม) → กางรายละเอียดให้เลย
   useEffect(() => {
@@ -141,7 +131,15 @@ export default function AdminOrdersPage() {
   async function handleAction(order: OrderSummary, action: AdminAction) {
     const supabase = createClient()
     if (!supabase) return
-    if (action.tone === 'danger' && !confirm(`ยกเลิกออเดอร์ ${order.orderNumber}? ชุดจะถูกปล่อยให้คนอื่นจองได้ทันที`)) return
+    const paid = order.status === 'manual_review' || order.status === 'paid'
+    if (
+      action.tone === 'danger' &&
+      !confirm(
+        `ยกเลิกออเดอร์ ${order.orderNumber}? ชุดจะถูกปล่อยให้คนอื่นจองได้ทันที` +
+          (paid ? `\nลูกค้าจ่ายแล้ว ระบบจะตั้งเป็น "รอคืนเงิน" ${formatBaht(order.grandTotal)}` : ''),
+      )
+    )
+      return
 
     setUpdatingId(order.id)
     const { error } = await supabase.rpc('admin_update_order_status', { p_order_id: order.id, p_new_status: action.to })
@@ -152,8 +150,35 @@ export default function AdminOrdersPage() {
       await load() // สถานะอาจถูกเปลี่ยนจากที่อื่นไปแล้ว ดึงของจริงมาแสดง
       return
     }
+    await load() // ดึงใหม่เพื่อให้ได้สถานะคืนเงินที่ฐานข้อมูลตั้งให้
+  }
+
+  async function handleRefund(order: OrderSummary, status: 'transferred' | 'failed') {
+    const supabase = createClient()
+    if (!supabase) return
+    const amount = formatBaht(order.refundAmount ?? 0)
+    const account = order.refundAccountNumber
+      ? `${order.refundBank} ${order.refundAccountNumber} (${order.refundAccountName})`
+      : 'ลูกค้ายังไม่ได้ระบุบัญชี'
+    const question =
+      status === 'transferred'
+        ? `ยืนยันว่าโอนคืน ${amount} ให้ ${order.orderNumber} แล้ว?\nบัญชี: ${account}`
+        : `บันทึกว่าโอนคืน ${order.orderNumber} ไม่สำเร็จ? (เช่น เลขบัญชีผิด)`
+    if (!confirm(question)) return
+
+    setUpdatingId(order.id)
+    const { error } = await supabase.rpc('admin_mark_refund', { p_order_id: order.id, p_status: status })
+    setUpdatingId(null)
+    if (error) {
+      alert(translateRpcError(error.message))
+      return
+    }
     setOrders((prev) =>
-      prev.map((o) => (o.id === order.id ? { ...o, status: action.to, updatedAt: new Date().toISOString() } : o)),
+      prev.map((o) =>
+        o.id === order.id
+          ? { ...o, refundStatus: status, refundedAt: status === 'transferred' ? new Date().toISOString() : null }
+          : o,
+      ),
     )
   }
 
@@ -166,7 +191,12 @@ export default function AdminOrdersPage() {
           <MetricStrip>
             <Metric label="ตรวจยอดชำระ" value={countByTab.review} note="ลูกค้าแจ้งโอนแล้ว" onClick={() => setTab('review')} />
             <Metric label="รอแพ็กส่ง" value={countByTab.to_ship} note="ชำระแล้ว" onClick={() => setTab('to_ship')} />
-            <Metric label="อยู่กับลูกค้า" value={countByTab.renting} note="จัดส่งแล้ว/กำลังใช้งาน" onClick={() => setTab('renting')} />
+            <Metric
+              label="รอคืนเงิน"
+              value={<span className={countByTab.refund ? 'text-[#875200]' : ''}>{countByTab.refund}</span>}
+              note="ออเดอร์ที่ยกเลิกหลังลูกค้าจ่ายแล้ว"
+              onClick={() => setTab('refund')}
+            />
             <Metric
               label="เลยกำหนด"
               value={<span className={lateCount ? 'text-[#B42318]' : ''}>{lateCount}</span>}
@@ -196,11 +226,10 @@ export default function AdminOrdersPage() {
               </button>
             )}
           </div>
-          <DateRangeFilter value={dateRange} onChange={setDateRange} emptyLabel="ทุกวันที่สั่ง" />
         </div>
 
         <div className="mb-5 overflow-x-auto">
-          <FilterTabs tabs={TABS} value={tab} onChange={setTab} counts={tabCounts} />
+          <FilterTabs tabs={TABS} value={tab} onChange={setTab} counts={countByTab} />
         </div>
 
         {loading && <div className="h-64 animate-pulse rounded-2xl bg-white" />}
@@ -214,11 +243,7 @@ export default function AdminOrdersPage() {
         {!loading && !loadError && (
           <div className="overflow-x-auto rounded-2xl border border-[#E4E3EA] bg-white">
             {filtered.length === 0 ? (
-              <EmptyState>{orders.length === 0
-                  ? 'ยังไม่มีออเดอร์ในระบบ'
-                  : ordersInRange.length === 0
-                    ? 'ไม่มีออเดอร์ในช่วงวันที่เลือก'
-                    : 'ไม่มีออเดอร์ในกลุ่มนี้'}</EmptyState>
+              <EmptyState>{orders.length === 0 ? 'ยังไม่มีออเดอร์ในระบบ' : 'ไม่มีออเดอร์ในกลุ่มนี้'}</EmptyState>
             ) : (
               <table className="w-full min-w-[960px] text-left text-sm">
                 <thead className="border-b border-[#EEEDF2] bg-[#FAFAFC] text-xs font-medium text-[#6B7280]">
@@ -293,9 +318,43 @@ export default function AdminOrdersPage() {
                           </td>
                           <td className="px-4 py-3.5">
                             <StatusBadge tone={ORDER_STATUS_TONE[order.status]}>{ADMIN_STATUS_LABEL[order.status]}</StatusBadge>
+                            {order.refundStatus && (
+                              <div className="mt-1">
+                                <StatusBadge
+                                  tone={order.refundStatus === 'transferred' ? 'done' : order.refundStatus === 'failed' ? 'problem' : 'action'}
+                                >
+                                  {order.refundStatus === 'transferred'
+                                    ? 'คืนเงินแล้ว'
+                                    : order.refundStatus === 'failed'
+                                      ? 'โอนคืนไม่สำเร็จ'
+                                      : `รอคืน ${formatBaht(order.refundAmount ?? 0)}`}
+                                </StatusBadge>
+                              </div>
+                            )}
                           </td>
                           <td className="px-5 py-3.5">
-                            {actions.length === 0 ? (
+                            {order.refundStatus === 'pending' || order.refundStatus === 'failed' ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRefund(order, 'transferred')}
+                                  disabled={updatingId === order.id}
+                                  className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold transition disabled:opacity-50 ${ACTION_STYLE.primary}`}
+                                >
+                                  โอนคืนแล้ว
+                                </button>
+                                {order.refundStatus === 'pending' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRefund(order, 'failed')}
+                                    disabled={updatingId === order.id}
+                                    className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold transition disabled:opacity-50 ${ACTION_STYLE.danger}`}
+                                  >
+                                    โอนไม่สำเร็จ
+                                  </button>
+                                )}
+                              </div>
+                            ) : actions.length === 0 ? (
                               <span className="text-xs text-[#9AA3AF]">—</span>
                             ) : (
                               <div className="flex flex-wrap items-center gap-1.5">
@@ -343,7 +402,7 @@ export default function AdminOrdersPage() {
                                     <MoneyRow label="รวม" value={order.grandTotal} strong />
                                   </div>
                                 </DetailBlock>
-                                <DetailBlock title="บัญชีคืนมัดจำ">
+                                <DetailBlock title="บัญชีรับเงินคืน">
                                   {order.refundAccountNumber ? (
                                     <>
                                       <p className="font-medium text-[#263544]">{order.refundAccountName}</p>
@@ -352,6 +411,17 @@ export default function AdminOrdersPage() {
                                     </>
                                   ) : (
                                     <p className="text-[#9AA3AF]">ลูกค้ายังไม่ได้ระบุ</p>
+                                  )}
+                                  {order.cancelReason && (
+                                    <p className="mt-3 rounded-lg bg-[#EEF0F3] px-2.5 py-1.5 text-xs text-[#56606E]">
+                                      เหตุผลที่ยกเลิก: {order.cancelReason}
+                                    </p>
+                                  )}
+                                  {order.refundStatus && (
+                                    <p className="mt-2 text-xs text-[#5B6472]">
+                                      ยอดคืน {formatBaht(order.refundAmount ?? 0)}
+                                      {order.refundedAt && ` · โอนเมื่อ ${formatDateTime(order.refundedAt)}`}
+                                    </p>
                                   )}
                                   <p className="mt-3 text-xs text-[#9AA3AF]">อัปเดตล่าสุด {formatDateTime(order.updatedAt)}</p>
                                 </DetailBlock>

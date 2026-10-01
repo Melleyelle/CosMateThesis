@@ -1,56 +1,69 @@
-import { useEffect, useState } from 'react'
-import { getCurrentUserId, useAuthUser } from '@/utils/customer/authUser'
+'use client'
 
-// รายการโปรด (ปุ่มหัวใจ) เก็บในเบราว์เซอร์แยกตามผู้ใช้ — ยังไม่มีตารางในฐานข้อมูล
-// ถ้าต่อยอดภายหลัง ย้ายไปเก็บเป็นตาราง user_favorites ได้โดยไม่ต้องแก้หน้าเว็บมาก
+import { useSyncExternalStore } from 'react'
 
-const STORAGE_KEY = 'cosmate_favorites_v1'
-const CHANGE_EVENT = 'cosmate:favorites-changed'
+const FAVORITES_STORAGE_KEY = 'cosmate:favorites'
+const SERVER_FAVORITES: string[] = []
+const subscribers = new Set<() => void>()
+let favoritesSnapshot: string[] | null = null
 
-const storageKeyOf = (userId: string) => `${STORAGE_KEY}:${userId}`
-
-export function getFavorites(): string[] {
-  const userId = getCurrentUserId()
-  if (typeof window === 'undefined' || !userId) return []
+function readFavorites(): string[] {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(storageKeyOf(userId)) ?? '[]')
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
+    const stored: unknown = JSON.parse(window.localStorage.getItem(FAVORITES_STORAGE_KEY) ?? '[]')
+    if (!Array.isArray(stored)) return []
+    return Array.from(new Set(stored.filter((id): id is string => typeof id === 'string' && id.length > 0)))
   } catch {
     return []
   }
 }
 
-export function toggleFavorite(productId: string): boolean {
-  const userId = getCurrentUserId()
-  if (!userId) return false
-  const current = getFavorites()
-  const next = current.includes(productId)
-    ? current.filter((id) => id !== productId)
-    : [productId, ...current]
-  try {
-    window.localStorage.setItem(storageKeyOf(userId), JSON.stringify(next))
-  } catch {
-    // เขียนไม่ได้ก็ข้าม
+function publish(ids: string[] = readFavorites()) {
+  favoritesSnapshot = ids
+  subscribers.forEach((notify) => notify())
+}
+
+function handleStorage(event: StorageEvent) {
+  if (event.key === FAVORITES_STORAGE_KEY || event.key === null) publish()
+}
+
+function subscribe(notify: () => void) {
+  subscribers.add(notify)
+  if (subscribers.size === 1) window.addEventListener('storage', handleStorage)
+  return () => {
+    subscribers.delete(notify)
+    if (subscribers.size === 0) window.removeEventListener('storage', handleStorage)
   }
-  window.dispatchEvent(new Event(CHANGE_EVENT))
-  return next.includes(productId)
+}
+
+function getSnapshot(): string[] {
+  if (!favoritesSnapshot) favoritesSnapshot = readFavorites()
+  return favoritesSnapshot
+}
+
+function getServerSnapshot(): string[] {
+  return SERVER_FAVORITES
+}
+
+function writeFavorites(ids: string[]) {
+  try {
+    window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(ids))
+  } catch {
+    // Keep in-memory consumers in sync even when storage is unavailable.
+  }
+  publish(ids)
 }
 
 export function useFavorites(): string[] {
-  const { userId, ready } = useAuthUser()
-  const [ids, setIds] = useState<string[]>([])
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
+}
 
-  useEffect(() => {
-    if (!ready) return
-    const sync = () => setIds(getFavorites())
-    sync()
-    window.addEventListener(CHANGE_EVENT, sync)
-    window.addEventListener('storage', sync)
-    return () => {
-      window.removeEventListener(CHANGE_EVENT, sync)
-      window.removeEventListener('storage', sync)
-    }
-  }, [ready, userId])
+export function isFavorite(productId: string): boolean {
+  return getSnapshot().includes(productId)
+}
 
-  return ids
+export function toggleFavorite(productId: string): boolean {
+  const ids = getSnapshot()
+  const isNowFavorite = !ids.includes(productId)
+  writeFavorites(isNowFavorite ? [...ids, productId] : ids.filter((id) => id !== productId))
+  return isNowFavorite
 }

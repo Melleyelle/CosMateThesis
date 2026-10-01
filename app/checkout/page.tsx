@@ -14,10 +14,8 @@ import {
   WarningCircleIcon,
 } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
-import StepProgress from '@/app/components/customer/StepProgress'
 import { createClient } from '@/utils/client'
 import { decodeCheckoutItems, removeFromCart, type CartKey } from '@/utils/customer/cart'
-import { useRequireLogin } from '@/utils/customer/authUser'
 import { fetchVariantSummaries, type VariantSummary } from '@/utils/customer/fetchVariantSummaries'
 import {
   DEFAULT_BOOKING_SETTINGS,
@@ -27,74 +25,26 @@ import {
 } from '@/utils/customer/bookingSettings'
 import { isDateProblem, translateRpcError } from '@/utils/bookingErrors'
 import { addDays, formatBaht, formatThaiDateLong, isISODate, todayISO } from '@/utils/dateUtils'
+import {
+  BANKS,
+  EMPTY_ADDRESS,
+  EMPTY_BANK,
+  addressProblem,
+  bankProblem,
+  maskAccount,
+  onlyDigits,
+  saveDefaultAddress,
+  saveMyBankAccount,
+  type Address,
+  type BankAccount,
+} from '@/utils/customer/account'
 
 // ---------------------------------------------------------------------------
-// ข้อมูลฟอร์ม
+// ข้อมูลฟอร์ม (ชนิดข้อมูล/การตรวจ ใช้ร่วมกับหน้า "บัญชีของฉัน")
 // ---------------------------------------------------------------------------
-type Address = {
-  name: string
-  phone: string
-  line: string
-  subdistrict: string
-  district: string
-  province: string
-  postalCode: string
-}
-
-type RefundAccount = { accountName: string; bank: string; accountNumber: string }
-
-const EMPTY_ADDRESS: Address = { name: '', phone: '', line: '', subdistrict: '', district: '', province: '', postalCode: '' }
-const EMPTY_REFUND: RefundAccount = { accountName: '', bank: '', accountNumber: '' }
-
-const BANKS = [
-  'พร้อมเพย์ (เบอร์โทร/เลขบัตรประชาชน)',
-  'กสิกรไทย',
-  'ไทยพาณิชย์',
-  'กรุงเทพ',
-  'กรุงไทย',
-  'กรุงศรีอยุธยา',
-  'ทหารไทยธนชาต (ttb)',
-  'ออมสิน',
-  'ธ.ก.ส.',
-  'ยูโอบี',
-  'ซีไอเอ็มบี ไทย',
-  'เกียรตินาคินภัทร',
-  'แลนด์ แอนด์ เฮ้าส์',
-]
-
-const onlyDigits = (s: string) => s.replace(/[^0-9]/g, '')
-
-function addressProblem(a: Address): string | null {
-  if (!a.name.trim() || !a.line.trim() || !a.province.trim()) return 'กรอกชื่อผู้รับ ที่อยู่ และจังหวัดให้ครบ'
-  if (!/^0\d{8,9}$/.test(a.phone)) return 'เบอร์โทรต้องเป็นตัวเลข 9–10 หลัก ขึ้นต้นด้วย 0'
-  if (!/^\d{5}$/.test(a.postalCode)) return 'รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลัก'
-  return null
-}
-
-function refundProblem(r: RefundAccount): string | null {
-  if (!r.accountName.trim() || !r.bank) return 'กรอกชื่อเจ้าของบัญชีและเลือกธนาคารให้ครบ'
-  const n = onlyDigits(r.accountNumber).length
-  if (n < 10 || n > 15) return 'เลขบัญชี/พร้อมเพย์ต้องเป็นตัวเลข 10–15 หลัก'
-  return null
-}
-
-function maskAccount(n: string) {
-  const d = onlyDigits(n)
-  return d.length <= 4 ? d : `${'x'.repeat(d.length - 4)}${d.slice(-4)}`
-}
-
-// แต่ละขั้นเป็นหน้าแยกผ่าน ?step= — ปุ่มย้อนกลับของเบราว์เซอร์จึงถอยทีละขั้น
-type StepKey = 'address' | 'refund' | 'review'
-const STEP_INDEX: Record<StepKey, number> = { address: 1, refund: 2, review: 3 }
-
-function stepHref(search: string, step: StepKey) {
-  const params = new URLSearchParams(search)
-  params.set('step', step)
-  return `/checkout?${params.toString()}`
-}
-
-const backLinkClass =
-  'inline-flex items-center gap-1 text-sm font-medium text-[#263544]/60 hover:text-[#263544]'
+type RefundAccount = BankAccount
+const EMPTY_REFUND = EMPTY_BANK
+const refundProblem = bankProblem
 
 const inputClass =
   'w-full rounded-lg bg-[#EFEFEF] px-3 py-2.5 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:bg-white focus:ring-2 focus:ring-[#E5457F]/30'
@@ -105,21 +55,16 @@ const inputClass =
 function CheckoutInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  // create_booking() เรียกได้เฉพาะผู้ที่ล็อกอินแล้ว — ยังไม่ล็อกอินให้ไปหน้าเข้าสู่ระบบก่อน
-  const loggedIn = useRequireLogin()
 
   // รองรับ 2 แบบ: ?items=v:d,v:d (จากตะกร้า) และ ?variant=..&date=.. (กด "เช่าเลย")
-  // อิงค่าสตริงแทน searchParams ทั้งก้อน — เปลี่ยน ?step= แล้วต้องไม่โหลดข้อมูลใหม่ทับที่ลูกค้ากรอกไว้
-  const itemsParam = searchParams.get('items')
-  const variantParam = searchParams.get('variant')
-  const dateParam = searchParams.get('date')
   const requested: CartKey[] = useMemo(() => {
-    const fromCart = decodeCheckoutItems(itemsParam)
+    const fromCart = decodeCheckoutItems(searchParams.get('items'))
     if (fromCart.length > 0) return fromCart
-    return decodeCheckoutItems(variantParam && isISODate(dateParam) ? `${variantParam}:${dateParam}` : null)
-  }, [itemsParam, variantParam, dateParam])
-  const fromCart = !!itemsParam
-  const stepParam = searchParams.get('step')
+    const variantId = searchParams.get('variant')
+    const date = searchParams.get('date')
+    return decodeCheckoutItems(variantId && isISODate(date) ? `${variantId}:${date}` : null)
+  }, [searchParams])
+  const fromCart = !!searchParams.get('items')
 
   const [variants, setVariants] = useState<Record<string, VariantSummary>>({})
   const [settings, setSettings] = useState<BookingSettings>(DEFAULT_BOOKING_SETTINGS)
@@ -127,9 +72,13 @@ function CheckoutInner() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [address, setAddress] = useState<Address>(EMPTY_ADDRESS)
+  const [editingAddress, setEditingAddress] = useState(true)
   const [saveAsDefault, setSaveAsDefault] = useState(true)
   const [hadDefaultAddress, setHadDefaultAddress] = useState(false)
   const [refund, setRefund] = useState<RefundAccount>(EMPTY_REFUND)
+  const [editingRefund, setEditingRefund] = useState(true)
+  const [hadSavedBank, setHadSavedBank] = useState(false)
+  const [saveBank, setSaveBank] = useState(true)
   const [note, setNote] = useState('')
   const [accepted, setAccepted] = useState(false)
 
@@ -167,7 +116,7 @@ function CheckoutInner() {
       // เติมที่อยู่/บัญชีคืนมัดจำให้อัตโนมัติ จากที่อยู่หลักและออเดอร์ล่าสุด
       const user = userRes.data.user
       if (user) {
-        const [{ data: profile }, { data: saved }, refundRes] = await Promise.all([
+        const [{ data: profile }, { data: saved }, bankRes, refundRes] = await Promise.all([
           supabase.from('profiles').select('first_name, last_name, phone').eq('id', user.id).maybeSingle(),
           supabase
             .from('user_addresses')
@@ -175,7 +124,9 @@ function CheckoutInner() {
             .eq('user_id', user.id)
             .eq('is_default', true)
             .maybeSingle(),
-          // คอลัมน์นี้มาจาก Step 10 — ถ้ายังไม่ได้รันจะ error เฉย ๆ แล้วข้ามไป
+          // บัญชีถาวรจากหน้า "บัญชีของฉัน" (Step 13)
+          supabase.from('user_bank_accounts').select('account_name, bank, account_number').eq('user_id', user.id).maybeSingle(),
+          // สำรอง: บัญชีที่กรอกไว้ในออเดอร์ล่าสุด (กรณียังไม่มีบัญชีถาวร)
           supabase
             .from('orders')
             .select('refund_account_name, refund_bank, refund_account_number')
@@ -200,21 +151,24 @@ function CheckoutInner() {
         setAddress(prefilled)
         setHadDefaultAddress(!!saved)
         setSaveAsDefault(!saved)
+        setEditingAddress(addressProblem(prefilled) !== null)
 
+        const b = bankRes.error ? null : bankRes.data
         const r = refundRes.error ? null : refundRes.data
-        const prefilledRefund: RefundAccount = r?.refund_account_number
-          ? {
-              accountName: r.refund_account_name ?? '',
-              bank: r.refund_bank ?? '',
-              accountNumber: r.refund_account_number ?? '',
-            }
-          : { ...EMPTY_REFUND, accountName: fullName }
-        setRefund(prefilledRefund)
-
-        // ลูกค้าเก่าที่มีที่อยู่และบัญชีครบแล้ว ข้ามไปหน้าตรวจสอบเลย (ยังกดแก้ไขย้อนกลับได้)
-        const search = window.location.search
-        if (!new URLSearchParams(search).get('step') && !addressProblem(prefilled) && !refundProblem(prefilledRefund)) {
-          router.replace(stepHref(search, 'review'), { scroll: false })
+        if (b?.account_number) {
+          setRefund({ accountName: b.account_name, bank: b.bank, accountNumber: b.account_number })
+          setHadSavedBank(true)
+          setSaveBank(false)
+          setEditingRefund(false)
+        } else if (r?.refund_account_number) {
+          setRefund({
+            accountName: r.refund_account_name ?? '',
+            bank: r.refund_bank ?? '',
+            accountNumber: r.refund_account_number ?? '',
+          })
+          setEditingRefund(false)
+        } else if (fullName) {
+          setRefund((prev) => ({ ...prev, accountName: fullName }))
         }
       }
       setLoading(false)
@@ -224,7 +178,7 @@ function CheckoutInner() {
     return () => {
       cancelled = true
     }
-  }, [requested, router])
+  }, [requested])
 
   const minStart = addDays(todayISO(), Math.max(settings.minLeadDays, settings.bufferDaysBefore))
   const lines = requested.map((r) => {
@@ -261,45 +215,26 @@ function CheckoutInner() {
   )
   const backHref = fromCart ? '/cart' : lines[0]?.variant ? `/costumes/${lines[0].variant.productId}` : '/costumes'
 
-  // ขั้นแรก (ตะกร้า/เลือกชุด) ผ่านแล้วเสมอ, "ชำระเงิน" เกิดที่หน้าออเดอร์หลังกดยืนยัน
-  const checkoutSteps = [fromCart ? 'ตะกร้า' : 'เลือกชุด', 'ที่อยู่จัดส่ง', 'บัญชีคืนมัดจำ', 'ตรวจสอบและยืนยัน', 'ชำระเงิน']
-  // เปิดลิงก์ขั้นหลัง ๆ ตรง ๆ ทั้งที่ขั้นก่อนยังไม่ครบ → พากลับไปขั้นที่ยังไม่ครบ
-  const wanted: StepKey = stepParam === 'refund' || stepParam === 'review' ? stepParam : 'address'
-  const step: StepKey =
-    wanted !== 'address' && addressProblem(address)
-      ? 'address'
-      : wanted === 'review' && refundProblem(refund)
-        ? 'refund'
-        : wanted
-
-  useEffect(() => {
-    window.scrollTo({ top: 0 })
-  }, [step])
-
-  function goTo(next: StepKey) {
-    router.push(stepHref(searchParams.toString(), next))
-  }
-
-  function nextFromAddress() {
+  function confirmAddress() {
     const problem = addressProblem(address)
     setSectionError((e) => ({ ...e, address: problem ?? undefined }))
-    if (!problem) goTo('refund')
+    if (!problem) setEditingAddress(false)
   }
 
-  function nextFromRefund() {
+  function confirmRefund() {
     const problem = refundProblem(refund)
     setSectionError((e) => ({ ...e, refund: problem ?? undefined }))
-    if (!problem) goTo('review')
+    if (!problem) setEditingRefund(false)
   }
 
-  // ปุ่ม "ถัดไป" และการกด Enter ในช่องกรอก ส่งฟอร์มมาที่นี่ — จองจริงเฉพาะขั้นตรวจสอบ
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (step === 'address') return nextFromAddress()
-    if (step === 'refund') return nextFromRefund()
-    if (addressProblem(address)) return goTo('address')
-    if (refundProblem(refund)) return goTo('refund')
-    if (hasProblem || !accepted) return
+    const aProblem = addressProblem(address)
+    const rProblem = refundProblem(refund)
+    setSectionError({ address: aProblem ?? undefined, refund: rProblem ?? undefined })
+    if (aProblem) setEditingAddress(true)
+    if (rProblem) setEditingRefund(true)
+    if (aProblem || rProblem || hasProblem || !accepted) return
 
     const supabase = createClient()
     if (!supabase) return
@@ -338,13 +273,20 @@ function CheckoutInner() {
     })
     if (refundError) console.warn('บันทึกบัญชีคืนมัดจำไม่สำเร็จ:', refundError.message)
 
-    if (saveAsDefault) await saveDefaultAddress(address)
+    if (saveAsDefault) {
+      const err = await saveDefaultAddress(address)
+      if (err) console.warn('บันทึกที่อยู่หลักไม่สำเร็จ:', err)
+    }
+    if (saveBank) {
+      const err = await saveMyBankAccount(refund)
+      if (err) console.warn('บันทึกบัญชีรับเงินคืนไม่สำเร็จ:', err)
+    }
 
     removeFromCart(requested)
     router.push(`/orders/${orderId}`)
   }
 
-  if (loading || !loggedIn) {
+  if (loading) {
     return (
       <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
         <div className="h-96 animate-pulse rounded-2xl bg-gray-100" />
@@ -364,217 +306,233 @@ function CheckoutInner() {
     )
   }
 
-  const backToCart = (
-    <Link href={backHref} className={backLinkClass}>
-      <ArrowLeftIcon size={16} />
-      {fromCart ? 'กลับไปตะกร้า' : 'กลับไปแก้ไซส์หรือวันที่'}
-    </Link>
-  )
-  const backTo = (target: StepKey, label: string) => (
-    <button type="button" onClick={() => goTo(target)} className={backLinkClass}>
-      <ArrowLeftIcon size={16} />
-      {label}
-    </button>
-  )
-
   return (
     <>
-      <h1 className="mb-5 text-3xl font-bold text-[#263544]">ชำระเงิน</h1>
-      <StepProgress steps={checkoutSteps} current={STEP_INDEX[step]} className="mb-8" />
+      <Link
+        href={backHref}
+        className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-[#263544]/60 hover:text-[#263544]"
+      >
+        <ArrowLeftIcon size={16} />
+        {fromCart ? 'กลับไปตะกร้า' : 'กลับไปแก้ไซส์หรือวันที่'}
+      </Link>
+      <h1 className="mb-8 text-3xl font-bold text-[#263544]">ชำระเงิน</h1>
 
       <form onSubmit={handleSubmit} noValidate className="grid gap-6 lg:grid-cols-[1fr_420px]">
-        <div>
-          {/* ---------------- ขั้นที่ 2: ที่อยู่จัดส่ง ---------------- */}
-          {step === 'address' && (
-            <>
-              <StepCard
-                icon={<MapPinIcon size={26} weight="fill" />}
-                title="ที่อยู่สำหรับจัดส่ง"
-                subtitle="ร้านจะส่งชุดทางไปรษณีย์ไทย (EMS) ไปที่อยู่นี้"
-              >
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="ชื่อผู้รับ">
-                    <input
-                      value={address.name}
-                      onChange={(e) => setAddress({ ...address, name: e.target.value })}
-                      autoComplete="name"
-                      className={inputClass}
-                    />
-                  </Field>
-                  <Field label="เบอร์โทรผู้รับ">
-                    <input
-                      inputMode="numeric"
-                      maxLength={10}
-                      value={address.phone}
-                      onChange={(e) => setAddress({ ...address, phone: onlyDigits(e.target.value) })}
-                      autoComplete="tel"
-                      className={inputClass}
-                    />
-                  </Field>
-                  <Field label="บ้านเลขที่ ซอย ถนน" wide>
-                    <input
-                      value={address.line}
-                      onChange={(e) => setAddress({ ...address, line: e.target.value })}
-                      autoComplete="street-address"
-                      className={inputClass}
-                    />
-                  </Field>
-                  <Field label="ตำบล/แขวง">
-                    <input
-                      value={address.subdistrict}
-                      onChange={(e) => setAddress({ ...address, subdistrict: e.target.value })}
-                      className={inputClass}
-                    />
-                  </Field>
-                  <Field label="อำเภอ/เขต">
-                    <input
-                      value={address.district}
-                      onChange={(e) => setAddress({ ...address, district: e.target.value })}
-                      className={inputClass}
-                    />
-                  </Field>
-                  <Field label="จังหวัด">
-                    <input
-                      value={address.province}
-                      onChange={(e) => setAddress({ ...address, province: e.target.value })}
-                      autoComplete="address-level1"
-                      className={inputClass}
-                    />
-                  </Field>
-                  <Field label="รหัสไปรษณีย์">
-                    <input
-                      inputMode="numeric"
-                      maxLength={5}
-                      value={address.postalCode}
-                      onChange={(e) => setAddress({ ...address, postalCode: onlyDigits(e.target.value) })}
-                      autoComplete="postal-code"
-                      className={inputClass}
-                    />
-                  </Field>
-                  <label className="flex cursor-pointer items-center gap-2 text-sm text-[#263544] sm:col-span-2">
-                    <input
-                      type="checkbox"
-                      checked={saveAsDefault}
-                      onChange={(e) => setSaveAsDefault(e.target.checked)}
-                      className="h-4 w-4 accent-[#263544]"
-                    />
-                    {hadDefaultAddress ? 'อัปเดตเป็นที่อยู่หลักของฉัน' : 'บันทึกเป็นที่อยู่หลักของฉัน'}
-                  </label>
-                  {sectionError.address && <ErrorText>{sectionError.address}</ErrorText>}
+        <div className="space-y-7">
+          {/* ---------------- ที่อยู่จัดส่ง ---------------- */}
+          <section className="rounded-2xl border border-[#263544] bg-white p-5">
+            <div className="flex items-start gap-3">
+              <MapPinIcon size={26} weight="fill" className="flex-shrink-0 text-[#263544]" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-lg font-medium text-[#263544]">ที่อยู่สำหรับจัดส่ง:</h2>
+                  {!editingAddress && (
+                    <EditButton onClick={() => setEditingAddress(true)} label="แก้ไขที่อยู่" />
+                  )}
                 </div>
-              </StepCard>
-              <StepNav back={backToCart} nextLabel="ถัดไป: บัญชีคืนมัดจำ" />
-            </>
-          )}
 
-          {/* ---------------- ขั้นที่ 3: บัญชีรับเงินมัดจำคืน ---------------- */}
-          {step === 'refund' && (
-            <>
-              <StepCard
-                icon={<BankIcon size={26} />}
-                title="บัญชีรับเงินมัดจำคืน"
-                subtitle={`ร้านโอนมัดจำ ${formatBaht(totals.deposit)} คืนภายใน ${returnHours} ชม. หลังได้รับชุดคืนและตรวจสภาพเรียบร้อย`}
-              >
-                <div className="space-y-3">
-                  <RefundRow label="ชื่อเจ้าของบัญชี:">
-                    <input
-                      value={refund.accountName}
-                      onChange={(e) => setRefund({ ...refund, accountName: e.target.value })}
-                      className={inputClass}
-                    />
-                  </RefundRow>
-                  <RefundRow label="ธนาคาร:">
-                    <select
-                      value={refund.bank}
-                      onChange={(e) => setRefund({ ...refund, bank: e.target.value })}
-                      className={inputClass}
-                    >
-                      <option value="">เลือกธนาคาร</option>
-                      {BANKS.map((b) => (
-                        <option key={b} value={b}>
-                          {b}
-                        </option>
-                      ))}
-                    </select>
-                  </RefundRow>
-                  <RefundRow label="เลขที่บัญชี:">
-                    <input
-                      inputMode="numeric"
-                      maxLength={18}
-                      value={refund.accountNumber}
-                      onChange={(e) => setRefund({ ...refund, accountNumber: e.target.value.replace(/[^0-9-]/g, '') })}
-                      placeholder="xxx-x-xxxxx-x"
-                      className={`${inputClass} font-mono`}
-                    />
-                  </RefundRow>
-                  {sectionError.refund && <ErrorText>{sectionError.refund}</ErrorText>}
-                </div>
-              </StepCard>
-              <StepNav back={backTo('address', 'กลับไปแก้ที่อยู่')} nextLabel="ถัดไป: ตรวจสอบคำสั่งเช่า" />
-            </>
-          )}
-
-          {/* ---------------- ขั้นที่ 4: ตรวจสอบและยืนยัน ---------------- */}
-          {step === 'review' && (
-            <div className="space-y-6">
-              <StepCard
-                icon={<MapPinIcon size={26} weight="fill" />}
-                title="ที่อยู่สำหรับจัดส่ง"
-                action={<EditButton onClick={() => goTo('address')} label="แก้ไขที่อยู่" />}
-              >
-                <p className="text-sm font-semibold text-[#263544]">
-                  {address.name} ({address.phone})
-                </p>
-                <p className="mt-1 text-sm text-[#263544]/70">
-                  {[address.line, address.subdistrict, address.district, address.province, address.postalCode]
-                    .filter(Boolean)
-                    .join(' ')}
-                </p>
-              </StepCard>
-
-              <div className="grid gap-6 sm:grid-cols-2">
-                <div>
-                  <h2 className="mb-3 text-lg font-medium text-[#263544]">การจัดส่ง</h2>
-                  <FixedChoice label="ไปรษณีย์ไทย (ส่งด่วน EMS)" />
-                </div>
-                <div>
-                  <h2 className="mb-3 text-lg font-medium text-[#263544]">วิธีการชำระ</h2>
-                  <FixedChoice label="QR พร้อมเพย์" />
-                </div>
+                {!editingAddress ? (
+                  <div className="mt-2 text-sm">
+                    <p className="font-semibold text-[#263544]">
+                      {address.name} ({address.phone})
+                    </p>
+                    <p className="mt-1 text-[#263544]/70">
+                      {[address.line, address.subdistrict, address.district, address.province, address.postalCode]
+                        .filter(Boolean)
+                        .join(' ')}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <Field label="ชื่อผู้รับ">
+                      <input
+                        value={address.name}
+                        onChange={(e) => setAddress({ ...address, name: e.target.value })}
+                        autoComplete="name"
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field label="เบอร์โทรผู้รับ">
+                      <input
+                        inputMode="numeric"
+                        maxLength={10}
+                        value={address.phone}
+                        onChange={(e) => setAddress({ ...address, phone: onlyDigits(e.target.value) })}
+                        autoComplete="tel"
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field label="บ้านเลขที่ ซอย ถนน" wide>
+                      <input
+                        value={address.line}
+                        onChange={(e) => setAddress({ ...address, line: e.target.value })}
+                        autoComplete="street-address"
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field label="ตำบล/แขวง">
+                      <input
+                        value={address.subdistrict}
+                        onChange={(e) => setAddress({ ...address, subdistrict: e.target.value })}
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field label="อำเภอ/เขต">
+                      <input
+                        value={address.district}
+                        onChange={(e) => setAddress({ ...address, district: e.target.value })}
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field label="จังหวัด">
+                      <input
+                        value={address.province}
+                        onChange={(e) => setAddress({ ...address, province: e.target.value })}
+                        autoComplete="address-level1"
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field label="รหัสไปรษณีย์">
+                      <input
+                        inputMode="numeric"
+                        maxLength={5}
+                        value={address.postalCode}
+                        onChange={(e) => setAddress({ ...address, postalCode: onlyDigits(e.target.value) })}
+                        autoComplete="postal-code"
+                        className={inputClass}
+                      />
+                    </Field>
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-[#263544] sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        checked={saveAsDefault}
+                        onChange={(e) => setSaveAsDefault(e.target.checked)}
+                        className="h-4 w-4 accent-[#263544]"
+                      />
+                      {hadDefaultAddress ? 'อัปเดตเป็นที่อยู่หลักของฉัน' : 'บันทึกเป็นที่อยู่หลักของฉัน'}
+                    </label>
+                    {sectionError.address && <ErrorText>{sectionError.address}</ErrorText>}
+                    <div className="sm:col-span-2">
+                      <button
+                        type="button"
+                        onClick={confirmAddress}
+                        className="rounded-lg bg-[#263544] px-5 py-2 text-sm font-semibold text-white hover:bg-[#1a2632]"
+                      >
+                        ใช้ที่อยู่นี้
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-
-              <StepCard
-                icon={<BankIcon size={26} />}
-                title="บัญชีรับเงินมัดจำคืน"
-                action={<EditButton onClick={() => goTo('refund')} label="แก้ไขบัญชี" />}
-              >
-                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-                  <dt className="text-[#263544]/70">ชื่อเจ้าของบัญชี:</dt>
-                  <dd className="font-medium text-[#263544]">{refund.accountName}</dd>
-                  <dt className="text-[#263544]/70">ธนาคาร:</dt>
-                  <dd className="font-medium text-[#263544]">{refund.bank}</dd>
-                  <dt className="text-[#263544]/70">เลขที่บัญชี:</dt>
-                  <dd className="font-mono font-medium text-[#263544]">{maskAccount(refund.accountNumber)}</dd>
-                </dl>
-              </StepCard>
-
-              <div>
-                <h2 className="mb-3 text-lg font-medium text-[#263544]">หมายเหตุถึงร้าน (ไม่บังคับ)</h2>
-                <textarea
-                  rows={2}
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="เช่น ใช้ไปงาน Comic Con อยากได้ของก่อนเที่ยง"
-                  className={`${inputClass} border border-gray-200`}
-                />
-              </div>
-
-              <StepNav back={backTo('refund', 'กลับไปแก้บัญชีคืนมัดจำ')} />
             </div>
-          )}
+          </section>
+
+          {/* ---------------- การจัดส่ง + วิธีชำระ ---------------- */}
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div>
+              <h2 className="mb-3 text-lg font-medium text-[#263544]">การจัดส่ง</h2>
+              <FixedChoice label="ไปรษณีย์ไทย (ส่งด่วน EMS)" />
+            </div>
+            <div>
+              <h2 className="mb-3 text-lg font-medium text-[#263544]">วิธีการชำระ</h2>
+              <FixedChoice label="QR พร้อมเพย์" />
+            </div>
+          </div>
+
+          {/* ---------------- บัญชีรับเงินมัดจำคืน ---------------- */}
+          <div>
+            <h2 className="mb-3 text-lg font-medium text-[#263544]">ช่องทางรับเงินมัดจำคืน</h2>
+            <section className="rounded-2xl border border-[#263544] bg-white p-5">
+              <div className="flex items-start gap-3">
+                <BankIcon size={24} className="mt-1 flex-shrink-0 text-[#263544]" />
+                <div className="min-w-0 flex-1">
+                  {!editingRefund ? (
+                    <div className="flex items-start justify-between gap-2">
+                      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                        <dt className="text-[#263544]/70">ชื่อเจ้าของบัญชี:</dt>
+                        <dd className="font-medium text-[#263544]">{refund.accountName}</dd>
+                        <dt className="text-[#263544]/70">ธนาคาร:</dt>
+                        <dd className="font-medium text-[#263544]">{refund.bank}</dd>
+                        <dt className="text-[#263544]/70">เลขที่บัญชี:</dt>
+                        <dd className="font-medium tabular-nums text-[#263544]">{maskAccount(refund.accountNumber)}</dd>
+                      </dl>
+                      <EditButton onClick={() => setEditingRefund(true)} label="แก้ไขบัญชี" />
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <RefundRow label="ชื่อเจ้าของบัญชี:">
+                        <input
+                          value={refund.accountName}
+                          onChange={(e) => setRefund({ ...refund, accountName: e.target.value })}
+                          className={inputClass}
+                        />
+                      </RefundRow>
+                      <RefundRow label="ธนาคาร:">
+                        <select
+                          value={refund.bank}
+                          onChange={(e) => setRefund({ ...refund, bank: e.target.value })}
+                          className={inputClass}
+                        >
+                          <option value="">เลือกธนาคาร</option>
+                          {BANKS.map((b) => (
+                            <option key={b} value={b}>
+                              {b}
+                            </option>
+                          ))}
+                        </select>
+                      </RefundRow>
+                      <RefundRow label="เลขที่บัญชี:">
+                        <input
+                          inputMode="numeric"
+                          maxLength={18}
+                          value={refund.accountNumber}
+                          onChange={(e) => setRefund({ ...refund, accountNumber: e.target.value.replace(/[^0-9-]/g, '') })}
+                          placeholder="xxx-x-xxxxx-x"
+                          className={`${inputClass} tabular-nums`}
+                        />
+                      </RefundRow>
+                      <label className="flex cursor-pointer items-center gap-2 text-sm text-[#263544]">
+                        <input
+                          type="checkbox"
+                          checked={saveBank}
+                          onChange={(e) => setSaveBank(e.target.checked)}
+                          className="h-4 w-4 accent-[#263544]"
+                        />
+                        {hadSavedBank ? 'อัปเดตเป็นบัญชีของฉัน' : 'บันทึกเป็นบัญชีของฉัน ใช้ครั้งต่อไปได้เลย'}
+                      </label>
+                      {sectionError.refund && <ErrorText>{sectionError.refund}</ErrorText>}
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={confirmRefund}
+                          className="rounded-lg bg-[#263544] px-5 py-2 text-sm font-semibold text-white hover:bg-[#1a2632]"
+                        >
+                          ใช้บัญชีนี้
+                        </button>
+                        <p className="text-xs text-[#263544]/60">
+                          ร้านโอนมัดจำคืนภายใน {returnHours} ชม. หลังได้รับชุดคืนและตรวจสภาพเรียบร้อย
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div>
+            <h2 className="mb-3 text-lg font-medium text-[#263544]">หมายเหตุถึงร้าน (ไม่บังคับ)</h2>
+            <textarea
+              rows={2}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="เช่น ใช้ไปงาน Comic Con อยากได้ของก่อนเที่ยง"
+              className={`${inputClass} border border-gray-200`}
+            />
+          </div>
         </div>
 
-        {/* ---------------- สรุปการเช่า (ทุกขั้น) ---------------- */}
+        {/* ---------------- สรุปการเช่า ---------------- */}
         <aside className="h-fit rounded-2xl border border-[#263544] bg-white p-6 lg:sticky lg:top-24">
           <h2 className="mb-5 text-2xl font-medium text-[#263544]">สรุปการเช่า: {lines.length} รายการ</h2>
 
@@ -628,47 +586,43 @@ function CheckoutInner() {
             <span className="text-3xl font-bold text-[#263544]">{formatBaht(grandTotal)}</span>
           </div>
 
-          {step === 'review' && (
-            <>
-              <label className="mt-5 flex cursor-pointer gap-2 text-xs leading-relaxed text-[#263544]/70">
-                <input
-                  type="checkbox"
-                  checked={accepted}
-                  onChange={(e) => setAccepted(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#263544]"
-                />
-                <span>
-                  ยอมรับเงื่อนไขการเช่า: ส่งชุดคืน
-                  {latestReturn ? `ภายใน ${formatThaiDateLong(latestReturn)}` : 'ตามวันที่กำหนด'} หากคืนช้าคิดค่าปรับวันละ{' '}
-                  {formatBaht(settings.lateFeePerDay)} และได้รับมัดจำคืนหลังร้านตรวจสภาพชุดเรียบร้อย
-                </span>
-              </label>
+          <label className="mt-5 flex cursor-pointer gap-2 text-xs leading-relaxed text-[#263544]/70">
+            <input
+              type="checkbox"
+              checked={accepted}
+              onChange={(e) => setAccepted(e.target.checked)}
+              className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#263544]"
+            />
+            <span>
+              ยอมรับเงื่อนไขการเช่า: ส่งชุดคืน
+              {latestReturn ? `ภายใน ${formatThaiDateLong(latestReturn)}` : 'ตามวันที่กำหนด'} หากคืนช้าคิดค่าปรับวันละ{' '}
+              {formatBaht(settings.lateFeePerDay)} และได้รับมัดจำคืนหลังร้านตรวจสภาพชุดเรียบร้อย
+            </span>
+          </label>
 
-              {submitError && (
-                <div role="alert" className="mt-4 rounded-xl bg-red-50 px-3 py-2.5 text-sm text-red-600">
-                  {submitError}
-                  {dateProblem && (
-                    <Link href={backHref} className="mt-1 block font-semibold underline">
-                      {fromCart ? 'กลับไปตะกร้าเพื่อเลือกวันใหม่' : 'กลับไปเลือกวันใหม่'}
-                    </Link>
-                  )}
-                  {submitError.includes('ยังไม่ได้ชำระเงิน') && (
-                    <Link href="/orders" className="mt-1 block font-semibold underline">
-                      ไปที่ออเดอร์ของฉัน
-                    </Link>
-                  )}
-                </div>
+          {submitError && (
+            <div role="alert" className="mt-4 rounded-xl bg-red-50 px-3 py-2.5 text-sm text-red-600">
+              {submitError}
+              {dateProblem && (
+                <Link href={backHref} className="mt-1 block font-semibold underline">
+                  {fromCart ? 'กลับไปตะกร้าเพื่อเลือกวันใหม่' : 'กลับไปเลือกวันใหม่'}
+                </Link>
               )}
-
-              <button
-                type="submit"
-                disabled={submitting || !accepted || hasProblem}
-                className="mt-5 w-full rounded-xl bg-[#263544] py-4 text-base font-semibold text-white transition hover:bg-[#1a2632] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {submitting ? 'กำลังจองชุด...' : 'ยืนยันและไปชำระเงิน'}
-              </button>
-            </>
+              {submitError.includes('ยังไม่ได้ชำระเงิน') && (
+                <Link href="/orders" className="mt-1 block font-semibold underline">
+                  ไปที่ออเดอร์ของฉัน
+                </Link>
+              )}
+            </div>
           )}
+
+          <button
+            type="submit"
+            disabled={submitting || !accepted || hasProblem}
+            className="mt-5 w-full rounded-xl bg-[#263544] py-4 text-base font-semibold text-white transition hover:bg-[#1a2632] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {submitting ? 'กำลังจองชุด...' : 'ยืนยัน'}
+          </button>
           {hasProblem && (
             <p className="mt-2 text-center text-xs text-red-600">มีบางรายการจองไม่ได้ กรุณากลับไปแก้ไขก่อน</p>
           )}
@@ -676,39 +630,6 @@ function CheckoutInner() {
       </form>
     </>
   )
-}
-
-// บันทึกที่อยู่หลักไว้เติมอัตโนมัติครั้งหน้า (พลาดก็ไม่เป็นไร ไม่กระทบการจอง)
-async function saveDefaultAddress(a: Address) {
-  const supabase = createClient()
-  if (!supabase) return
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return
-
-  const payload = {
-    recipient_name: a.name.trim(),
-    recipient_phone: a.phone,
-    address_line: a.line.trim(),
-    subdistrict: a.subdistrict.trim() || null,
-    district: a.district.trim() || null,
-    province: a.province.trim(),
-    postal_code: a.postalCode,
-  }
-  const { data: existing } = await supabase
-    .from('user_addresses')
-    .select('id')
-    .eq('user_id', user.id)
-    .eq('is_default', true)
-    .maybeSingle()
-
-  const { error } = existing
-    ? await supabase.from('user_addresses').update(payload).eq('id', existing.id)
-    : await supabase
-        .from('user_addresses')
-        .insert({ ...payload, user_id: user.id, label: 'ที่อยู่หลัก', is_default: true })
-  if (error) console.warn('บันทึกที่อยู่หลักไม่สำเร็จ:', error.message)
 }
 
 export default function CheckoutPage() {
@@ -724,54 +645,6 @@ export default function CheckoutPage() {
 // ---------------------------------------------------------------------------
 // ชิ้นส่วนย่อย
 // ---------------------------------------------------------------------------
-function StepCard({
-  icon,
-  title,
-  subtitle,
-  action,
-  children,
-}: {
-  icon: ReactNode
-  title: string
-  subtitle?: string
-  action?: ReactNode
-  children: ReactNode
-}) {
-  return (
-    <section className="rounded-2xl border border-[#263544] bg-white p-5">
-      <div className="flex items-start gap-3">
-        <span className="flex-shrink-0 text-[#263544]">{icon}</span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <h2 className="text-lg font-medium text-[#263544]">{title}</h2>
-              {subtitle && <p className="mt-0.5 text-xs text-[#263544]/60">{subtitle}</p>}
-            </div>
-            {action}
-          </div>
-          <div className="mt-3">{children}</div>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function StepNav({ back, nextLabel }: { back: ReactNode; nextLabel?: string }) {
-  return (
-    <div className="mt-6 flex items-center justify-between gap-3">
-      {back}
-      {nextLabel && (
-        <button
-          type="submit"
-          className="rounded-xl bg-[#263544] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#1a2632]"
-        >
-          {nextLabel}
-        </button>
-      )}
-    </div>
-  )
-}
-
 function EditButton({ onClick, label }: { onClick: () => void; label: string }) {
   return (
     <button

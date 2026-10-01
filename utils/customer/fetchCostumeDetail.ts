@@ -1,7 +1,6 @@
 import { createClient } from '@/utils/client'
-import { compareSize } from '@/utils/customer/labels'
 
-export type SizeChart = {
+export type CostumeSizeChart = {
   chestIn: number | null
   waistIn: number | null
   hipIn: number | null
@@ -19,7 +18,7 @@ export type CostumeVariant = {
   depositReturnHours: number
   laundryFee: number
   availableUnits: number
-  chart: SizeChart | null
+  chart: CostumeSizeChart | null
 }
 
 export type CostumeDetail = {
@@ -34,12 +33,12 @@ export type CostumeDetail = {
   crossplayFriendly: boolean
   isGroupSet: boolean
   description: string | null
-  images: string[] // รูปหน้าปกก่อน ตามด้วย product_images ตาม display_order
+  images: string[]
   inclusions: { id: string; name: string; imageUrl: string | null }[]
   variants: CostumeVariant[]
 }
 
-type ChartRow = {
+type SizeChartRow = {
   chest_in: number | string | null
   waist_in: number | string | null
   hip_in: number | string | null
@@ -48,7 +47,19 @@ type ChartRow = {
   recommended_height_max: number | string | null
 }
 
-type DetailRow = {
+type CostumeVariantRow = {
+  id: string
+  size: string
+  package_price: number | string | null
+  package_days: number | string | null
+  deposit_amount: number | string | null
+  deposit_return_hours: number | string | null
+  laundry_fee: number | string | null
+  size_charts: SizeChartRow | SizeChartRow[] | null
+  product_items: { condition_status: string }[] | null
+}
+
+type CostumeRow = {
   id: string
   name: string
   character_name: string | null
@@ -61,33 +72,36 @@ type DetailRow = {
   is_group_set: boolean | null
   description: string | null
   cover_image_url: string | null
-  product_images: { image_url: string; display_order: number }[] | null
+  product_images: { image_url: string | null; display_order: number }[] | null
   product_inclusions: { id: string; name: string; image_url: string | null; display_order: number }[] | null
-  product_variants:
-    | {
-        id: string
-        size: string
-        package_price: number | string | null
-        package_days: number | null
-        deposit_amount: number | string | null
-        deposit_return_hours: number | null
-        laundry_fee: number | string | null
-        size_charts: ChartRow | ChartRow[] | null
-        product_items: { condition_status: string }[] | null
-      }[]
-    | null
+  product_variants: CostumeVariantRow[] | null
 }
 
-const num = (v: number | string | null | undefined) => (v == null || v === '' ? null : Number(v))
+function nullableNumber(value: number | string | null): number | null {
+  if (value == null) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
 
-// ดึงรายละเอียดชุดสำหรับหน้าลูกค้า — กรอง status='active' ซ้ำกับ RLS เหมือน fetchCatalog
-export async function fetchCostumeDetail(
-  productId: string,
-): Promise<{ data: CostumeDetail | null; error: string | null }> {
-  const supabase = createClient()
-  if (!supabase) {
-    return { data: null, error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
+function mapSizeChart(value: CostumeVariantRow['size_charts']): CostumeSizeChart | null {
+  const chart = Array.isArray(value) ? value[0] : value
+  if (!chart) return null
+  return {
+    chestIn: nullableNumber(chart.chest_in),
+    waistIn: nullableNumber(chart.waist_in),
+    hipIn: nullableNumber(chart.hip_in),
+    lengthIn: nullableNumber(chart.length_in),
+    heightMin: nullableNumber(chart.recommended_height_min),
+    heightMax: nullableNumber(chart.recommended_height_max),
   }
+}
+
+export async function fetchCostumeDetail(productId: string): Promise<{
+  data: CostumeDetail | null
+  error: string | null
+}> {
+  const supabase = createClient()
+  if (!supabase) return { data: null, error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
 
   const { data, error } = await supabase
     .from('products')
@@ -109,65 +123,45 @@ export async function fetchCostumeDetail(
     .maybeSingle()
 
   if (error) return { data: null, error: error.message }
-  if (!data) return { data: null, error: 'ไม่พบชุดนี้ หรือชุดนี้ปิดให้เช่าแล้ว' }
+  if (!data) return { data: null, error: 'ไม่พบชุดนี้ในระบบ' }
 
-  const p = data as unknown as DetailRow
-
-  const gallery = (p.product_images ?? [])
+  const product = data as unknown as CostumeRow
+  const galleryImages = (product.product_images ?? [])
     .slice()
     .sort((a, b) => a.display_order - b.display_order)
-    .map((img) => img.image_url)
-  const images = Array.from(new Set([p.cover_image_url, ...gallery].filter((u): u is string => !!u)))
+    .map((image) => image.image_url)
+  const images = Array.from(new Set([product.cover_image_url, ...galleryImages].filter((url): url is string => !!url)))
 
-  const inclusions = (p.product_inclusions ?? [])
-    .slice()
-    .sort((a, b) => a.display_order - b.display_order)
-    .map((inc) => ({ id: inc.id, name: inc.name, imageUrl: inc.image_url }))
-
-  const variants = (p.product_variants ?? [])
-    .filter((v) => v.package_price != null)
-    .map((v): CostumeVariant => {
-      const c = Array.isArray(v.size_charts) ? v.size_charts[0] : v.size_charts
-      const chart: SizeChart | null = c
-        ? {
-            chestIn: num(c.chest_in),
-            waistIn: num(c.waist_in),
-            hipIn: num(c.hip_in),
-            lengthIn: num(c.length_in),
-            heightMin: num(c.recommended_height_min),
-            heightMax: num(c.recommended_height_max),
-          }
-        : null
-      const hasChart = chart && Object.values(chart).some((x) => x != null)
-      return {
-        id: v.id,
-        size: v.size,
-        packagePrice: Number(v.package_price),
-        packageDays: v.package_days ?? 2,
-        depositAmount: Number(v.deposit_amount ?? 0),
-        depositReturnHours: v.deposit_return_hours ?? 72,
-        laundryFee: Number(v.laundry_fee ?? 0),
-        availableUnits: (v.product_items ?? []).filter((i) => i.condition_status === 'available').length,
-        chart: hasChart ? chart : null,
-      }
-    })
-    .sort((a, b) => compareSize(a.size, b.size))
+  const variants = (product.product_variants ?? []).map((variant): CostumeVariant => ({
+    id: variant.id,
+    size: variant.size,
+    packagePrice: Number(variant.package_price ?? 0),
+    packageDays: Number(variant.package_days ?? 2),
+    depositAmount: Number(variant.deposit_amount ?? 0),
+    depositReturnHours: Number(variant.deposit_return_hours ?? 72),
+    laundryFee: Number(variant.laundry_fee ?? 0),
+    availableUnits: (variant.product_items ?? []).filter((item) => item.condition_status === 'available').length,
+    chart: mapSizeChart(variant.size_charts),
+  }))
 
   return {
     data: {
-      id: p.id,
-      name: p.name,
-      characterName: p.character_name,
-      seriesName: p.series_name,
-      franchiseType: p.franchise_type,
-      costumeCategory: p.costume_category,
-      genderTag: p.gender_tag,
-      colorTags: p.color_tags ?? [],
-      crossplayFriendly: !!p.crossplay_friendly,
-      isGroupSet: !!p.is_group_set,
-      description: p.description,
+      id: product.id,
+      name: product.name,
+      characterName: product.character_name,
+      seriesName: product.series_name,
+      franchiseType: product.franchise_type,
+      costumeCategory: product.costume_category,
+      genderTag: product.gender_tag,
+      colorTags: product.color_tags ?? [],
+      crossplayFriendly: product.crossplay_friendly ?? false,
+      isGroupSet: product.is_group_set ?? false,
+      description: product.description,
       images,
-      inclusions,
+      inclusions: (product.product_inclusions ?? [])
+        .slice()
+        .sort((a, b) => a.display_order - b.display_order)
+        .map((inclusion) => ({ id: inclusion.id, name: inclusion.name, imageUrl: inclusion.image_url })),
       variants,
     },
     error: null,

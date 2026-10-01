@@ -1,108 +1,110 @@
-import { useEffect, useState } from 'react'
+'use client'
+
+import { useSyncExternalStore } from 'react'
 import { isISODate } from '@/utils/dateUtils'
-import { getCurrentUserId, useAuthUser } from '@/utils/customer/authUser'
 
-// ตะกร้าเก็บในเบราว์เซอร์ (localStorage) แยกตามผู้ใช้ — ต้องล็อกอินก่อน ออกจากระบบแล้วตะกร้าจะไม่แสดง
-// ชุดยังไม่ถูกล็อกจนกว่าจะกดยืนยันที่หน้าชำระเงิน (create_booking) ตะกร้าจึงต้องตรวจวันว่างใหม่ทุกครั้งที่เปิด
-
-export type CartItem = {
-  variantId: string
-  startDate: string // วันใช้งาน 'YYYY-MM-DD'
-  addedAt: number
-}
-
-export type CartKey = Pick<CartItem, 'variantId' | 'startDate'>
-
-// create_booking() รับได้สูงสุด 10 รายการต่อออเดอร์
 export const MAX_ITEMS_PER_ORDER = 10
 
-const STORAGE_KEY = 'cosmate_cart_v1'
-const CHANGE_EVENT = 'cosmate:cart-changed'
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CART_STORAGE_KEY = 'cosmate:cart'
 
-export function sameCartItem(a: CartKey, b: CartKey): boolean {
-  return a.variantId === b.variantId && a.startDate === b.startDate
+export type CartKey = {
+  variantId: string
+  startDate: string
 }
 
-function isValidItem(value: unknown): value is CartItem {
-  const v = value as CartItem
-  return !!v && typeof v.variantId === 'string' && UUID_RE.test(v.variantId) && isISODate(v.startDate)
+export type CartItem = CartKey
+
+interface CartState {
+  items: CartItem[]
+  ready: boolean
 }
 
-const storageKeyOf = (userId: string) => `${STORAGE_KEY}:${userId}`
+const SERVER_CART_STATE: CartState = { items: [], ready: false }
+const subscribers = new Set<() => void>()
+let cartSnapshot: CartState | null = null
 
-export function getCart(): CartItem[] {
-  const userId = getCurrentUserId()
-  if (typeof window === 'undefined' || !userId) return []
+function isCartItem(value: unknown): value is CartItem {
+  if (!value || typeof value !== 'object') return false
+  const item = value as Partial<CartItem>
+  return typeof item.variantId === 'string' && item.variantId.length > 0 && isISODate(item.startDate)
+}
+
+function readCart(): CartItem[] {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(storageKeyOf(userId)) ?? '[]')
-    return Array.isArray(parsed) ? parsed.filter(isValidItem) : []
+    const stored: unknown = JSON.parse(window.localStorage.getItem(CART_STORAGE_KEY) ?? '[]')
+    return Array.isArray(stored) ? stored.filter(isCartItem) : []
   } catch {
     return []
   }
 }
 
-function saveCart(items: CartItem[]) {
-  const userId = getCurrentUserId()
-  if (!userId) return
+function writeCart(items: CartItem[]) {
   try {
-    window.localStorage.setItem(storageKeyOf(userId), JSON.stringify(items))
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
   } catch {
-    // โหมดส่วนตัวบางเบราว์เซอร์เขียนไม่ได้ — ข้ามไป ตะกร้าจะอยู่แค่ในหน้านี้
+    // Keep in-memory consumers in sync even when storage is unavailable.
   }
-  window.dispatchEvent(new Event(CHANGE_EVENT))
+  publish(items)
+}
+
+function publish(items: CartItem[] = readCart()) {
+  cartSnapshot = { items, ready: true }
+  subscribers.forEach((notify) => notify())
+}
+
+function handleStorage(event: StorageEvent) {
+  if (event.key === CART_STORAGE_KEY || event.key === null) publish()
+}
+
+function subscribe(notify: () => void) {
+  subscribers.add(notify)
+  if (subscribers.size === 1) window.addEventListener('storage', handleStorage)
+  return () => {
+    subscribers.delete(notify)
+    if (subscribers.size === 0) window.removeEventListener('storage', handleStorage)
+  }
+}
+
+function getSnapshot(): CartState {
+  if (!cartSnapshot) cartSnapshot = { items: readCart(), ready: true }
+  return cartSnapshot
+}
+
+function getServerSnapshot(): CartState {
+  return SERVER_CART_STATE
+}
+
+export function useCart(): CartState {
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 }
 
 export function addToCart(variantId: string, startDate: string): 'added' | 'exists' {
-  const items = getCart()
-  if (items.some((i) => sameCartItem(i, { variantId, startDate }))) return 'exists'
-  saveCart([...items, { variantId, startDate, addedAt: Date.now() }])
+  const items = readCart()
+  if (items.some((item) => item.variantId === variantId && item.startDate === startDate)) return 'exists'
+  writeCart([...items, { variantId, startDate }])
   return 'added'
 }
 
-export function removeFromCart(keys: CartKey[]) {
-  saveCart(getCart().filter((item) => !keys.some((k) => sameCartItem(item, k))))
+export function removeFromCart(itemsToRemove: CartKey[]) {
+  const keys = new Set(itemsToRemove.map(({ variantId, startDate }) => `${variantId}:${startDate}`))
+  writeCart(readCart().filter((item) => !keys.has(`${item.variantId}:${item.startDate}`)))
 }
 
-// อ่านตะกร้าแบบ reactive: อัปเดตเองเมื่อหน้าอื่น/แท็บอื่นแก้ตะกร้า หรือเมื่อล็อกอิน/ออกจากระบบ
-export function useCart(): { items: CartItem[]; ready: boolean } {
-  const { userId, ready: authReady } = useAuthUser()
-  const [items, setItems] = useState<CartItem[]>([])
-  const [ready, setReady] = useState(false)
-
-  useEffect(() => {
-    if (!authReady) return
-    const sync = () => {
-      setItems(getCart())
-      setReady(true)
-    }
-    sync()
-    window.addEventListener(CHANGE_EVENT, sync)
-    window.addEventListener('storage', sync)
-    return () => {
-      window.removeEventListener(CHANGE_EVENT, sync)
-      window.removeEventListener('storage', sync)
-    }
-  }, [authReady, userId])
-
-  return { items, ready }
-}
-
-// ส่งรายการไปหน้าชำระเงินผ่าน URL: ?items=<variantId>:<YYYY-MM-DD>,<variantId>:<YYYY-MM-DD>
-export function encodeCheckoutItems(keys: CartKey[]): string {
-  return keys.map((k) => `${k.variantId}:${k.startDate}`).join(',')
+export function encodeCheckoutItems(items: CartKey[]): string {
+  return items.map(({ variantId, startDate }) => `${variantId}:${startDate}`).join(',')
 }
 
 export function decodeCheckoutItems(value: string | null): CartKey[] {
   if (!value) return []
-  const result: CartKey[] = []
-  for (const part of value.split(',')) {
-    const [variantId, startDate] = part.split(':')
-    if (variantId && UUID_RE.test(variantId) && isISODate(startDate)) {
-      if (!result.some((r) => sameCartItem(r, { variantId, startDate }))) {
-        result.push({ variantId, startDate })
-      }
-    }
+
+  const unique = new Map<string, CartKey>()
+  for (const entry of value.split(',')) {
+    const separator = entry.indexOf(':')
+    if (separator <= 0) continue
+    const variantId = entry.slice(0, separator)
+    const startDate = entry.slice(separator + 1)
+    if (!variantId || !isISODate(startDate)) continue
+    unique.set(`${variantId}:${startDate}`, { variantId, startDate })
   }
-  return result.slice(0, MAX_ITEMS_PER_ORDER)
+  return Array.from(unique.values())
 }

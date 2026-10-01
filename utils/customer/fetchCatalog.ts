@@ -1,7 +1,4 @@
 import { createClient } from '@/utils/client'
-import { compareSize } from '@/utils/customer/labels'
-import { colorKeysOf, themeKeysOf } from '@/utils/customer/filterOptions'
-import { fetchRatingSummaries } from '@/utils/customer/reviews'
 
 export type CatalogCostume = {
   id: string
@@ -11,22 +8,25 @@ export type CatalogCostume = {
   franchiseType: string | null
   costumeCategory: string | null
   genderTag: string | null
-  crossplayFriendly: boolean
   coverImageUrl: string | null
   createdAt: string
-  minPrice: number | null
-  minPricePackageDays: number // จำนวนวันแพ็กเกจของไซส์ที่ถูกที่สุด (ใช้แสดง "/ N วัน")
   sizes: string[]
-  colorTags: string[]
-  colorKeys: string[] // แปลงเป็นคีย์มาตรฐานแล้ว เช่น 'pink', 'white' (ใช้กรอง + จุดสีบนการ์ด)
+  colorKeys: string[]
   themeKeys: string[]
-  availableUnits: number
-  totalUnits: number
-  avgRating: number | null // null = ยังไม่มีรีวิว
+  minPrice: number | null
+  minPricePackageDays: number | null
+  avgRating: number | null
   reviewCount: number
 }
 
-type CatalogRow = {
+type ProductVariantRow = {
+  size: string | null
+  package_price: number | string | null
+  package_days: number | string | null
+  product_items: { condition_status: string }[] | null
+}
+
+type ProductRow = {
   id: string
   name: string
   character_name: string | null
@@ -34,78 +34,97 @@ type CatalogRow = {
   franchise_type: string | null
   costume_category: string | null
   gender_tag: string | null
-  crossplay_friendly: boolean | null
-  cover_image_url: string | null
   color_tags: string[] | null
   theme_tags: string[] | null
+  cover_image_url: string | null
   created_at: string
-  product_variants:
-    | {
-        size: string
-        package_price: number | string | null
-        package_days: number | null
-        product_items: { condition_status: string }[] | null
-      }[]
-    | null
+  product_variants: ProductVariantRow[] | null
 }
 
-// ดึงรายการชุดที่เปิดให้เช่าสำหรับหน้าลูกค้า
-// ใส่ .eq('status','active') ซ้ำกับ RLS โดยตั้งใจ: แอดมินที่ล็อกอินอยู่แล้วเปิดหน้าร้าน
-// จะเห็นชุดฉบับร่างด้วย (RLS ให้แอดมินเห็นทุกชุด) ถ้าไม่กรองตรงนี้
+type ReviewRow = { product_id: string; rating: number | string }
+
+function stringArray(values: string[] | null): string[] {
+  return Array.isArray(values) ? Array.from(new Set(values.filter((value) => typeof value === 'string' && value))) : []
+}
+
 export async function fetchCatalog(limit?: number): Promise<{ data: CatalogCostume[]; error: string | null }> {
   const supabase = createClient()
-  if (!supabase) {
-    return { data: [], error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
-  }
+  if (!supabase) return { data: [], error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
 
   let query = supabase
     .from('products')
     .select(
       `
-      id, name, character_name, series_name, franchise_type, costume_category,
-      gender_tag, crossplay_friendly, cover_image_url, color_tags, theme_tags, created_at,
+      id, name, character_name, series_name, franchise_type, costume_category, gender_tag,
+      color_tags, theme_tags, cover_image_url, created_at,
       product_variants ( size, package_price, package_days, product_items ( condition_status ) )
     `,
     )
     .eq('status', 'active')
     .order('created_at', { ascending: false })
 
-  if (limit) query = query.limit(limit)
+  if (limit != null && Number.isFinite(limit) && limit > 0) query = query.limit(Math.floor(limit))
 
-  const [{ data, error }, ratings] = await Promise.all([query, fetchRatingSummaries()])
+  const { data, error } = await query
   if (error) return { data: [], error: error.message }
 
-  const rows = (data ?? []) as unknown as CatalogRow[]
-  const mapped = rows.map((p): CatalogCostume => {
-    const variants = p.product_variants ?? []
-    const items = variants.flatMap((v) => v.product_items ?? [])
-    const priced = variants
-      .filter((v) => v.package_price != null)
-      .map((v) => ({ price: Number(v.package_price), days: v.package_days ?? 2 }))
+  const products = (data ?? []) as unknown as ProductRow[]
+  const ratings = new Map<string, { sum: number; count: number }>()
+  if (products.length > 0) {
+    const { data: reviews, error: reviewError } = await supabase
+      .from('product_reviews')
+      .select('product_id, rating')
+      .in('product_id', products.map((product) => product.id))
+      .eq('is_hidden', false)
+
+    if (!reviewError) {
+      for (const review of (reviews ?? []) as ReviewRow[]) {
+        const rating = Number(review.rating)
+        if (!Number.isFinite(rating)) continue
+        const summary = ratings.get(review.product_id) ?? { sum: 0, count: 0 }
+        summary.sum += rating
+        summary.count += 1
+        ratings.set(review.product_id, summary)
+      }
+    }
+  }
+
+  const mapped = products.map((product): CatalogCostume => {
+    const variants = product.product_variants ?? []
+    const pricedVariants = variants
+      .filter((variant) => variant.package_price != null)
+      .map((variant) => ({
+        price: Number(variant.package_price),
+        days: variant.package_days == null ? null : Number(variant.package_days),
+      }))
+      .filter((variant) => Number.isFinite(variant.price))
       .sort((a, b) => a.price - b.price)
-    const colorTags = p.color_tags ?? []
+    const rating = ratings.get(product.id)
 
     return {
-      id: p.id,
-      name: p.name,
-      characterName: p.character_name,
-      seriesName: p.series_name,
-      franchiseType: p.franchise_type,
-      costumeCategory: p.costume_category,
-      genderTag: p.gender_tag,
-      crossplayFriendly: !!p.crossplay_friendly,
-      coverImageUrl: p.cover_image_url,
-      createdAt: p.created_at,
-      minPrice: priced.length > 0 ? priced[0].price : null,
-      minPricePackageDays: priced.length > 0 ? priced[0].days : 2,
-      sizes: Array.from(new Set(variants.map((v) => v.size))).sort(compareSize),
-      colorTags,
-      colorKeys: colorKeysOf(colorTags),
-      themeKeys: themeKeysOf(p.theme_tags ?? [], p.franchise_type),
-      availableUnits: items.filter((i) => i.condition_status === 'available').length,
-      totalUnits: items.length,
-      avgRating: ratings[p.id]?.avgRating ?? null,
-      reviewCount: ratings[p.id]?.reviewCount ?? 0,
+      id: product.id,
+      name: product.name,
+      characterName: product.character_name,
+      seriesName: product.series_name,
+      franchiseType: product.franchise_type,
+      costumeCategory: product.costume_category,
+      genderTag: product.gender_tag,
+      coverImageUrl: product.cover_image_url,
+      createdAt: product.created_at,
+      sizes: Array.from(
+        new Set(
+          variants
+            .filter((variant) => (variant.product_items ?? []).some((item) => item.condition_status === 'available'))
+            .map((variant) => variant.size)
+            .filter((size): size is string => !!size),
+        ),
+      ),
+      colorKeys: stringArray(product.color_tags),
+      themeKeys: stringArray(product.theme_tags),
+      minPrice: pricedVariants[0]?.price ?? null,
+      minPricePackageDays: pricedVariants[0]?.days ?? null,
+      avgRating: rating && rating.count > 0 ? rating.sum / rating.count : null,
+      reviewCount: rating?.count ?? 0,
     }
   })
 

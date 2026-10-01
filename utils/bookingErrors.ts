@@ -15,6 +15,8 @@ const MESSAGES: Record<string, string> = {
   REVIEW_NOT_ALLOWED: 'รีวิวได้หลังจบการเช่าแล้วเท่านั้น (ร้านตรวจรับชุดคืนเรียบร้อย)',
   ALREADY_REVIEWED: 'คุณรีวิวรายการเช่านี้ไปแล้ว',
   INVALID_REVIEW: 'ข้อมูลรีวิวไม่ถูกต้อง กรุณาตรวจคะแนน ส่วนสูง หรือรูปภาพอีกครั้ง',
+  NO_REFUND_DUE: 'ออเดอร์นี้ไม่มียอดที่ต้องคืนเงิน',
+  INVALID_REFUND_STATUS: 'สถานะการคืนเงินไม่ถูกต้อง',
 }
 
 export function translateRpcError(message: string | null | undefined): string {

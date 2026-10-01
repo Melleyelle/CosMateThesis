@@ -16,8 +16,8 @@ type Condition = 'available' | 'cleaning' | 'damaged' | 'retired'
 const CONDITIONS: { value: Condition; label: string; tone: Tone; hint: string }[] = [
   { value: 'available', label: 'พร้อมเช่า', tone: 'done', hint: 'ระบบจัดสรรให้ลูกค้าได้' },
   { value: 'cleaning', label: 'กำลังซัก', tone: 'progress', hint: 'คิวเดิมยังอยู่ แต่รับจองใหม่ไม่ได้จนกว่าจะเปลี่ยนกลับ' },
-  { value: 'damaged', label: 'ซ่อม', tone: 'problem', hint: 'ย้ายคิวที่ยังไม่ส่งไปตัวอื่นให้อัตโนมัติ' },
-  { value: 'retired', label: 'ปลดระวาง', tone: 'closed', hint: 'เลิกใช้ถาวร ย้ายคิวที่ยังไม่ส่งไปตัวอื่นให้อัตโนมัติ' },
+  { value: 'damaged', label: 'ซ่อม', tone: 'problem', hint: 'คิวที่ยังไม่ส่งสลับไปตัวสำรองของชุดนี้ ถ้าไม่มีจะยกเลิกและคืนเงิน' },
+  { value: 'retired', label: 'ปลดระวาง', tone: 'closed', hint: 'เลิกใช้ถาวร คิวที่ยังไม่ส่งจัดการแบบเดียวกับซ่อม' },
 ]
 const BY_VALUE = Object.fromEntries(CONDITIONS.map((c) => [c.value, c])) as Record<Condition, (typeof CONDITIONS)[number]>
 
@@ -47,11 +47,7 @@ const ERROR_TEXT: Record<string, string> = {
 }
 
 function translate(message: string) {
-  const stuck = message.match(/ITEM_HAS_BOOKINGS:([\w,]+)/)
-  if (stuck) {
-    return `เปลี่ยนไม่ได้ เพราะคิว ${stuck[1].split(',').join(', ')} ย้ายไปตัวอื่นไม่ได้ (ไม่มีตัวไซส์เดียวกันที่ว่างช่วงนั้น) ติดต่อลูกค้าหรือยกเลิกออเดอร์ก่อน`
-  }
-  if (message.includes('Could not find the function')) return 'ยังไม่ได้รัน cosmate_step12_item_condition.sql'
+  if (message.includes('Could not find the function')) return 'ยังไม่ได้รัน cosmate_step13_refunds_bank_accounts.sql'
   for (const [code, text] of Object.entries(ERROR_TEXT)) if (message.includes(code)) return text
   return message
 }
@@ -112,7 +108,9 @@ export default function ItemConditionCard({ productId, refreshKey = 0 }: { produ
     const unshipped = unit.bookings.filter((b) => UNSHIPPED.includes(b.status))
     if ((next === 'damaged' || next === 'retired') && unshipped.length > 0) {
       const ok = confirm(
-        `${unit.code} มีคิวที่ยังไม่ได้จัดส่ง ${unshipped.length} รายการ\nระบบจะย้ายไปตัวอื่นไซส์ ${unit.size} ที่ว่างให้อัตโนมัติ ดำเนินการต่อ?`,
+        `${unit.code} มีคิวที่ยังไม่ได้จัดส่ง ${unshipped.length} รายการ\n\n` +
+          `• ถ้ามีตัวสำรองของชุดนี้ ไซส์ ${unit.size} ว่างช่วงเดียวกัน ระบบจะสลับให้ (ลูกค้าได้ชุดเดิม)\n` +
+          `• ถ้าไม่มี ระบบจะยกเลิกออเดอร์นั้น ถ้าลูกค้าจ่ายแล้วจะตั้งเป็น "รอคืนเงิน" ที่หน้าออเดอร์\n\nดำเนินการต่อ?`,
       )
       if (!ok) return
     }
@@ -129,13 +127,22 @@ export default function ItemConditionCard({ productId, refreshKey = 0 }: { produ
       return
     }
 
-    const result = data as { moves?: { order_number: string; to: string }[] }
+    const result = data as {
+      moves?: { order_number: string; to: string }[]
+      cancelled?: { order_number: string; refund: number }[]
+    }
     const moves = result.moves ?? []
+    const cancelled = result.cancelled ?? []
+    const refundTotal = cancelled.reduce((s, c) => s + Number(c.refund), 0)
     setNotice({
-      tone: 'ok',
+      tone: cancelled.length ? 'error' : 'ok',
       text:
         `${unit.code} เปลี่ยนเป็น "${BY_VALUE[next].label}" แล้ว` +
-        (moves.length ? ` · ย้ายคิว ${moves.map((m) => `${m.order_number} → ${m.to}`).join(', ')}` : '') +
+        (moves.length ? ` · สลับคิว ${moves.map((m) => `${m.order_number} → ${m.to}`).join(', ')}` : '') +
+        (cancelled.length
+          ? ` · ยกเลิก ${cancelled.map((c) => c.order_number).join(', ')}` +
+            (refundTotal > 0 ? ` (ต้องโอนคืนรวม ฿${refundTotal.toLocaleString('th-TH')} ที่หน้าออเดอร์ แท็บ "รอคืนเงิน")` : '')
+          : '') +
         (next === 'cleaning' ? ' · ซักเสร็จอย่าลืมเปลี่ยนกลับเป็น "พร้อมเช่า"' : ''),
     })
     await load()

@@ -38,6 +38,11 @@ export type OrderSummary = {
   refundAccountName: string | null
   refundBank: string | null
   refundAccountNumber: string | null
+  // การยกเลิก/คืนเงิน (Step 13): refundStatus null = ไม่มีเงินต้องคืน
+  cancelReason: string | null
+  refundStatus: 'pending' | 'transferred' | 'failed' | null
+  refundAmount: number | null
+  refundedAt: string | null
   lines: OrderLine[]
 }
 
@@ -63,6 +68,10 @@ type OrderRow = {
   refund_account_name?: string | null
   refund_bank?: string | null
   refund_account_number?: string | null
+  cancel_reason?: string | null
+  refund_status?: 'pending' | 'transferred' | 'failed' | null
+  refund_amount?: number | string | null
+  refunded_at?: string | null
   order_items:
     | {
         id: string
@@ -83,7 +92,9 @@ type OrderRow = {
 const ORDER_COLUMNS = `
   id, order_number, status, created_at, updated_at,
   ship_name, ship_phone, ship_address, ship_subdistrict, ship_district, ship_province, ship_postal_code,
-  customer_note, rental_total, deposit_total, laundry_total, shipping_fee, grand_total
+  customer_note, rental_total, deposit_total, laundry_total, shipping_fee, grand_total,
+  refund_account_name, refund_bank, refund_account_number,
+  cancel_reason, refund_status, refund_amount, refunded_at
 `
 
 const LINE_COLUMNS = `
@@ -120,6 +131,10 @@ function mapOrder(o: OrderRow): OrderSummary {
     refundAccountName: o.refund_account_name ?? null,
     refundBank: o.refund_bank ?? null,
     refundAccountNumber: o.refund_account_number ?? null,
+    cancelReason: o.cancel_reason ?? null,
+    refundStatus: o.refund_status ?? null,
+    refundAmount: o.refund_amount == null ? null : Number(o.refund_amount),
+    refundedAt: o.refunded_at ?? null,
     lines: (o.order_items ?? [])
       .map((i) => ({
         id: i.id,
@@ -180,14 +195,11 @@ export async function fetchAllOrdersForAdmin(): Promise<{ data: OrderSummary[]; 
   const supabase = createClient()
   if (!supabase) return { data: [], error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
 
-  const query = (columns: string) =>
-    supabase.from('orders').select(`${columns}, order_items ( ${LINE_COLUMNS_ADMIN} )`).order('created_at', { ascending: false })
-
-  // ลองดึงบัญชีคืนมัดจำด้วย ถ้ายังไม่ได้รัน Step 10 (ไม่มีคอลัมน์) ให้ถอยไปดึงแบบเดิม หน้าไม่พัง
-  let { data, error } = await query(`${ORDER_COLUMNS}, refund_account_name, refund_bank, refund_account_number`)
-  if (error && error.message.includes('refund_')) {
-    ;({ data, error } = await query(ORDER_COLUMNS))
-  }
+  // ต้องรัน Step 10 และ 13 แล้ว (คอลัมน์ refund_* / cancel_reason)
+  const { data, error } = await supabase
+    .from('orders')
+    .select(`${ORDER_COLUMNS}, order_items ( ${LINE_COLUMNS_ADMIN} )`)
+    .order('created_at', { ascending: false })
 
   if (error) return { data: [], error: error.message }
   return { data: ((data ?? []) as unknown as OrderRow[]).map(mapOrder), error: null }

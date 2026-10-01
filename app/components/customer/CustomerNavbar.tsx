@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
@@ -96,7 +95,7 @@ export default function CustomerNavbar() {
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
         <Link href="/" aria-label="CosMate หน้าหลัก" className="flex-shrink-0">
-          <Image src="/images/logo.png" alt="CosMate" width={1144} height={274} priority className="h-9 w-auto" />
+          <span className="text-xl font-extrabold text-[#263544]">CosMate</span>
         </Link>
 
         <nav className="hidden flex-1 items-center justify-center gap-8 md:flex">
@@ -154,6 +153,7 @@ export default function CustomerNavbar() {
                       <p className="text-xs text-[#263544]/50">เข้าสู่ระบบในชื่อ</p>
                       <p className="truncate text-sm font-semibold text-[#263544]">{email}</p>
                     </div>
+                    <MenuLink href="/account" icon={<UserIcon size={18} />} label="บัญชีของฉัน" />
                     <MenuLink href="/orders" icon={<ReceiptIcon size={18} />} label="ออเดอร์ของฉัน" />
                     <MenuLink href="/favorites" icon={<HeartIcon size={18} />} label="รายการโปรด" />
                     {isAdmin && (

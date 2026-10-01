@@ -3,35 +3,29 @@
 import { useState } from 'react'
 import { StarIcon } from '@phosphor-icons/react'
 
-const STAR_COLOR = '#F5B400'
+interface StarDisplayProps {
+  value: number | null | undefined
+  size?: number
+}
 
-// แสดงดาวแบบเติมสีตามสัดส่วน (รองรับทศนิยม เช่น 4.6)
-export function StarDisplay({ value, size = 16 }: { value: number; size?: number }) {
+export function StarDisplay({ value, size = 16 }: StarDisplayProps) {
+  const rating = Number.isFinite(value) ? Math.min(5, Math.max(0, value ?? 0)) : 0
+
   return (
-    <span className="inline-flex items-center gap-0.5" aria-label={`${value.toFixed(1)} จาก 5 ดาว`}>
-      {[1, 2, 3, 4, 5].map((i) => {
-        const fill = Math.max(0, Math.min(1, value - (i - 1)))
+    <span className="inline-flex items-center gap-0.5" role="img" aria-label={`${rating.toFixed(1)} จาก 5 ดาว`}>
+      {Array.from({ length: 5 }, (_, index) => {
+        const fill = Math.max(0, Math.min(1, rating - index))
         return (
-          <span key={i} className="relative inline-block" style={{ width: size, height: size }}>
-            <StarIcon size={size} weight="fill" className="absolute inset-0 text-gray-200" />
-            <span className="absolute inset-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
-              <StarIcon size={size} weight="fill" style={{ color: STAR_COLOR }} />
-            </span>
+          <span key={index} className="relative inline-flex" aria-hidden="true">
+            <StarIcon size={size} weight="regular" className="text-[#E5A900]" />
+            {fill > 0 && (
+              <span className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
+                <StarIcon size={size} weight="fill" className="max-w-none text-[#E5A900]" />
+              </span>
+            )}
           </span>
         )
       })}
-    </span>
-  )
-}
-
-// ป้ายสั้นบนการ์ด: ★ 4.6 (36 รีวิว)
-export function RatingBadge({ avg, count }: { avg: number; count: number }) {
-  if (count === 0) return null
-  return (
-    <span className="inline-flex items-center gap-1 text-xs text-[#263544]/70">
-      <StarIcon size={13} weight="fill" style={{ color: STAR_COLOR }} />
-      <span className="font-semibold text-[#263544]">{avg.toFixed(1)}</span>
-      <span>({count} รีวิว)</span>
     </span>
   )
 }
@@ -67,11 +61,7 @@ export function StarInput({ value, onChange }: { value: number; onChange: (v: nu
             onMouseEnter={() => setHover(i)}
             className="rounded transition hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E5457F]/40"
           >
-            <StarIcon
-              size={34}
-              weight="fill"
-              style={{ color: i <= shown ? STAR_COLOR : '#E5E7EB' }}
-            />
+            <StarIcon size={34} weight="fill" className={i <= shown ? 'text-[#E5A900]' : 'text-[#E5E7EB]'} />
           </button>
         ))}
       </div>
