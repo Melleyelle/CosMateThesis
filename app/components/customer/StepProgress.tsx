@@ -25,7 +25,7 @@ export default function StepProgress({
             <div className="flex w-full items-center">
               <span className={`h-0.5 flex-1 ${i === 0 ? 'invisible' : done || active ? 'bg-[#E5457F]' : 'bg-gray-200'}`} />
               <span
-                className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold ${
+                className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-bold ${
                   done
                     ? 'border-[#E5457F] bg-[#E5457F] text-white'
                     : active
@@ -39,7 +39,7 @@ export default function StepProgress({
                 className={`h-0.5 flex-1 ${i === steps.length - 1 ? 'invisible' : done ? 'bg-[#E5457F]' : 'bg-gray-200'}`}
               />
             </div>
-            <span className={`mt-1.5 text-[11px] ${active ? 'font-bold text-[#263544]' : 'text-[#263544]/50'}`}>
+            <span className={`mt-1.5 text-sm ${active ? 'font-bold text-[#263544]' : 'text-[#263544]/50'}`}>
               {label}
             </span>
           </li>

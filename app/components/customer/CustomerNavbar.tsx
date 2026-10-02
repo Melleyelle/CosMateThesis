@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   HeartIcon,
   ReceiptIcon,
-  ShoppingCartSimpleIcon,
+  ShoppingBagIcon,
   SignInIcon,
   SignOutIcon,
   StorefrontIcon,
@@ -15,11 +15,12 @@ import {
 import { createClient } from '@/utils/client'
 import { useCart } from '@/utils/customer/cart'
 import { useFavorites } from '@/utils/customer/favorites'
+import CosMateLogo from './CosMateLogo'
 
 const NAV_LINKS = [
   { href: '/', label: 'หน้าหลัก' },
   { href: '/costumes', label: 'สำรวจชุด' },
-  { href: '/#how-it-works', label: 'วิธีการเช่า' },
+  { href: '/how-it-works', label: 'วิธีการเช่า' },
 ]
 
 export default function CustomerNavbar() {
@@ -54,14 +55,12 @@ export default function CustomerNavbar() {
 
     supabase.auth.getUser().then(({ data }) => load(data.user?.email ?? null))
 
-    // เรียก supabase ต่อใน callback ตรง ๆ จะค้างได้ (ข้อจำกัดของ supabase-js) จึงเลื่อนไปทำรอบถัดไป
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setTimeout(() => load(session?.user?.email ?? null), 0)
     })
     return () => sub.subscription.unsubscribe()
   }, [])
 
-  // ปิดเมนูบัญชีเมื่อคลิกนอกกล่อง หรือเปลี่ยนหน้า
   useEffect(() => {
     if (!menuOpen) return
     const onClick = (e: MouseEvent) => {
@@ -89,13 +88,13 @@ export default function CustomerNavbar() {
   }
 
   const iconButton =
-    'relative flex h-10 w-10 items-center justify-center rounded-full text-[#263544] transition hover:bg-[#FDE3EE]'
+    'nudge relative flex h-10 w-10 items-center justify-center rounded-full text-[#263544]'
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
+      <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-4 sm:px-6">
         <Link href="/" aria-label="CosMate หน้าหลัก" className="flex-shrink-0">
-          <span className="text-xl font-extrabold text-[#263544]">CosMate</span>
+          <CosMateLogo />
         </Link>
 
         <nav className="hidden flex-1 items-center justify-center gap-8 md:flex">
@@ -105,7 +104,7 @@ export default function CustomerNavbar() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`relative py-1 text-sm font-medium transition ${
+                className={`relative py-1 text-base font-medium transition ${
                   active ? 'text-[#E5457F]' : 'text-[#263544] hover:text-[#E5457F]'
                 }`}
               >
@@ -122,7 +121,7 @@ export default function CustomerNavbar() {
             {favorites.length > 0 && <Badge count={favorites.length} />}
           </Link>
           <Link href="/cart" aria-label="ตะกร้า" className={iconButton}>
-            <ShoppingCartSimpleIcon size={24} weight={isActive('/cart') ? 'fill' : 'regular'} />
+            <ShoppingBagIcon size={24} weight={isActive('/cart') ? 'fill' : 'regular'} />
             {cartItems.length > 0 && <Badge count={cartItems.length} />}
           </Link>
 
@@ -132,14 +131,12 @@ export default function CustomerNavbar() {
               onClick={() => setMenuOpen((o) => !o)}
               aria-label="บัญชีของฉัน"
               aria-expanded={menuOpen}
-              className={`ml-1 flex h-10 w-10 items-center justify-center rounded-full border-2 transition ${
-                email
-                  ? 'border-[#E5457F] bg-[#FDE3EE] text-[#E5457F]'
-                  : 'border-[#263544]/20 bg-white text-[#263544] hover:border-[#E5457F]'
+              className={`nudge flex h-10 w-10 items-center justify-center rounded-full ${
+                email ? 'bg-[#FDE3EE] text-[#E5457F]' : 'text-[#263544]'
               }`}
             >
               {email ? (
-                <span className="text-sm font-bold uppercase">{email.charAt(0)}</span>
+                <span className="text-base font-bold uppercase">{email.charAt(0)}</span>
               ) : (
                 <UserIcon size={20} />
               )}
@@ -149,31 +146,28 @@ export default function CustomerNavbar() {
               <div className="absolute right-0 top-12 w-60 overflow-hidden rounded-2xl border-2 border-[#263544] bg-white shadow-[4px_4px_0_0_#263544]">
                 {email ? (
                   <>
-                    <div className="border-b border-gray-100 px-4 py-3">
-                      <p className="text-xs text-[#263544]/50">เข้าสู่ระบบในชื่อ</p>
-                      <p className="truncate text-sm font-semibold text-[#263544]">{email}</p>
-                    </div>
                     <MenuLink href="/account" icon={<UserIcon size={18} />} label="บัญชีของฉัน" />
                     <MenuLink href="/orders" icon={<ReceiptIcon size={18} />} label="ออเดอร์ของฉัน" />
-                    <MenuLink href="/favorites" icon={<HeartIcon size={18} />} label="รายการโปรด" />
                     {isAdmin && (
                       <MenuLink href="/admin/inventory" icon={<StorefrontIcon size={18} />} label="หลังร้าน (แอดมิน)" />
                     )}
                     <button
                       type="button"
                       onClick={handleLogout}
-                      className="flex w-full items-center gap-2 border-t border-gray-100 px-4 py-3 text-left text-sm font-medium text-red-600 transition hover:bg-red-50"
+                      className="group flex w-full items-center gap-2 border-t border-gray-100 px-4 py-3 text-left text-base font-medium text-red-600"
                     >
-                      <SignOutIcon size={18} />
-                      ออกจากระบบ
+                      <span className="flex items-center gap-2 transition-transform duration-150 group-hover:translate-x-1">
+                        <SignOutIcon size={18} />
+                        ออกจากระบบ
+                      </span>
                     </button>
                   </>
                 ) : (
                   <div className="p-4">
-                    <p className="mb-3 text-sm text-[#263544]/70">เข้าสู่ระบบเพื่อเช่าชุดและติดตามออเดอร์</p>
+                    <p className="mb-3 text-base text-[#263544]/70">เข้าสู่ระบบเพื่อเช่าชุด</p>
                     <Link
                       href={`/login?next=${encodeURIComponent(pathname)}`}
-                      className="flex items-center justify-center gap-2 rounded-full border-2 border-[#263544] bg-[#E5457F] py-2 text-sm font-bold text-white shadow-[2px_2px_0_0_#263544]"
+                      className="pop flex items-center justify-center gap-2 rounded-full bg-[#E5457F] py-2.5 text-base font-semibold text-white"
                     >
                       <SignInIcon size={18} />
                       เข้าสู่ระบบ / สมัครสมาชิก
@@ -192,7 +186,7 @@ export default function CustomerNavbar() {
           <Link
             key={link.href}
             href={link.href}
-            className={`text-sm font-medium ${isActive(link.href) ? 'text-[#E5457F]' : 'text-[#263544]'}`}
+            className={`text-base font-medium ${isActive(link.href) ? 'text-[#E5457F]' : 'text-[#263544]'}`}
           >
             {link.label}
           </Link>
@@ -214,10 +208,12 @@ function MenuLink({ href, icon, label }: { href: string; icon: ReactNode; label:
   return (
     <Link
       href={href}
-      className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#263544] transition hover:bg-[#FFFAFC] hover:text-[#E5457F]"
+      className="group flex items-center gap-2 px-4 py-2.5 text-base font-medium text-[#263544]"
     >
-      {icon}
-      {label}
+      <span className="flex items-center gap-2 transition-transform duration-150 group-hover:translate-x-1">
+        {icon}
+        {label}
+      </span>
     </Link>
   )
 }

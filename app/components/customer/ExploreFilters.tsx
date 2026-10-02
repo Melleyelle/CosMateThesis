@@ -157,7 +157,7 @@ export default function ExploreFilters({
 
       <FilterSection title="ราคาเริ่มต้น">
         <div className="grid grid-cols-2 gap-2">
-          <label className="text-xs text-[#263544]/65">
+          <label className="text-base text-[#263544]/65">
             ต่ำสุด
             <input
               type="number"
@@ -165,10 +165,10 @@ export default function ExploreFilters({
               max={priceBounds.max}
               value={value.priceMin ?? ''}
               onChange={(event) => setPrice('priceMin', event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[#263544]/20 bg-white px-2 py-2 text-sm text-[#263544] outline-none focus:border-[#E5457F]"
+              className="mt-1 w-full rounded-lg border border-[#263544]/20 bg-white px-2 py-2 text-base text-[#263544] outline-none focus:border-[#E5457F]"
             />
           </label>
-          <label className="text-xs text-[#263544]/65">
+          <label className="text-base text-[#263544]/65">
             สูงสุด
             <input
               type="number"
@@ -176,7 +176,7 @@ export default function ExploreFilters({
               max={priceBounds.max}
               value={value.priceMax ?? ''}
               onChange={(event) => setPrice('priceMax', event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[#263544]/20 bg-white px-2 py-2 text-sm text-[#263544] outline-none focus:border-[#E5457F]"
+              className="mt-1 w-full rounded-lg border border-[#263544]/20 bg-white px-2 py-2 text-base text-[#263544] outline-none focus:border-[#E5457F]"
             />
           </label>
         </div>
@@ -188,7 +188,7 @@ export default function ExploreFilters({
 function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="border-b border-[#263544]/10 pb-5 last:border-0 last:pb-0">
-      <h2 className="mb-3 text-sm font-bold text-[#263544]">{title}</h2>
+      <h2 className="mb-3 text-base font-bold text-[#263544]">{title}</h2>
       <div className="space-y-2">{children}</div>
     </section>
   )
@@ -208,7 +208,7 @@ function FilterCheckbox({
   swatch?: string
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2 text-sm text-[#263544]/80">
+    <label className="flex cursor-pointer items-center gap-2 text-base text-[#263544]/80">
       <input
         type="checkbox"
         checked={checked}
@@ -217,7 +217,7 @@ function FilterCheckbox({
       />
       {swatch && <span aria-hidden="true" className="h-3.5 w-3.5 rounded-full border border-black/15" style={{ backgroundColor: swatch }} />}
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {count != null && <span className="text-xs text-[#263544]/45">{count}</span>}
+      {count != null && <span className="text-base text-[#263544]/45">{count}</span>}
     </label>
   )
 }

@@ -166,7 +166,7 @@ export default function CartPage() {
           action={
             <Link
               href="/costumes"
-              className="inline-block rounded-full border-2 border-[#263544] bg-[#E5457F] px-6 py-2.5 text-sm font-bold text-white shadow-[3px_3px_0_0_#263544]"
+              className="pop inline-block rounded-full bg-[#E5457F] px-6 py-2.5 text-base font-bold text-white"
             >
               สำรวจชุด
             </Link>
@@ -175,7 +175,7 @@ export default function CartPage() {
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
           <div>
-            <label className="mb-3 flex w-fit cursor-pointer items-center gap-2 text-sm font-medium text-[#263544]">
+            <label className="mb-3 flex w-fit cursor-pointer items-center gap-2 text-base font-medium text-[#263544]">
               <input
                 type="checkbox"
                 checked={allSelected}
@@ -231,13 +231,13 @@ export default function CartPage() {
                           ) : (
                             <p className="text-lg font-semibold text-[#263544]/50">ชุดที่ไม่เปิดให้เช่าแล้ว</p>
                           )}
-                          {v && <p className="text-sm text-[#263544]/70">ไซส์: {v.size}</p>}
+                          {v && <p className="text-base text-[#263544]/70">ไซส์: {v.size}</p>}
                         </div>
                         <button
                           type="button"
                           onClick={() => handleRemove(item)}
                           aria-label="ลบออกจากตะกร้า"
-                          className="rounded-full p-1.5 text-[#263544] transition hover:bg-red-50 hover:text-red-600"
+                          className="nudge rounded-full p-1.5 text-[#263544] hover:text-red-600"
                         >
                           <TrashIcon size={24} />
                         </button>
@@ -245,12 +245,12 @@ export default function CartPage() {
 
                       <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
                         {timeline && (
-                          <div className="text-sm text-[#263544]">
+                          <div className="text-base text-[#263544]">
                             <p className="text-[#263544]/60">วันที่เช่า:</p>
                             <p>
                               {formatThaiDateLong(timeline.receiveDate)} ถึง {formatThaiDateLong(timeline.returnBy)}
                             </p>
-                            <p className="text-xs text-[#E5457F]">วันใช้งาน {formatThaiDateLong(item.startDate)}</p>
+                            <p className="text-base text-[#E5457F]">วันใช้งาน {formatThaiDateLong(item.startDate)}</p>
                           </div>
                         )}
                         {v && (
@@ -261,7 +261,7 @@ export default function CartPage() {
                       </div>
 
                       {status !== 'ok' && (
-                        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-[#FFF3B0] px-3 py-2 text-xs text-[#263544]">
+                        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-[#FFF3B0] px-3 py-2 text-base text-[#263544]">
                           <WarningCircleIcon size={16} className="flex-shrink-0" />
                           {STATUS_MESSAGE[status]}
                           {v && status !== 'closed' && (
@@ -279,7 +279,7 @@ export default function CartPage() {
           </div>
 
           <aside className="h-fit rounded-2xl border border-gray-300 bg-white p-5 lg:sticky lg:top-24">
-            <dl className="space-y-3 text-sm">
+            <dl className="space-y-3 text-base">
               <Row label="จำนวนสินค้า:" value={String(selectedItems.length)} />
               <Row label="จำนวนเงินค่าเช่า:" value={formatBaht(totals.rental)} />
               <Row label="เงินค่ามัดจำ:" value={formatBaht(totals.deposit)} />
@@ -288,18 +288,18 @@ export default function CartPage() {
             </dl>
             <div className="my-4 border-t-2 border-gray-200" />
             <div className="flex items-center justify-between">
-              <span className="text-sm text-[#263544]">จำนวนเงินสุทธิ:</span>
+              <span className="text-base text-[#263544]">จำนวนเงินสุทธิ:</span>
               <span className="text-2xl font-bold text-[#263544]">{formatBaht(grandTotal)}</span>
             </div>
             <button
               type="button"
               onClick={handleCheckout}
               disabled={selectedItems.length === 0}
-              className="mt-5 w-full rounded-xl bg-[#263544] py-3.5 text-sm font-semibold text-white transition hover:bg-[#1a2632] disabled:cursor-not-allowed disabled:opacity-40"
+              className="pop mt-5 w-full rounded-full bg-[#263544] py-3.5 text-base font-semibold text-white disabled:opacity-40"
             >
               ยืนยัน
             </button>
-            <p className="mt-3 text-center text-xs text-[#263544]/60">
+            <p className="mt-3 text-center text-base text-[#263544]/60">
               ค่าขนส่งคิดครั้งเดียวต่อออเดอร์ เช่าหลายชุดพร้อมกันคุ้มกว่า
             </p>
           </aside>

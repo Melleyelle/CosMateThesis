@@ -1,18 +1,22 @@
 'use client'
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeftIcon,
   ArrowUUpLeftIcon,
+  CaretDownIcon,
   CheckCircleIcon,
   ImageIcon,
+  InfoIcon,
+  MagnifyingGlassPlusIcon,
   PackageIcon,
   RulerIcon,
   ShoppingCartSimpleIcon,
   StarIcon,
+  XIcon,
 } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
 import BookingCalendar from '@/app/components/customer/BookingCalendar'
@@ -31,7 +35,9 @@ import {
   type BookingSettings,
 } from '@/utils/customer/bookingSettings'
 import { CATEGORY_LABEL, FRANCHISE_LABEL, GENDER_LABEL } from '@/utils/customer/labels'
+import { fetchEvents, type CalendarEvent } from '@/utils/customer/events'
 import { formatBaht, formatThaiDateWithWeekday } from '@/utils/dateUtils'
+import { depositForRental } from '@/utils/customer/pricing'
 import { createClient } from '@/utils/client'
 
 const DAYS_AHEAD = 120
@@ -54,10 +60,30 @@ export default function CostumeDetailPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [cartNotice, setCartNotice] = useState<string | null>(null)
   const [rating, setRating] = useState<RatingSummary | null>(null)
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [eventsAreMock, setEventsAreMock] = useState(false)
+  const [previewInclusion, setPreviewInclusion] = useState<{ url: string; name: string } | null>(null)
+  const [rentMode, setRentMode] = useState<'set' | 'pieces'>('set')
+  const [selectedPieces, setSelectedPieces] = useState<Set<string>>(new Set())
+
+  // กด Esc ปิดหน้าต่างดูรูป
+  useEffect(() => {
+    if (!previewInclusion) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setPreviewInclusion(null)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [previewInclusion])
 
   useEffect(() => {
     fetchRatingSummaries([productId]).then((r) => setRating(r[productId] ?? null))
   }, [productId])
+
+  useEffect(() => {
+    fetchEvents().then(({ events, isMock }) => {
+      setEvents(events)
+      setEventsAreMock(isMock)
+    })
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -109,9 +135,14 @@ export default function CostumeDetailPage() {
     [detail, variantId],
   )
 
+  const getTimeline = useCallback(
+    (useDate: string) => getRentalTimeline(useDate, variant?.packageDays ?? 1, settings),
+    [variant, settings],
+  )
+
   const timeline = useMemo(
-    () => (variant && selectedDate ? getRentalTimeline(selectedDate, variant.packageDays, settings) : null),
-    [variant, selectedDate, settings],
+    () => (variant && selectedDate ? getTimeline(selectedDate) : null),
+    [variant, selectedDate, getTimeline],
   )
 
   const hasSizeChart = detail?.variants.some((v) => v.chart) ?? false
@@ -152,91 +183,120 @@ export default function CostumeDetailPage() {
     )
   }
 
-  const subtotal = variant ? variant.packagePrice + variant.depositAmount + variant.laundryFee : 0
-  const grandTotal = variant ? subtotal + settings.shippingFlatRate : 0
+  // ---- เช่าทั้งชุด / เลือกเช่าแยกชิ้น ----
+  // ชิ้นที่แอดมินตั้งราคาไว้เท่านั้นที่เลือกแยกได้
+  const pricedPieces = detail.inclusions.filter((inc) => inc.price != null)
+  const canSplit = pricedPieces.length > 0
+  const pieceMode = canSplit && rentMode === 'pieces'
+  const piecesTotal = pricedPieces.filter((p) => selectedPieces.has(p.id)).reduce((sum, p) => sum + (p.price ?? 0), 0)
+  const allPiecesTotal = pricedPieces.reduce((sum, p) => sum + (p.price ?? 0), 0)
+  // เทียบกับเช่าทุกชิ้นแยกกัน → ทั้งชุดถูกกว่าเท่าไหร่ (เทียบได้เมื่อทุกชิ้นมีราคา)
+  const setSavings = variant && pricedPieces.length === detail.inclusions.length ? allPiecesTotal - variant.packagePrice : 0
+  const pieceDeposit = depositForRental(piecesTotal)
+
+  const rentalPrice = pieceMode ? piecesTotal : (variant?.packagePrice ?? 0)
+  const depositAmount = pieceMode ? pieceDeposit.amount : (variant?.depositAmount ?? 0)
+  const laundryFee = pieceMode ? 0 : (variant?.laundryFee ?? 0)
+  const grandTotal = variant ? rentalPrice + depositAmount + laundryFee + settings.shippingFlatRate : 0
+
+  function togglePiece(id: string) {
+    setSelectedPieces((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // ระบบจองยังรับเฉพาะแบบทั้งชุด — โหมดแยกชิ้นตอนนี้ใช้ดูราคาเปรียบเทียบ
+  const bookingBlocked = !selectedDate || pieceMode
 
   return (
     <CustomerLayout>
       <Link
         href="/costumes"
-        className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-[#263544]/60 hover:text-[#263544]"
+        className="mb-4 inline-flex items-center gap-1 text-base font-medium text-[#263544]/60 hover:text-[#263544]"
       >
         <ArrowLeftIcon size={16} />
         กลับไปหน้าสำรวจชุด
       </Link>
 
-      <div className="grid gap-8 lg:grid-cols-2">
-        {/* ------------------------------ รูป ------------------------------ */}
-        <div>
-          <div className="aspect-[3/4] overflow-hidden rounded-3xl border-2 border-[#263544] bg-[#FDE3EE]">
-            {detail.images.length > 0 ? (
-              <img
-                src={detail.images[activeImage]}
-                alt={detail.name}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-[#E5457F]/40">
-                <ImageIcon size={64} />
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-12">
+        {/* ------------- รูป: จอใหญ่ติดหน้าจอไว้ขณะเลื่อนอ่านข้อมูลด้านขวา ------------- */}
+        <div className="lg:sticky lg:top-28 lg:self-start">
+          <div className="flex flex-col-reverse gap-3 lg:flex-row">
+            {detail.images.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto pb-1 lg:max-h-[calc(100vh-9rem)] lg:flex-col lg:overflow-y-auto lg:overflow-x-visible lg:pb-0">
+                {detail.images.map((url, i) => (
+                  <button
+                    key={url + i}
+                    type="button"
+                    onClick={() => setActiveImage(i)}
+                    aria-label={`รูปที่ ${i + 1}`}
+                    className={`h-20 w-16 flex-shrink-0 overflow-hidden rounded-xl border-2 transition ${
+                      i === activeImage ? 'border-[#E5457F]' : 'border-transparent opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <img src={url} alt="" className="h-full w-full object-cover" />
+                  </button>
+                ))}
               </div>
             )}
-          </div>
-          {detail.images.length > 1 && (
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-              {detail.images.map((url, i) => (
-                <button
-                  key={url + i}
-                  type="button"
-                  onClick={() => setActiveImage(i)}
-                  className={`h-20 w-16 flex-shrink-0 overflow-hidden rounded-xl border-2 transition ${
-                    i === activeImage ? 'border-[#E5457F]' : 'border-transparent opacity-70 hover:opacity-100'
-                  }`}
-                >
-                  <img src={url} alt="" className="h-full w-full object-cover" />
-                </button>
-              ))}
+            {/* สูงไม่เกินหน้าจอ เพื่อให้เห็นรูปทั้งรูปตอนติดอยู่ (ถ้าจอเตี้ยจะครอปบน-ล่างเล็กน้อย) */}
+            <div className="aspect-[3/4] w-full overflow-hidden rounded-3xl border-2 border-[#263544] bg-[#FDE3EE] lg:max-h-[calc(100vh-9rem)]">
+              {detail.images.length > 0 ? (
+                <img
+                  src={detail.images[activeImage]}
+                  alt={detail.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-[#E5457F]/40">
+                  <ImageIcon size={64} />
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
-        {/* --------------------------- ข้อมูล + จอง --------------------------- */}
-        <div>
+        {/* ---------- ข้อมูลทั้งหมด: รู้จักชุด → ได้อะไร → ไซส์ → วัน → สรุปยอด → รายละเอียด → รีวิว ---------- */}
+        <div className="min-w-0">
           <div className="flex flex-wrap gap-2">
             {detail.costumeCategory && (
-              <span className="rounded-full bg-[#E5457F] px-3 py-1 text-xs font-semibold text-white">
+              <span className="rounded-full bg-[#E5457F] px-3 py-1 text-sm font-semibold text-white">
                 {CATEGORY_LABEL[detail.costumeCategory] ?? detail.costumeCategory}
               </span>
             )}
             {detail.franchiseType && (
-              <span className="rounded-full bg-[#263544] px-3 py-1 text-xs font-semibold text-white">
+              <span className="rounded-full bg-[#263544] px-3 py-1 text-sm font-semibold text-white">
                 {FRANCHISE_LABEL[detail.franchiseType] ?? detail.franchiseType}
               </span>
             )}
             {detail.genderTag && (
-              <span className="rounded-full bg-[#EDE6FA] px-3 py-1 text-xs font-semibold text-[#263544]">
+              <span className="rounded-full bg-[#EDE6FA] px-3 py-1 text-sm font-semibold text-[#263544]">
                 {GENDER_LABEL[detail.genderTag] ?? detail.genderTag}
               </span>
             )}
             {detail.crossplayFriendly && (
-              <span className="rounded-full bg-[#FFF3B0] px-3 py-1 text-xs font-semibold text-[#263544]">
+              <span className="rounded-full bg-[#FFF3B0] px-3 py-1 text-sm font-semibold text-[#263544]">
                 เหมาะกับ Crossplay
               </span>
             )}
             {detail.isGroupSet && (
-              <span className="rounded-full bg-[#FFF3B0] px-3 py-1 text-xs font-semibold text-[#263544]">
+              <span className="rounded-full bg-[#FFF3B0] px-3 py-1 text-sm font-semibold text-[#263544]">
                 ชุดธีมกลุ่ม/คู่
               </span>
             )}
           </div>
 
-          {detail.seriesName && <p className="mt-4 text-sm text-[#263544]/50">{detail.seriesName}</p>}
+          {detail.seriesName && <p className="mt-4 text-base text-[#263544]/50">{detail.seriesName}</p>}
           <div className="mt-1 flex items-start justify-between gap-3">
             <h1 className="text-3xl font-extrabold leading-tight text-[#263544]">{detail.name}</h1>
             <FavoriteButton productId={detail.id} size="lg" />
           </div>
           {detail.characterName && <p className="mt-1 text-[#263544]/60">ตัวละคร: {detail.characterName}</p>}
           {rating && rating.reviewCount > 0 && (
-            <a href="#reviews" className="mt-2 inline-flex items-center gap-2 text-sm text-[#263544] hover:text-[#E5457F]">
+            <a href="#reviews" className="mt-2 inline-flex items-center gap-2 text-base text-[#263544] hover:text-[#E5457F]">
               <StarDisplay value={rating.avgRating} size={16} />
               <span className="font-semibold">{rating.avgRating.toFixed(1)}</span>
               <span className="text-[#263544]/60 underline">{rating.reviewCount} รีวิว</span>
@@ -260,11 +320,58 @@ export default function CostumeDetailPage() {
             </p>
           )}
 
+          {/* สิ่งที่ได้รับ — ให้รู้ก่อนเลือกไซส์/วันว่าชุดนี้ครบแค่ไหน (กดรูปเพื่อดูขนาดใหญ่) */}
+          {detail.inclusions.length > 0 && (
+            <section className="mt-6 rounded-2xl bg-[#F7F7F8] p-4">
+              <h2 className="mb-3 text-base font-bold text-[#263544]">สิ่งที่ได้รับในชุดนี้</h2>
+              <ul className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+                {detail.inclusions.map((inc) => (
+                  <li key={inc.id}>
+                    {inc.imageUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewInclusion({ url: inc.imageUrl!, name: inc.name })}
+                        aria-label={`ดูรูป ${inc.name}`}
+                        className="group block w-full text-left"
+                      >
+                        <span className="relative block aspect-square overflow-hidden rounded-xl bg-white ring-1 ring-[#263544]/10 transition group-hover:-translate-y-1 group-hover:ring-2 group-hover:ring-[#263544]">
+                          <img
+                            src={inc.imageUrl}
+                            alt=""
+                            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                          />
+                          <span className="absolute bottom-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[#263544] opacity-0 shadow transition group-hover:opacity-100">
+                            <MagnifyingGlassPlusIcon size={16} weight="bold" />
+                          </span>
+                        </span>
+                        <span className="mt-1.5 block text-sm font-medium leading-snug text-[#263544]">{inc.name}</span>
+                      </button>
+                    ) : (
+                      <div>
+                        <span className="flex aspect-square items-center justify-center rounded-xl bg-white text-[#E5457F] ring-1 ring-[#263544]/10">
+                          <CheckCircleIcon size={32} weight="fill" />
+                        </span>
+                        <span className="mt-1.5 block text-sm font-medium leading-snug text-[#263544]">{inc.name}</span>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {detail.description && (
+            <section className="mt-6">
+              <h2 className="mb-2 text-base font-bold text-[#263544]">รายละเอียดชุด</h2>
+              <p className="whitespace-pre-line text-base leading-relaxed text-[#263544]/80">{detail.description}</p>
+            </section>
+          )}
+
           {/* ขั้นที่ 1: ไซส์ */}
           <section className="mt-6">
-            <p className="mb-2 text-sm font-semibold text-[#263544]">1. เลือกไซส์</p>
+            <p className="mb-2 text-base font-semibold text-[#263544]">1. เลือกไซส์</p>
             {detail.variants.length === 0 ? (
-              <p className="text-sm text-[#263544]/50">ชุดนี้ยังไม่ได้ตั้งไซส์และราคา</p>
+              <p className="text-base text-[#263544]/50">ชุดนี้ยังไม่ได้ตั้งไซส์และราคา</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {detail.variants.map((v) => {
@@ -276,12 +383,12 @@ export default function CostumeDetailPage() {
                       type="button"
                       disabled={soldOut}
                       onClick={() => setVariantId(v.id)}
-                      className={`min-w-[64px] rounded-xl border-2 px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed ${
+                      className={`min-w-[64px] rounded-xl px-4 py-2 text-base font-bold disabled:cursor-not-allowed ${
                         active
-                          ? 'border-[#263544] bg-[#E5457F] text-white shadow-[2px_2px_0_0_#263544]'
+                          ? 'pop bg-[#E5457F] text-white'
                           : soldOut
-                            ? 'border-gray-200 bg-gray-50 text-gray-300 line-through'
-                            : 'border-[#263544] bg-white text-[#263544] hover:bg-[#FDE3EE]'
+                            ? 'border-2 border-gray-200 bg-gray-50 text-gray-300 line-through'
+                            : 'pop bg-white text-[#263544]'
                       }`}
                     >
                       {v.size}
@@ -291,21 +398,64 @@ export default function CostumeDetailPage() {
               </div>
             )}
             {variant && (
-              <p className="mt-2 text-xs text-[#263544]/60">
+              <p className="mt-2 text-base text-[#263544]/60">
                 ค่าเช่า {formatBaht(variant.packagePrice)} · ใช้งาน 1 วัน + ส่งคืนวันถัดไป
               </p>
+            )}
+
+            {/* ตารางไซส์อยู่ติดกับปุ่มไซส์ ดูประกอบตอนเลือกได้ทันที */}
+            {hasSizeChart && (
+              <details className="group mt-3 rounded-2xl border border-[#263544]/15 bg-white" open>
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-base font-semibold text-[#263544]">
+                  <RulerIcon size={18} />
+                  ตารางไซส์ (นิ้ว)
+                  <CaretDownIcon size={14} className="ml-auto transition group-open:rotate-180" />
+                </summary>
+                <div className="overflow-x-auto px-4 pb-4">
+                  <table className="w-full min-w-[480px] text-center text-base">
+                    <thead className="bg-[#FDE3EE] text-[#263544]">
+                      <tr>
+                        <th className="rounded-l-lg px-2 py-2">ไซส์</th>
+                        <th className="px-2 py-2">รอบอก</th>
+                        <th className="px-2 py-2">รอบเอว</th>
+                        <th className="px-2 py-2">รอบสะโพก</th>
+                        <th className="px-2 py-2">ความยาว</th>
+                        <th className="rounded-r-lg px-2 py-2">ส่วนสูง (ซม.)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-[#263544]/80">
+                      {detail.variants
+                        .filter((v) => v.chart)
+                        .map((v) => (
+                          <tr key={v.id} className={v.id === variantId ? 'bg-[#FFFAFC] font-semibold' : ''}>
+                            <td className="px-2 py-2 font-bold text-[#263544]">{v.size}</td>
+                            <td className="px-2 py-2">{v.chart?.chestIn ?? '—'}</td>
+                            <td className="px-2 py-2">{v.chart?.waistIn ?? '—'}</td>
+                            <td className="px-2 py-2">{v.chart?.hipIn ?? '—'}</td>
+                            <td className="px-2 py-2">{v.chart?.lengthIn ?? '—'}</td>
+                            <td className="px-2 py-2">
+                              {v.chart?.heightMin || v.chart?.heightMax
+                                ? `${v.chart?.heightMin ?? '?'}–${v.chart?.heightMax ?? '?'}`
+                                : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
             )}
           </section>
 
           {/* ขั้นที่ 2: วันใช้งาน */}
           {variant && (
             <section className="mt-6">
-              <p className="mb-1 text-sm font-semibold text-[#263544]">2. เลือกวันที่จะใส่ชุด</p>
-              <p className="mb-3 text-xs text-[#263544]/60">
+              <p className="mb-1 text-base font-semibold text-[#263544]">2. เลือกวันที่จะใส่ชุด</p>
+              <p className="mb-3 text-base text-[#263544]/60">
                 จองล่วงหน้าอย่างน้อย {settings.minLeadDays} วัน · วันที่ขีดฆ่าคือวันที่ชุดไซส์นี้ไม่ว่าง
               </p>
               {datesError ? (
-                <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{datesError}</p>
+                <p className="rounded-xl bg-red-50 px-4 py-3 text-base text-red-600">{datesError}</p>
               ) : (
                 <BookingCalendar
                   unavailable={unavailable}
@@ -313,8 +463,9 @@ export default function CostumeDetailPage() {
                   onSelect={setSelectedDate}
                   daysAhead={DAYS_AHEAD}
                   loading={datesLoading}
-                  receiveDate={timeline?.receiveDate}
-                  returnBy={timeline?.returnBy}
+                  getTimeline={getTimeline}
+                  events={events}
+                  eventsAreMock={eventsAreMock}
                 />
               )}
             </section>
@@ -343,15 +494,84 @@ export default function CostumeDetailPage() {
                   />
                 </div>
               ) : (
-                <p className="mb-4 rounded-xl bg-[#FFF3B0] px-4 py-2.5 text-center text-sm text-[#263544]">
+                <p className="mb-4 rounded-xl bg-[#FFF3B0] px-4 py-2.5 text-center text-base text-[#263544]">
                   เลือกวันที่จะใส่ชุดในปฏิทิน เพื่อดูวันรับและวันคืนชุด
                 </p>
               )}
 
-              <dl className="space-y-1.5 text-sm">
-                <PriceRow label="ค่าเช่าชุด" value={variant.packagePrice} />
-                <PriceRow label="ค่ามัดจำ (ได้คืนหลังตรวจชุด)" value={variant.depositAmount} />
-                {variant.laundryFee > 0 && <PriceRow label="ค่าซักรีด" value={variant.laundryFee} />}
+              {canSplit && (
+                <div className="mb-4 border-b border-[#263544]/10 pb-4">
+                  <p className="mb-2 text-base font-semibold text-[#263544]">รูปแบบการเช่า</p>
+                  <div role="radiogroup" aria-label="รูปแบบการเช่า" className="grid grid-cols-2 gap-1 rounded-xl border-2 border-[#263544] bg-white p-1">
+                    {(
+                      [
+                        ['set', 'เช่าทั้งชุด'],
+                        ['pieces', 'เลือกเช่าแยกชิ้น'],
+                      ] as const
+                    ).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="radio"
+                        aria-checked={rentMode === mode}
+                        onClick={() => setRentMode(mode)}
+                        className={`rounded-lg py-2.5 text-base font-semibold transition ${
+                          rentMode === mode ? 'bg-[#E5457F] text-white' : 'text-[#263544]'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {pieceMode && (
+                    <>
+                      <ul className="mt-4 space-y-1">
+                        {pricedPieces.map((p) => (
+                          <li key={p.id}>
+                            <label className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-2 text-base text-[#263544]">
+                              <input
+                                type="checkbox"
+                                checked={selectedPieces.has(p.id)}
+                                onChange={() => togglePiece(p.id)}
+                                className="h-5 w-5 shrink-0 accent-[#E5457F]"
+                              />
+                              <span className="flex-1 font-medium">{p.name}</span>
+                              <span className="tabular-nums text-[#263544]/70">{formatBaht(p.price)}</span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                      {setSavings > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setRentMode('set')}
+                          className="mt-3 flex w-full items-center gap-2 rounded-xl bg-[#EDE6FA] px-4 py-3 text-left text-base text-[#263544]"
+                        >
+                          <InfoIcon size={20} className="shrink-0 text-[#E5457F]" />
+                          <span>
+                            เช่าทั้งชุดประหยัดกว่าเช่าครบทุกชิ้นแยกกัน <b className="text-[#E5457F]">{formatBaht(setSavings)}</b>
+                          </span>
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              <dl className="space-y-1.5 text-base">
+                {pieceMode ? (
+                  <>
+                    <PriceRow label={`ยอดรวมค่าเช่า (${selectedPieces.size} ชิ้น)`} value={piecesTotal} />
+                    <PriceRow label={`ค่ามัดจำ (${pieceDeposit.label})`} value={pieceDeposit.amount} />
+                  </>
+                ) : (
+                  <>
+                    <PriceRow label="ค่าเช่าชุด" value={variant.packagePrice} />
+                    <PriceRow label="ค่ามัดจำ (ได้คืนหลังตรวจชุด)" value={variant.depositAmount} />
+                    {variant.laundryFee > 0 && <PriceRow label="ค่าซักรีด" value={variant.laundryFee} />}
+                  </>
+                )}
                 <PriceRow label="ค่าจัดส่ง" value={settings.shippingFlatRate} />
                 <div className="flex items-center justify-between border-t-2 border-dashed border-gray-200 pt-2">
                   <dt className="font-bold text-[#263544]">ยอดชำระทั้งหมด</dt>
@@ -363,8 +583,8 @@ export default function CostumeDetailPage() {
                 <button
                   type="button"
                   onClick={handleAddToCart}
-                  disabled={!selectedDate}
-                  className="flex items-center justify-center gap-2 rounded-full border-2 border-[#263544] bg-white py-3 text-sm font-bold text-[#263544] transition hover:bg-[#FDE3EE] disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 disabled:hover:bg-white"
+                  disabled={bookingBlocked}
+                  className="pop flex items-center justify-center gap-2 rounded-full bg-white py-3 text-base font-bold text-[#263544] disabled:opacity-40"
                 >
                   <ShoppingCartSimpleIcon size={18} weight="bold" />
                   เพิ่มลงตะกร้า
@@ -372,14 +592,19 @@ export default function CostumeDetailPage() {
                 <button
                   type="button"
                   onClick={handleRent}
-                  disabled={!selectedDate}
-                  className="rounded-full border-2 border-[#263544] bg-[#E5457F] py-3 text-sm font-bold text-white shadow-[3px_3px_0_0_#263544] transition hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[2px_2px_0_0_#263544] disabled:cursor-not-allowed disabled:border-gray-300 disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none"
+                  disabled={bookingBlocked}
+                  className="pop rounded-full bg-[#E5457F] py-3 text-base font-bold text-white disabled:bg-gray-200 disabled:text-gray-400"
                 >
                   {selectedDate ? 'เช่าเลย' : 'เลือกวันใช้งานก่อน'}
                 </button>
               </div>
+              {pieceMode && (
+                <p className="mt-3 rounded-xl bg-[#FFF3B0] px-4 py-2.5 text-center text-base text-[#263544]">
+                  ตอนนี้จองได้เฉพาะแบบเช่าทั้งชุด การจองแยกชิ้นกำลังจะเปิดให้ใช้เร็ว ๆ นี้
+                </p>
+              )}
               {cartNotice && (
-                <p className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-[#EDE6FA] px-3 py-2 text-sm text-[#263544]">
+                <p className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-[#EDE6FA] px-3 py-2 text-base text-[#263544]">
                   <CheckCircleIcon size={18} weight="fill" className="text-[#E5457F]" />
                   {cartNotice}
                   <Link href="/cart" className="font-semibold text-[#E5457F] underline">
@@ -387,7 +612,7 @@ export default function CostumeDetailPage() {
                   </Link>
                 </p>
               )}
-              <p className="mt-2 text-center text-xs text-[#263544]/50">
+              <p className="mt-2 text-center text-base text-[#263544]/50">
                 มัดจำคืนภายใน {variant.depositReturnHours} ชม. หลังร้านได้รับชุดคืนและตรวจสภาพเรียบร้อย
               </p>
             </section>
@@ -395,76 +620,37 @@ export default function CostumeDetailPage() {
         </div>
       </div>
 
-      {/* ------------------------- รายละเอียดเพิ่มเติม ------------------------- */}
-      <div className="mt-10 grid gap-6 lg:grid-cols-2">
-        {detail.description && (
-          <section className="rounded-3xl bg-[#F7F7F8] p-6">
-            <h2 className="mb-2 text-lg font-bold text-[#263544]">รายละเอียดชุด</h2>
-            <p className="whitespace-pre-line text-sm leading-relaxed text-[#263544]/80">{detail.description}</p>
-          </section>
-        )}
+      {/* รีวิวแยกเป็น section เต็มความกว้างใต้ส่วนจอง */}
+      <ProductReviews productId={detail.id} />
 
-        {detail.inclusions.length > 0 && (
-          <section className="rounded-3xl bg-[#F7F7F8] p-6">
-            <h2 className="mb-3 text-lg font-bold text-[#263544]">สิ่งที่ได้รับในชุดนี้</h2>
-            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {detail.inclusions.map((inc) => (
-                <li key={inc.id} className="flex items-center gap-2 text-sm text-[#263544]">
-                  {inc.imageUrl ? (
-                    <img src={inc.imageUrl} alt="" className="h-9 w-9 rounded-lg object-cover" />
-                  ) : (
-                    <CheckCircleIcon size={20} weight="fill" className="flex-shrink-0 text-[#E5457F]" />
-                  )}
-                  {inc.name}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {hasSizeChart && (
-          <section className="rounded-3xl bg-[#F7F7F8] p-6 lg:col-span-2">
-            <h2 className="mb-3 flex items-center gap-2 text-lg font-bold text-[#263544]">
-              <RulerIcon size={20} />
-              ตารางไซส์ (นิ้ว)
-            </h2>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[520px] text-center text-sm">
-                <thead className="bg-[#FDE3EE] text-[#263544]">
-                  <tr>
-                    <th className="rounded-l-lg px-3 py-2">ไซส์</th>
-                    <th className="px-3 py-2">รอบอก</th>
-                    <th className="px-3 py-2">รอบเอว</th>
-                    <th className="px-3 py-2">รอบสะโพก</th>
-                    <th className="px-3 py-2">ความยาว</th>
-                    <th className="rounded-r-lg px-3 py-2">ส่วนสูงแนะนำ (ซม.)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-[#263544]/80">
-                  {detail.variants
-                    .filter((v) => v.chart)
-                    .map((v) => (
-                      <tr key={v.id} className={v.id === variantId ? 'bg-[#FFFAFC] font-semibold' : ''}>
-                        <td className="px-3 py-2 font-bold text-[#263544]">{v.size}</td>
-                        <td className="px-3 py-2">{v.chart?.chestIn ?? '—'}</td>
-                        <td className="px-3 py-2">{v.chart?.waistIn ?? '—'}</td>
-                        <td className="px-3 py-2">{v.chart?.hipIn ?? '—'}</td>
-                        <td className="px-3 py-2">{v.chart?.lengthIn ?? '—'}</td>
-                        <td className="px-3 py-2">
-                          {v.chart?.heightMin || v.chart?.heightMax
-                            ? `${v.chart?.heightMin ?? '?'}–${v.chart?.heightMax ?? '?'}`
-                            : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
-        <ProductReviews productId={detail.id} />
-      </div>
+      {/* ดูรูปสิ่งที่ได้รับแบบขยาย */}
+      {previewInclusion && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={previewInclusion.name}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#263544]/80 p-4"
+          onClick={() => setPreviewInclusion(null)}
+        >
+          <figure className="relative max-w-3xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setPreviewInclusion(null)}
+              aria-label="ปิด"
+              autoFocus
+              className="pop absolute -right-3 -top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#263544]"
+            >
+              <XIcon size={20} weight="bold" />
+            </button>
+            <img
+              src={previewInclusion.url}
+              alt={previewInclusion.name}
+              className="max-h-[80vh] w-auto rounded-2xl border-2 border-white object-contain"
+            />
+            <figcaption className="mt-3 text-center text-base font-semibold text-white">{previewInclusion.name}</figcaption>
+          </figure>
+        </div>
+      )}
     </CustomerLayout>
   )
 }
@@ -483,8 +669,8 @@ function TimelineStep({
   return (
     <div className={`rounded-xl px-2 py-2.5 ${highlight ? 'bg-[#E5457F] text-white' : 'bg-[#FDE3EE] text-[#263544]'}`}>
       <div className="flex justify-center">{icon}</div>
-      <p className={`mt-1 text-[11px] ${highlight ? 'text-white/80' : 'text-[#263544]/60'}`}>{label}</p>
-      <p className="text-sm font-bold">{date}</p>
+      <p className={`mt-1 text-sm ${highlight ? 'text-white/80' : 'text-[#263544]/60'}`}>{label}</p>
+      <p className="text-base font-bold">{date}</p>
     </div>
   )
 }

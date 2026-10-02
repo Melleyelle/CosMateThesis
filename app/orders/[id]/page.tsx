@@ -105,7 +105,7 @@ export default function OrderPage() {
     <CustomerLayout>
       <Link
         href="/orders"
-        className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-[#263544]/60 hover:text-[#263544]"
+        className="mb-4 inline-flex items-center gap-1 text-base font-medium text-[#263544]/60 hover:text-[#263544]"
       >
         <ArrowLeftIcon size={16} />
         ออเดอร์ของฉัน
@@ -113,11 +113,11 @@ export default function OrderPage() {
 
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-sm text-[#263544]/60">เลขที่ออเดอร์</p>
+          <p className="text-base text-[#263544]/60">เลขที่ออเดอร์</p>
           <h1 className="font-mono text-2xl font-bold text-[#263544]">{order.orderNumber}</h1>
-          <p className="text-xs text-[#263544]/50">สั่งเมื่อ {formatDateTime(order.createdAt)}</p>
+          <p className="text-base text-[#263544]/50">สั่งเมื่อ {formatDateTime(order.createdAt)}</p>
         </div>
-        <span className={`rounded-full px-4 py-1.5 text-sm font-semibold ${ORDER_STATUS_BADGE[order.status]}`}>
+        <span className={`rounded-full px-4 py-1.5 text-base font-semibold ${ORDER_STATUS_BADGE[order.status]}`}>
           {ORDER_STATUS_LABEL[order.status]}
         </span>
       </div>
@@ -125,7 +125,7 @@ export default function OrderPage() {
       {/* ความคืบหน้า */}
       {closed ? (
         <div className="mb-6 space-y-3">
-          <div className="flex items-start gap-3 rounded-2xl bg-gray-100 px-5 py-4 text-sm text-gray-600">
+          <div className="flex items-start gap-3 rounded-2xl bg-gray-100 px-5 py-4 text-base text-gray-600">
             <XCircleIcon size={22} className="flex-shrink-0" />
             <div>
               <p className="font-semibold text-[#263544]">
@@ -141,7 +141,7 @@ export default function OrderPage() {
 
           {order.refundStatus && (
             <div
-              className={`rounded-2xl border-2 px-5 py-4 text-sm ${
+              className={`rounded-2xl border-2 px-5 py-4 text-base ${
                 order.refundStatus === 'transferred'
                   ? 'border-[#B8E2C8] bg-[#E3F5EA] text-[#1B6E45]'
                   : order.refundStatus === 'failed'
@@ -178,7 +178,7 @@ export default function OrderPage() {
                 <div className="flex w-full items-center">
                   <span className={`h-0.5 flex-1 ${i === 0 ? 'invisible' : done || current ? 'bg-[#E5457F]' : 'bg-gray-200'}`} />
                   <span
-                    className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold ${
+                    className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-bold ${
                       done
                         ? 'border-[#E5457F] bg-[#E5457F] text-white'
                         : current
@@ -192,7 +192,7 @@ export default function OrderPage() {
                     className={`h-0.5 flex-1 ${i === CUSTOMER_STEPS.length - 1 ? 'invisible' : done ? 'bg-[#E5457F]' : 'bg-gray-200'}`}
                   />
                 </div>
-                <span className={`mt-1.5 text-[11px] ${current ? 'font-bold text-[#263544]' : 'text-[#263544]/50'}`}>
+                <span className={`mt-1.5 text-sm ${current ? 'font-bold text-[#263544]' : 'text-[#263544]/50'}`}>
                   {step.label}
                 </span>
               </li>
@@ -209,22 +209,22 @@ export default function OrderPage() {
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-bold text-[#263544]">ชำระเงิน</h2>
-                  <p className="text-sm text-[#263544]/60">สแกน QR เพื่อโอนยอดด้านล่าง แล้วกดแจ้งชำระเงิน</p>
+                  <p className="text-base text-[#263544]/60">สแกน QR เพื่อโอนยอดด้านล่าง แล้วกดแจ้งชำระเงิน</p>
                 </div>
-                <span className="whitespace-nowrap rounded-full border-2 border-[#263544] bg-[#FFF3B0] px-3 py-1 text-xs font-bold text-[#263544]">
+                <span className="whitespace-nowrap rounded-full border-2 border-[#263544] bg-[#FFF3B0] px-3 py-1 text-sm font-bold text-[#263544]">
                   โหมดทดสอบ
                 </span>
               </div>
 
               <div className="flex flex-col items-center gap-5 sm:flex-row">
                 <MockQr seed={order.orderNumber} />
-                <div className="w-full flex-1 space-y-2 text-sm">
+                <div className="w-full flex-1 space-y-2 text-base">
                   <p className="text-[#263544]/60">ยอดที่ต้องชำระ</p>
                   <p className="text-3xl font-extrabold text-[#E5457F]">{formatBaht(order.grandTotal)}</p>
                   <p className="text-[#263544]/70">
                     ชื่อบัญชี: <span className="font-semibold text-[#263544]">CosMate (บัญชีทดสอบ)</span>
                   </p>
-                  <p className="flex gap-1.5 rounded-xl bg-[#EDE6FA] px-3 py-2 text-xs text-[#263544]">
+                  <p className="flex gap-1.5 rounded-xl bg-[#EDE6FA] px-3 py-2 text-base text-[#263544]">
                     <InfoIcon size={16} className="flex-shrink-0" />
                     ระบบยังไม่เชื่อมต่อช่องทางชำระเงินจริง QR นี้เป็นตัวอย่าง สแกนไม่ได้ กดปุ่มด้านล่างเพื่อจำลองการชำระเงิน
                   </p>
@@ -232,7 +232,7 @@ export default function OrderPage() {
               </div>
 
               {actionError && (
-                <p role="alert" className="mt-4 rounded-xl bg-red-50 px-4 py-2.5 text-sm text-red-600">
+                <p role="alert" className="mt-4 rounded-xl bg-red-50 px-4 py-2.5 text-base text-red-600">
                   {actionError}
                 </p>
               )}
@@ -242,7 +242,7 @@ export default function OrderPage() {
                   type="button"
                   onClick={() => runAction('pay')}
                   disabled={acting !== null}
-                  className="flex-1 rounded-full border-2 border-[#263544] bg-[#E5457F] py-3 text-sm font-bold text-white shadow-[3px_3px_0_0_#263544] transition hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[2px_2px_0_0_#263544] disabled:opacity-50"
+                  className="pop flex-1 rounded-full bg-[#E5457F] py-3 text-base font-bold text-white disabled:opacity-50"
                 >
                   {acting === 'pay' ? 'กำลังส่งข้อมูล...' : 'แจ้งชำระเงินแล้ว (โหมดทดสอบ)'}
                 </button>
@@ -250,7 +250,7 @@ export default function OrderPage() {
                   type="button"
                   onClick={() => runAction('cancel')}
                   disabled={acting !== null}
-                  className="rounded-full border-2 border-[#263544] px-5 py-3 text-sm font-semibold text-[#263544] transition hover:bg-gray-50 disabled:opacity-50"
+                  className="pop rounded-full bg-white px-5 py-3 text-base font-semibold text-[#263544] disabled:opacity-50"
                 >
                   {acting === 'cancel' ? 'กำลังยกเลิก...' : 'ยกเลิกออเดอร์'}
                 </button>
@@ -263,7 +263,7 @@ export default function OrderPage() {
               <HourglassIcon size={32} className="flex-shrink-0 text-[#263544]" />
               <div>
                 <h2 className="font-bold text-[#263544]">ได้รับแจ้งชำระเงินแล้ว</h2>
-                <p className="mt-1 text-sm text-[#263544]/70">
+                <p className="mt-1 text-base text-[#263544]/70">
                   ร้านกำลังตรวจสอบยอดเงิน เมื่อยืนยันแล้วสถานะจะเปลี่ยนเป็น &quot;ชำระแล้ว รอจัดส่ง&quot;
                   {firstUseDate && ` และชุดจะถึงมือคุณภายใน ${formatThaiDateWithWeekday(addDays(firstUseDate, -bufferBefore))}`}
                 </p>
@@ -278,7 +278,7 @@ export default function OrderPage() {
                 <h2 className="font-bold text-[#263544]">
                   {reviewThanks ? 'ขอบคุณสำหรับรีวิว!' : 'จบการเช่าเรียบร้อย ขอบคุณที่ใช้บริการ'}
                 </h2>
-                <p className="mt-1 text-sm text-[#263544]/70">
+                <p className="mt-1 text-base text-[#263544]/70">
                   {order.lines.every((l) => myReviews[l.id])
                     ? 'คุณรีวิวครบทุกชุดแล้ว รีวิวของคุณช่วยให้คนอื่นเลือกชุดและไซส์ได้ง่ายขึ้น'
                     : 'ช่วยรีวิวชุดที่เช่าหน่อยนะ โดยเฉพาะเรื่องไซส์และสภาพชุด จะช่วยคนที่กำลังตัดสินใจได้มาก'}
@@ -302,7 +302,7 @@ export default function OrderPage() {
                       </div>
                     )}
                   </div>
-                  <div className="min-w-0 flex-1 text-sm">
+                  <div className="min-w-0 flex-1 text-base">
                     {line.productId ? (
                       <Link href={`/costumes/${line.productId}`} className="font-bold text-[#263544] hover:underline">
                         {line.productName}
@@ -311,7 +311,7 @@ export default function OrderPage() {
                       <p className="font-bold text-[#263544]">{line.productName}</p>
                     )}
                     {line.size && <p className="text-[#263544]/60">ไซส์ {line.size}</p>}
-                    <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
                       <DateChip label="ได้รับชุด" date={addDays(line.startDate, -bufferBefore)} />
                       <DateChip label="วันใช้งาน" date={line.startDate} highlight />
                       <DateChip label="ส่งคืนภายใน" date={line.endDate} />
@@ -321,14 +321,14 @@ export default function OrderPage() {
                       (myReviews[line.id] ? (
                         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-white px-3 py-2">
                           <StarDisplay value={myReviews[line.id].rating} size={14} />
-                          <span className="text-xs font-medium text-[#263544]">รีวิวแล้ว</span>
+                          <span className="text-base font-medium text-[#263544]">รีวิวแล้ว</span>
                           {myReviews[line.id].isHidden && (
-                            <span className="text-xs text-[#263544]/50">(ร้านซ่อนรีวิวนี้ไว้)</span>
+                            <span className="text-base text-[#263544]/50">(ร้านซ่อนรีวิวนี้ไว้)</span>
                           )}
                           {line.productId && !myReviews[line.id].isHidden && (
                             <Link
                               href={`/costumes/${line.productId}#reviews`}
-                              className="ml-auto text-xs font-semibold text-[#E5457F] hover:underline"
+                              className="ml-auto text-base font-semibold text-[#E5457F] hover:underline"
                             >
                               ดูในหน้าชุด
                             </Link>
@@ -338,7 +338,7 @@ export default function OrderPage() {
                         <button
                           type="button"
                           onClick={() => setReviewingId(line.id)}
-                          className="mt-3 inline-flex items-center gap-1.5 rounded-full border-2 border-[#263544] bg-[#E5457F] px-4 py-1.5 text-xs font-bold text-white shadow-[2px_2px_0_0_#263544] transition hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0_0_#263544]"
+                          className="pop mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#E5457F] px-4 py-1.5 text-base font-bold text-white"
                         >
                           <StarIcon size={14} weight="fill" />
                           เขียนรีวิว
@@ -354,7 +354,7 @@ export default function OrderPage() {
         <aside className="h-fit space-y-4">
           <section className="rounded-3xl bg-[#F7F7F8] p-5">
             <h2 className="mb-3 font-bold text-[#263544]">สรุปยอด</h2>
-            <dl className="space-y-1.5 text-sm">
+            <dl className="space-y-1.5 text-base">
               <PriceRow label="ค่าเช่าชุด" value={order.rentalTotal} />
               <PriceRow label="ค่ามัดจำ (ได้คืน)" value={order.depositTotal} />
               {order.laundryTotal > 0 && <PriceRow label="ค่าซักรีด" value={order.laundryTotal} />}
@@ -366,7 +366,7 @@ export default function OrderPage() {
             </dl>
           </section>
 
-          <section className="rounded-3xl bg-[#F7F7F8] p-5 text-sm">
+          <section className="rounded-3xl bg-[#F7F7F8] p-5 text-base">
             <h2 className="mb-2 font-bold text-[#263544]">จัดส่งถึง</h2>
             <p className="font-semibold text-[#263544]">
               {order.shipName} · {order.shipPhone}
@@ -377,7 +377,7 @@ export default function OrderPage() {
                 .join(' ')}
             </p>
             {order.customerNote && (
-              <p className="mt-2 rounded-xl bg-[#FFFAFC] px-3 py-2 text-xs text-[#263544]/70">
+              <p className="mt-2 rounded-xl bg-[#FFFAFC] px-3 py-2 text-base text-[#263544]/70">
                 หมายเหตุ: {order.customerNote}
               </p>
             )}
@@ -453,7 +453,7 @@ function MockQr({ seed }: { seed: string }) {
           return on ? <rect key={i} x={x} y={y} width={1} height={1} fill="#263544" /> : null
         })}
       </svg>
-      <span className="absolute inset-x-0 -bottom-3 mx-auto w-fit rounded-full bg-[#263544] px-2 py-0.5 text-[10px] font-semibold text-white">
+      <span className="absolute inset-x-0 -bottom-3 mx-auto w-fit rounded-full bg-[#263544] px-2 py-0.5 text-xs font-semibold text-white">
         ตัวอย่าง
       </span>
     </div>

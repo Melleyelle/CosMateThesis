@@ -48,10 +48,14 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
       error: null,
     }))
 
+  // ราคาแยกชิ้นดึงแยก — ถ้ายังไม่ได้รัน Step 16 คอลัมน์ยังไม่มี ฟอร์มยังเปิดได้ (ราคาว่าง)
+  const { data: priceRows } = await supabase.from('product_inclusions').select('id, rental_price').eq('product_id', productId)
+  const priceById = new Map((priceRows ?? []).map((r) => [r.id, r.rental_price == null ? '' : String(Number(r.rental_price))]))
+
   const inclusions = (data.product_inclusions ?? [])
     .slice()
     .sort((a, b) => a.display_order - b.display_order)
-    .map((inc) => ({ id: inc.id, name: inc.name, imageUrl: inc.image_url ?? '' }))
+    .map((inc) => ({ id: inc.id, name: inc.name, imageUrl: inc.image_url ?? '', price: priceById.get(inc.id) ?? '' }))
 
   const variants = (data.product_variants ?? []).map((v) => {
     const chart = Array.isArray(v.size_charts) ? v.size_charts[0] : v.size_charts

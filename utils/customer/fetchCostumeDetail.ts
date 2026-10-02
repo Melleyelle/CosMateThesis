@@ -34,7 +34,8 @@ export type CostumeDetail = {
   isGroupSet: boolean
   description: string | null
   images: string[]
-  inclusions: { id: string; name: string; imageUrl: string | null }[]
+  // price = ค่าเช่าเมื่อเลือกแยกชิ้น (null = ชิ้นนี้ไม่เปิดให้เช่าแยก)
+  inclusions: { id: string; name: string; imageUrl: string | null; price: number | null }[]
   variants: CostumeVariant[]
 }
 
@@ -126,6 +127,18 @@ export async function fetchCostumeDetail(productId: string): Promise<{
   if (!data) return { data: null, error: 'ไม่พบชุดนี้ในระบบ' }
 
   const product = data as unknown as CostumeRow
+
+  // ราคาแยกชิ้นดึงแยก เพราะถ้ายังไม่ได้รัน Step 16 คอลัมน์ rental_price ยังไม่มี → ถือว่าเช่าแยกไม่ได้ หน้าไม่พัง
+  const { data: priceRows, error: priceError } = await supabase
+    .from('product_inclusions')
+    .select('id, rental_price')
+    .eq('product_id', productId)
+  const priceById = new Map<string, number>()
+  if (!priceError) {
+    for (const r of priceRows ?? []) {
+      if (r.rental_price != null) priceById.set(r.id, Number(r.rental_price))
+    }
+  }
   const galleryImages = (product.product_images ?? [])
     .slice()
     .sort((a, b) => a.display_order - b.display_order)
@@ -161,7 +174,12 @@ export async function fetchCostumeDetail(productId: string): Promise<{
       inclusions: (product.product_inclusions ?? [])
         .slice()
         .sort((a, b) => a.display_order - b.display_order)
-        .map((inclusion) => ({ id: inclusion.id, name: inclusion.name, imageUrl: inclusion.image_url })),
+        .map((inclusion) => ({
+          id: inclusion.id,
+          name: inclusion.name,
+          imageUrl: inclusion.image_url,
+          price: priceById.get(inclusion.id) ?? null,
+        })),
       variants,
     },
     error: null,

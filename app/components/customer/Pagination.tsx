@@ -35,7 +35,7 @@ export default function Pagination({
         onClick={() => onChange(page - 1)}
         disabled={page === 1}
         aria-label="หน้าก่อนหน้า"
-        className="flex h-10 w-10 items-center justify-center rounded-lg text-[#263544] transition hover:bg-[#FDE3EE] disabled:opacity-25 disabled:hover:bg-transparent"
+        className="pop flex h-10 w-10 items-center justify-center rounded-lg bg-white text-[#263544] disabled:opacity-25"
       >
         <CaretLeftIcon size={20} weight="bold" />
       </button>
@@ -50,8 +50,8 @@ export default function Pagination({
             type="button"
             onClick={() => onChange(p)}
             aria-current={p === page ? 'page' : undefined}
-            className={`h-10 min-w-[40px] rounded-lg px-2 text-sm font-semibold transition ${
-              p === page ? 'bg-[#263544] text-white' : 'text-[#263544] hover:bg-[#FDE3EE]'
+            className={`pop h-10 min-w-[40px] rounded-lg px-2 text-base font-semibold ${
+              p === page ? 'bg-[#263544] text-white' : 'bg-white text-[#263544]'
             }`}
           >
             {p}
@@ -63,7 +63,7 @@ export default function Pagination({
         onClick={() => onChange(page + 1)}
         disabled={page === totalPages}
         aria-label="หน้าถัดไป"
-        className="flex h-10 w-10 items-center justify-center rounded-lg text-[#263544] transition hover:bg-[#FDE3EE] disabled:opacity-25 disabled:hover:bg-transparent"
+        className="pop flex h-10 w-10 items-center justify-center rounded-lg bg-white text-[#263544] disabled:opacity-25"
       >
         <CaretRightIcon size={20} weight="bold" />
       </button>

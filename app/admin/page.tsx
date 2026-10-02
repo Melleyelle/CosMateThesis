@@ -180,10 +180,6 @@ export default function AdminDashboardPage() {
             </h1>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link href="/" target="_blank" className={secondaryButtonClass}>
-              <ArrowSquareOutIcon size={16} />
-              ดูหน้าร้าน
-            </Link>
             <Link href="/admin/inventory/new" className={primaryButtonClass}>
               <PlusIcon size={16} weight="bold" />
               เพิ่มชุดใหม่

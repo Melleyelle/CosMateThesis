@@ -11,6 +11,7 @@ import ImagesCard from '@/app/components/admin/costume-form/Imagescard'
 import InclusionsCard from '@/app/components/admin/costume-form/Inclusionscard'
 import SizesStockCard from '@/app/components/admin/costume-form/Sizesstockcard'
 import { EMPTY_FORM_DATA, type CostumeFormData } from '@/app/components/admin/costume-form/types'
+import { findProductIdBySku, saveInclusionPrices } from '@/utils/saveInclusionPrices'
 
 // หน้าเดียวจบ ไม่ใช้สเตปแล้ว — จัดเป็น 2 คอลัมน์แบบฟอร์มเพิ่มสินค้าทั่วไป:
 // ซ้าย = เนื้อหาหลัก (ชื่อ/คำอธิบาย, ไซส์-ราคา-สต็อก, สิ่งที่รวมในชุด)
@@ -124,13 +125,23 @@ export default function NewCostumePage() {
       })),
     }
 
-    const { error } = await supabase.rpc('create_costume', payload)
-    setSaving(false)
+    const { data: created, error } = await supabase.rpc('create_costume', payload)
 
     if (error) {
+      setSaving(false)
       setSaveError(translateSaveError(error.message))
       return
     }
+
+    if (inclusions.some((inc) => inc.price.trim())) {
+      const productId = typeof created === 'string' ? created : await findProductIdBySku(basicInfo.skuPrefix)
+      const priceError = productId ? await saveInclusionPrices(productId, inclusions) : 'บันทึกราคาแยกชิ้นไม่สำเร็จ: หาชุดที่เพิ่งสร้างไม่พบ'
+      if (priceError) {
+        // ชุดถูกสร้างแล้ว อย่าให้กดบันทึกซ้ำ (จะได้ชุดซ้ำ) → แจ้งแล้วไปหน้าคลัง ให้แก้ราคาในหน้าแก้ไขชุด
+        window.alert(`สร้างชุดแล้ว แต่${priceError}\nแก้ราคาแยกชิ้นได้ในหน้าแก้ไขชุด`)
+      }
+    }
+    setSaving(false)
 
     router.push('/admin/inventory')
     router.refresh()

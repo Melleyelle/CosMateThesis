@@ -113,7 +113,7 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
           onClick={onClose}
           disabled={submitting}
           aria-label="ปิด"
-          className="absolute right-4 top-4 rounded-full p-1.5 text-[#263544] hover:bg-gray-100"
+          className="nudge absolute right-4 top-4 rounded-full p-1.5 text-[#263544]"
         >
           <XIcon size={20} weight="bold" />
         </button>
@@ -131,19 +131,19 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
           </div>
           <div className="min-w-0">
             <p className="truncate font-semibold text-[#263544]">{productName}</p>
-            {size && <p className="text-xs text-[#263544]/60">ไซส์ที่เช่า: {size}</p>}
+            {size && <p className="text-base text-[#263544]/60">ไซส์ที่เช่า: {size}</p>}
           </div>
         </div>
 
         <section className="mt-5">
-          <p className="mb-2 text-sm font-semibold text-[#263544]">
+          <p className="mb-2 text-base font-semibold text-[#263544]">
             ความพึงพอใจโดยรวม <span className="text-[#E5457F]">*</span>
           </p>
           <StarInput value={rating} onChange={setRating} />
         </section>
 
         <section className="mt-5">
-          <p className="mb-2 text-sm font-semibold text-[#263544]">ไซส์เป็นยังไงบ้าง?</p>
+          <p className="mb-2 text-base font-semibold text-[#263544]">ไซส์เป็นยังไงบ้าง?</p>
           <div className="grid grid-cols-3 gap-2">
             {(Object.keys(SIZE_FIT_LABEL) as SizeFit[]).map((key) => (
               <button
@@ -151,17 +151,17 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
                 type="button"
                 onClick={() => setSizeFit(sizeFit === key ? null : key)}
                 aria-pressed={sizeFit === key}
-                className={`rounded-xl border-2 py-2 text-sm font-semibold transition ${
+                className={`pop rounded-xl py-2 text-base font-semibold ${
                   sizeFit === key
-                    ? 'border-[#263544] bg-[#E5457F] text-white'
-                    : 'border-[#263544]/20 text-[#263544] hover:border-[#263544]'
+                    ? 'bg-[#E5457F] text-white'
+                    : 'bg-white text-[#263544]'
                 }`}
               >
                 {SIZE_FIT_LABEL[key]}
               </button>
             ))}
           </div>
-          <label className="mt-3 flex items-center gap-2 text-sm text-[#263544]">
+          <label className="mt-3 flex items-center gap-2 text-base text-[#263544]">
             ส่วนสูงของคุณ
             <input
               inputMode="numeric"
@@ -169,29 +169,29 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
               value={height}
               onChange={(e) => setHeight(e.target.value.replace(/[^0-9]/g, ''))}
               placeholder="เช่น 165"
-              className="w-24 rounded-lg bg-[#EFEFEF] px-3 py-1.5 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-[#E5457F]/30"
+              className="w-24 rounded-lg bg-[#EFEFEF] px-3 py-1.5 text-base outline-none focus:bg-white focus:ring-2 focus:ring-[#E5457F]/30"
             />
-            ซม. <span className="text-xs text-[#263544]/50">(ไม่บังคับ ช่วยคนอื่นเลือกไซส์)</span>
+            ซม. <span className="text-base text-[#263544]/50">(ไม่บังคับ ช่วยคนอื่นเลือกไซส์)</span>
           </label>
         </section>
 
         <section className="mt-5">
-          <p className="mb-2 text-sm font-semibold text-[#263544]">เล่าประสบการณ์ (ไม่บังคับ)</p>
+          <p className="mb-2 text-base font-semibold text-[#263544]">เล่าประสบการณ์ (ไม่บังคับ)</p>
           <textarea
             rows={4}
             maxLength={MAX_COMMENT}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="สภาพชุด เนื้อผ้า ใส่ไปงานไหน ถ่ายรูปออกมาเป็นยังไง..."
-            className="w-full rounded-xl bg-[#EFEFEF] px-3 py-2.5 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-[#E5457F]/30"
+            className="w-full rounded-xl bg-[#EFEFEF] px-3 py-2.5 text-base outline-none focus:bg-white focus:ring-2 focus:ring-[#E5457F]/30"
           />
-          <p className="text-right text-xs text-[#263544]/40">
+          <p className="text-right text-base text-[#263544]/40">
             {comment.length}/{MAX_COMMENT}
           </p>
         </section>
 
         <section className="mt-2">
-          <p className="mb-2 text-sm font-semibold text-[#263544]">
+          <p className="mb-2 text-base font-semibold text-[#263544]">
             รูปตอนใส่ชุด (ไม่บังคับ สูงสุด {MAX_IMAGES} รูป)
           </p>
           <div className="flex flex-wrap gap-2">
@@ -204,7 +204,7 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
                   </div>
                 )}
                 {u.error && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-red-50/90 p-1 text-center text-[10px] text-red-600">
+                  <div className="absolute inset-0 flex items-center justify-center bg-red-50/90 p-1 text-center text-xs text-red-600">
                     {u.error}
                   </div>
                 )}
@@ -222,7 +222,7 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-[#263544]/30 text-xs text-[#263544]/60 transition hover:border-[#E5457F] hover:text-[#E5457F]"
+                className="nudge flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-[#263544]/30 text-sm text-[#263544]/60"
               >
                 <CameraIcon size={22} />
                 เพิ่มรูป
@@ -242,7 +242,7 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
           />
         </section>
 
-        <label className="mt-5 flex cursor-pointer items-center gap-2 text-sm text-[#263544]">
+        <label className="mt-5 flex cursor-pointer items-center gap-2 text-base text-[#263544]">
           <input
             type="checkbox"
             checked={anonymous}
@@ -253,7 +253,7 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
         </label>
 
         {error && (
-          <p role="alert" className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">
+          <p role="alert" className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-base text-red-600">
             {error}
           </p>
         )}
@@ -261,11 +261,11 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
         <button
           type="submit"
           disabled={submitting || uploading}
-          className="mt-5 w-full rounded-full border-2 border-[#263544] bg-[#E5457F] py-3 text-sm font-bold text-white shadow-[3px_3px_0_0_#263544] transition hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[2px_2px_0_0_#263544] disabled:opacity-50"
+          className="pop mt-5 w-full rounded-full bg-[#E5457F] py-3 text-base font-bold text-white disabled:opacity-50"
         >
           {submitting ? 'กำลังส่งรีวิว...' : uploading ? 'กำลังอัปโหลดรูป...' : 'ส่งรีวิว'}
         </button>
-        <p className="mt-2 text-center text-xs text-[#263544]/50">ส่งแล้วแก้ไขไม่ได้ รีวิวจะแสดงในหน้าชุดทันที</p>
+        <p className="mt-2 text-center text-base text-[#263544]/50">ส่งแล้วแก้ไขไม่ได้ รีวิวจะแสดงในหน้าชุดทันที</p>
       </form>
     </div>
   )

@@ -24,14 +24,17 @@ body {
   font-weight: 400;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-noto-sans-thai), "Noto Sans Thai", sans-serif;
-  font-weight: 500;
+/* อยู่ใน @layer base เพื่อให้คลาส Tailwind อย่าง font-bold บนหัวข้อทับค่า default นี้ได้ */
+@layer base {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-noto-sans-thai), "Noto Sans Thai", sans-serif;
+    font-weight: 500;
+  }
 }
 
 .font-display {
@@ -42,4 +45,184 @@ h6 {
 .font-body {
   font-family: var(--font-noto-sans-thai), "Noto Sans Thai", sans-serif;
   font-weight: 400;
+}
+
+/* ===== Motion ของฝั่งลูกค้า ===== */
+
+/* ปุ่มมาตรฐานของทั้งระบบ: ขอบเข้ม + เงาแข็ง ชี้แล้วยุบลงเล็กน้อย กดแล้วยุบลงไปทับเงาจนสุด
+   (ไม่เปลี่ยนสีตอน hover — ใช้การยุบแทน) */
+.pop {
+  border: 2px solid #263544;
+  box-shadow: 3px 3px 0 0 #263544;
+  transition: transform 120ms ease-out, box-shadow 120ms ease-out;
+}
+.pop:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 0 #263544;
+}
+.pop:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 0 #263544;
+}
+.pop:disabled,
+.pop[aria-disabled='true'] {
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 3px 3px 0 0 #263544;
+}
+
+/* ใช้คู่กับ .pop บนพื้นสีเข้ม — ขอบและเงาเป็นสีขาวแทน */
+.pop.pop-light {
+  border-color: #ffffff;
+  box-shadow: 3px 3px 0 0 #ffffff;
+}
+.pop.pop-light:hover {
+  box-shadow: 1px 1px 0 0 #ffffff;
+}
+.pop.pop-light:active {
+  box-shadow: 0 0 0 0 #ffffff;
+}
+
+/* ปุ่มไอคอน/เมนูที่ไม่มีกรอบ: ใช้การขยับแทนพื้นสีชมพูตอน hover */
+.nudge {
+  transition: transform 160ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.nudge:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.06);
+}
+.nudge:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.nudge-x {
+  transition: transform 160ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.nudge-x:hover {
+  transform: translateX(4px);
+}
+
+/* จุดลายพื้นแบนเนอร์ ค่อย ๆ ไหลเฉียง */
+.dot-field {
+  background-image: radial-gradient(#f0a9c3 1.6px, transparent 1.8px);
+  background-size: 22px 22px;
+  animation: dot-drift 18s linear infinite;
+}
+@keyframes dot-drift {
+  to {
+    background-position: 22px 22px;
+  }
+}
+
+/* เข้าฉากทีละบรรทัด: ใส่ style={{ '--d': '120ms' }} เพื่อหน่วงเวลา */
+.rise {
+  animation: rise 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+
+/* ตัวละครบนแบนเนอร์: โผล่จากขวา แล้วลอยหายใจช้า ๆ */
+.hero-figure {
+  animation:
+    figure-in 900ms cubic-bezier(0.22, 1, 0.36, 1) both,
+    float 6s ease-in-out 900ms infinite;
+}
+@keyframes figure-in {
+  from {
+    opacity: 0;
+    transform: translateX(40px) scale(0.96);
+  }
+}
+@keyframes float {
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.twinkle {
+  animation: twinkle 2.4s ease-in-out infinite;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.7) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15) rotate(20deg);
+  }
+}
+
+/* มาสคอตโยกตัว */
+.wobble {
+  transform-origin: 50% 100%;
+  animation: wobble 3.2s ease-in-out infinite;
+}
+@keyframes wobble {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+}
+
+/* แถบตัววิ่ง: เนื้อหาซ้ำ 2 ชุด เลื่อนไปครึ่งหนึ่งแล้ววนใหม่ */
+.marquee {
+  animation: marquee 32s linear infinite;
+}
+.marquee:hover {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* โผล่เมื่อเลื่อนมาถึง (คู่กับ component Reveal) */
+.reveal {
+  opacity: 0;
+  transform: translateY(32px) rotate(var(--tilt, 0deg));
+  transition:
+    opacity 700ms ease,
+    transform 700ms cubic-bezier(0.34, 1.4, 0.64, 1);
+  transition-delay: var(--d, 0ms);
+}
+.reveal[data-shown='true'] {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot-field,
+  .rise,
+  .hero-figure,
+  .twinkle,
+  .wobble,
+  .marquee {
+    animation: none;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .pop,
+  .pop:hover,
+  .pop:active,
+  .nudge,
+  .nudge:hover,
+  .nudge:active,
+  .nudge-x,
+  .nudge-x:hover {
+    transition: none;
+    transform: none;
+  }
 }

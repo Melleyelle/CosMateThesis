@@ -18,20 +18,20 @@ export default function ReviewCard({ review, onImageClick }: { review: Review; o
   return (
     <article className="border-b border-gray-100 py-5 last:border-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FDE3EE] text-sm font-bold text-[#E5457F]">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FDE3EE] text-base font-bold text-[#E5457F]">
           {review.reviewerName.charAt(0)}
         </span>
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-[#263544]">{review.reviewerName}</p>
+          <p className="text-base font-semibold text-[#263544]">{review.reviewerName}</p>
           <div className="flex items-center gap-2">
             <StarDisplay value={review.rating} size={14} />
-            <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-[#4CAF7A]">
+            <span className="inline-flex items-center gap-0.5 text-sm font-medium text-[#4CAF7A]">
               <SealCheckIcon size={13} weight="fill" />
               ผู้เช่าจริง
             </span>
           </div>
         </div>
-        <span className="ml-auto text-xs text-[#263544]/40">
+        <span className="ml-auto text-base text-[#263544]/40">
           {review.rentedOn ? `เช่าเมื่อ ${monthYear(review.rentedOn)}` : ''}
         </span>
       </div>
@@ -39,7 +39,7 @@ export default function ReviewCard({ review, onImageClick }: { review: Review; o
       {facts.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {facts.map((f) => (
-            <span key={f as string} className="rounded-md bg-[#EDE6FA] px-2 py-0.5 text-[11px] font-medium text-[#263544]">
+            <span key={f as string} className="rounded-md bg-[#EDE6FA] px-2 py-0.5 text-sm font-medium text-[#263544]">
               {f}
             </span>
           ))}
@@ -47,7 +47,7 @@ export default function ReviewCard({ review, onImageClick }: { review: Review; o
       )}
 
       {review.comment && (
-        <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-[#263544]/85">{review.comment}</p>
+        <p className="mt-3 whitespace-pre-line text-base leading-relaxed text-[#263544]/85">{review.comment}</p>
       )}
 
       {review.imageUrls.length > 0 && (
@@ -67,11 +67,11 @@ export default function ReviewCard({ review, onImageClick }: { review: Review; o
 
       {review.adminReply && (
         <div className="mt-3 rounded-xl border-l-4 border-[#E5457F] bg-[#FFFAFC] px-3 py-2">
-          <p className="flex items-center gap-1 text-xs font-bold text-[#E5457F]">
+          <p className="flex items-center gap-1 text-base font-bold text-[#E5457F]">
             <ChatCircleTextIcon size={14} weight="fill" />
             ตอบกลับจากร้าน
           </p>
-          <p className="mt-1 whitespace-pre-line text-sm text-[#263544]/80">{review.adminReply}</p>
+          <p className="mt-1 whitespace-pre-line text-base text-[#263544]/80">{review.adminReply}</p>
         </div>
       )}
     </article>

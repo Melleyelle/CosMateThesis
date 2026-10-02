@@ -37,16 +37,16 @@ export default function MyOrdersPage() {
   return (
     <CustomerLayout>
       <h1 className="text-2xl font-bold text-[#263544]">ออเดอร์ของฉัน</h1>
-      <p className="mb-6 text-sm text-[#263544]/60">ติดตามสถานะการเช่า การจัดส่ง และการคืนชุด</p>
+      <p className="mb-6 text-base text-[#263544]/60">ติดตามสถานะการเช่า การจัดส่ง และการคืนชุด</p>
 
       {pendingCount > 0 && (
-        <p className="mb-4 rounded-2xl border-2 border-[#263544] bg-[#FFF3B0] px-4 py-3 text-sm text-[#263544]">
+        <p className="mb-4 rounded-2xl border-2 border-[#263544] bg-[#FFF3B0] px-4 py-3 text-base text-[#263544]">
           มี {pendingCount} ออเดอร์ที่ยังไม่ได้ชำระเงิน กดเข้าไปเพื่อชำระหรือยกเลิกได้เลย
         </p>
       )}
 
       {toReviewCount > 0 && (
-        <p className="mb-4 flex items-center gap-2 rounded-2xl border-2 border-[#263544] bg-[#FDE3EE] px-4 py-3 text-sm text-[#263544]">
+        <p className="mb-4 flex items-center gap-2 rounded-2xl border-2 border-[#263544] bg-[#FDE3EE] px-4 py-3 text-base text-[#263544]">
           <StarIcon size={18} weight="fill" className="flex-shrink-0 text-[#F5B400]" />
           มี {toReviewCount} ออเดอร์ที่จบการเช่าแล้ว รอคุณรีวิวอยู่
         </p>
@@ -61,7 +61,7 @@ export default function MyOrdersPage() {
       )}
 
       {!loading && loadError && (
-        <p role="alert" className="rounded-xl bg-red-50 px-4 py-6 text-center text-sm text-red-600">
+        <p role="alert" className="rounded-xl bg-red-50 px-4 py-6 text-center text-base text-red-600">
           {loadError}
         </p>
       )}
@@ -96,23 +96,23 @@ export default function MyOrdersPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-sm font-bold text-[#263544]">{order.orderNumber}</span>
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${ORDER_STATUS_BADGE[order.status]}`}>
+                      <span className="font-mono text-base font-bold text-[#263544]">{order.orderNumber}</span>
+                      <span className={`rounded-full px-2.5 py-0.5 text-sm font-semibold ${ORDER_STATUS_BADGE[order.status]}`}>
                         {ORDER_STATUS_LABEL[order.status]}
                       </span>
                       {needsReview(order) && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[#263544] bg-[#FFF3B0] px-2.5 py-0.5 text-xs font-semibold text-[#263544]">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[#263544] bg-[#FFF3B0] px-2.5 py-0.5 text-sm font-semibold text-[#263544]">
                           <StarIcon size={12} weight="fill" className="text-[#F5B400]" />
                           รอรีวิว
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 truncate text-sm text-[#263544]">
+                    <p className="mt-1 truncate text-base text-[#263544]">
                       {first ? `${first.productName}${first.size ? ` · ไซส์ ${first.size}` : ''}` : '—'}
                       {order.lines.length > 1 && ` และอีก ${order.lines.length - 1} ชุด`}
                     </p>
                     {first && (
-                      <p className="text-xs text-[#263544]/60">ใช้งาน {formatThaiDateWithWeekday(first.startDate)}</p>
+                      <p className="text-base text-[#263544]/60">ใช้งาน {formatThaiDateWithWeekday(first.startDate)}</p>
                     )}
                   </div>
                   <div className="text-right">

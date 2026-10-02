@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   ChatCircleTextIcon,
+  ClipboardIcon,
   DressIcon,
   ListIcon,
   ReceiptIcon,
@@ -14,6 +15,7 @@ import {
   XIcon,
 } from '@phosphor-icons/react'
 import { createClient } from '@/utils/client'
+import CosMateLogo from '@/app/components/customer/CosMateLogo'
 
 // โครงหลังร้านทุกหน้า — ใช้แทน AdminLayout เดิมได้ทันที (รับแค่ children เหมือนเดิม)
 // แถบซ้าย: เมนู + ตัวเลขงานค้าง / มือถือ: แถบบน + เมนูเลื่อนออก
@@ -28,7 +30,7 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { href: '/admin', label: 'ภาพรวม', icon: SquaresFourIcon, exact: true },
-  { href: '/admin/orders', label: 'ออเดอร์', icon: ReceiptIcon, badgeKey: 'orders' },
+  { href: '/admin/orders', label: 'ออเดอร์', icon: ClipboardIcon, badgeKey: 'orders' },
   { href: '/admin/inventory', label: 'คลังชุด', icon: DressIcon },
   { href: '/admin/reviews', label: 'รีวิว', icon: ChatCircleTextIcon, badgeKey: 'reviews' },
 ]
@@ -136,11 +138,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   )
 
   const brand = (
-    <Link href="/admin" className="flex items-baseline gap-2 px-6 py-6">
-      <span className="text-2xl font-black tracking-tight text-[#E5457F]">
-        Cos<span className="text-[#263544]">Mate</span>
-      </span>
-      <span className="text-xs font-medium text-[#6B7280]">หลังร้าน</span>
+    <Link href="/admin" aria-label="CosMate หลังร้าน" className="flex items-center px-6 py-6">
+      <CosMateLogo />
     </Link>
   )
 
@@ -155,9 +154,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
       {/* แถบบน (มือถือ) */}
       <div className="sticky top-0 z-30 flex items-center justify-between border-b border-[#E4E3EA] bg-white px-4 py-3 lg:hidden">
-        <span className="text-xl font-black tracking-tight text-[#E5457F]">
-          Cos<span className="text-[#263544]">Mate</span>
-        </span>
+        <Link href="/admin" aria-label="CosMate หลังร้าน">
+          <CosMateLogo size="sm" />
+        </Link>
         <button
           type="button"
           onClick={() => setMobileOpen(true)}

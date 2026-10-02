@@ -80,7 +80,7 @@ export default function LoginPage() {
         />
 
         {error && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-base text-red-600">
             {error}
           </p>
         )}
@@ -89,13 +89,13 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="rounded-full border-2 border-[#263544] bg-[#E5457F] px-10 py-3 text-lg font-semibold text-white shadow-[4px_4px_0_0_#263544] transition hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0_0_#263544] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none disabled:pointer-events-none disabled:opacity-50"
+            className="pop rounded-full bg-[#E5457F] px-14 py-3 text-base font-semibold text-white disabled:opacity-50"
           >
             {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
           </button>
         </div>
 
-        <p className="text-center text-gray-500">
+        <p className="text-center text-base text-gray-500">
           ยังไม่มีบัญชี?{' '}
           <Link href="/register" className="text-[#E5457F] underline">
             สมัครสมาชิก

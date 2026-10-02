@@ -77,7 +77,7 @@ export default function RegisterPage() {
       subtitle="มาสร้างบัญชีไว้ แล้วมาเลือกชุดสนุก ๆ ไปด้วยกัน"
     >
       <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-x-10">
           <AuthField
             id="firstName"
             label="ชื่อจริง"
@@ -134,24 +134,24 @@ export default function RegisterPage() {
         />
 
         {error && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-base text-red-600">
             {error}
           </p>
         )}
-        {info && <p className="text-sm text-green-700">{info}</p>}
+        {info && <p className="text-base text-green-700">{info}</p>}
         
 
         <div className="flex justify-center pt-3">
           <button
             type="submit"
             disabled={loading}
-            className="rounded-full border-2 border-[#263544] bg-[#E5457F] px-10 py-3 text-lg font-semibold text-white shadow-[4px_4px_0_0_#263544] transition hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0_0_#263544] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none disabled:pointer-events-none disabled:opacity-50"
+            className="pop rounded-full bg-[#E5457F] px-14 py-3 text-base font-semibold text-white disabled:opacity-50"
           >
             {loading ? 'loading...' : 'สมัครสมาชิก'}
           </button>
         </div>
 
-        <p className="text-center text-gray-500">
+        <p className="text-center text-base text-gray-500">
           มีบัญชีแล้ว?{' '}
           <Link href="/login" className="text-[#E5457F] underline">
             เข้าสู่ระบบ

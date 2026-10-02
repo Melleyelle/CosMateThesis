@@ -65,7 +65,7 @@ export function StarInput({ value, onChange }: { value: number; onChange: (v: nu
           </button>
         ))}
       </div>
-      <span className="min-w-[64px] text-sm font-semibold text-[#263544]">{RATING_WORD[shown]}</span>
+      <span className="min-w-[64px] text-base font-semibold text-[#263544]">{RATING_WORD[shown]}</span>
     </div>
   )
 }

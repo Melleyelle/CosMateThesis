@@ -205,14 +205,14 @@ function ExploreInner() {
                 if (e.target.value === '') setSearch('')
               }}
               placeholder="ค้นหาชื่อชุด ตัวละคร หรือชื่อเรื่อง"
-              className="min-w-0 flex-1 px-5 py-2.5 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+              className="min-w-0 flex-1 px-5 py-2.5 text-base text-gray-900 outline-none placeholder:text-gray-400"
             />
             <button
               type="submit"
               aria-label="ค้นหา"
-              className="flex items-center justify-center bg-[#E5457F] px-5 text-white transition hover:bg-[#d23a70]"
+              className="group flex items-center justify-center bg-[#E5457F] px-5 text-white"
             >
-              <MagnifyingGlassIcon size={20} weight="bold" />
+              <MagnifyingGlassIcon size={20} weight="bold" className="transition-transform duration-150 group-hover:scale-125" />
             </button>
           </form>
         </section>
@@ -230,16 +230,16 @@ function ExploreInner() {
             <button
               type="button"
               onClick={() => setMobileFiltersOpen(true)}
-              className="flex items-center gap-2 rounded-full border-2 border-[#263544] px-4 py-2 text-sm font-semibold text-[#263544] lg:hidden"
+              className="pop flex items-center gap-2 rounded-full bg-white px-4 py-2 text-base font-semibold text-[#263544] lg:hidden"
             >
               <FunnelSimpleIcon size={18} />
               ตัวกรอง
               {activeCount > 0 && (
-                <span className="rounded-full bg-[#E5457F] px-1.5 text-xs text-white">{activeCount}</span>
+                <span className="rounded-full bg-[#E5457F] px-1.5 text-sm text-white">{activeCount}</span>
               )}
             </button>
 
-            <p className="text-sm text-[#263544]/70">
+            <p className="text-base text-[#263544]/70">
               {search ? (
                 <>
                   ผลการค้นหา &quot;<span className="font-semibold text-[#263544]">{search}</span>&quot;:{' '}
@@ -256,7 +256,7 @@ function ExploreInner() {
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortValue)}
                 aria-label="เรียงลำดับ"
-                className="appearance-none rounded-full border border-[#263544]/30 bg-white py-2 pl-9 pr-9 text-sm font-medium text-[#263544] outline-none focus:border-[#E5457F]"
+                className="appearance-none rounded-full border border-[#263544]/30 bg-white py-2 pl-9 pr-9 text-base font-medium text-[#263544] outline-none focus:border-[#E5457F]"
               >
                 {SORT_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -275,7 +275,7 @@ function ExploreInner() {
                   key={chip.key}
                   type="button"
                   onClick={chip.remove}
-                  className="flex items-center gap-1 rounded-full bg-[#FDE3EE] px-3 py-1 text-xs font-medium text-[#E5457F] transition hover:bg-[#fbd0e2]"
+                  className="nudge flex items-center gap-1 rounded-full bg-[#FDE3EE] px-3 py-1 text-sm font-medium text-[#E5457F]"
                 >
                   {chip.label}
                   <XIcon size={12} weight="bold" />
@@ -284,7 +284,7 @@ function ExploreInner() {
               <button
                 type="button"
                 onClick={() => setFilters(EMPTY_FILTERS)}
-                className="text-xs font-semibold text-[#263544]/60 underline hover:text-[#263544]"
+                className="text-base font-semibold text-[#263544]/60 underline hover:text-[#263544]"
               >
                 ล้างทั้งหมด
               </button>
@@ -300,7 +300,7 @@ function ExploreInner() {
           )}
 
           {!loading && loadError && (
-            <p role="alert" className="rounded-xl bg-red-50 px-4 py-6 text-center text-sm text-red-600">
+            <p role="alert" className="rounded-xl bg-red-50 px-4 py-6 text-center text-base text-red-600">
               {loadError}
             </p>
           )}
@@ -314,7 +314,7 @@ function ExploreInner() {
                 <button
                   type="button"
                   onClick={() => setFilters(EMPTY_FILTERS)}
-                  className="mt-3 text-sm font-semibold text-[#E5457F] hover:underline"
+                  className="mt-3 text-base font-semibold text-[#E5457F] hover:underline"
                 >
                   ล้างตัวกรองแล้วลองใหม่
                 </button>
@@ -350,7 +350,7 @@ function ExploreInner() {
                 type="button"
                 onClick={() => setMobileFiltersOpen(false)}
                 aria-label="ปิด"
-                className="rounded-full p-2 text-[#263544] hover:bg-white"
+                className="nudge rounded-full p-2 text-[#263544]"
               >
                 <XIcon size={20} weight="bold" />
               </button>
@@ -361,7 +361,7 @@ function ExploreInner() {
             <button
               type="button"
               onClick={() => setMobileFiltersOpen(false)}
-              className="w-full rounded-full border-2 border-[#263544] bg-[#E5457F] py-3 text-sm font-bold text-white shadow-[3px_3px_0_0_#263544]"
+              className="pop w-full rounded-full bg-[#E5457F] py-3 text-base font-bold text-white"
             >
               ดูผลลัพธ์ {results.length} ชิ้น
             </button>

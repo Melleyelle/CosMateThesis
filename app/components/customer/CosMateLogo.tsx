@@ -1,12 +1,7 @@
-// โลโก้ข้อความชั่วคราว — ถ้ามีไฟล์โลโก้จริง (เช่น public/logo.png) เปลี่ยนเป็น:
-//   <img src="/logo.png" alt="CosMate" className="h-9 w-auto" />
-export default function CosMateLogo({ size = 'md' }: { size?: 'md' | 'lg' }) {
-  return (
-    <span
-      className={`font-black tracking-tight text-[#E5457F] ${size === 'lg' ? 'text-3xl' : 'text-2xl'}`}
-      style={{ WebkitTextStroke: '0.5px #263544' }}
-    >
-      Cos<span className="text-[#263544]" style={{ WebkitTextStroke: '0' }}>Mate</span>
-    </span>
-  )
+import Image from 'next/image'
+
+// โลโก้หลักจาก public/images/logo.png ใช้ร่วมกันทั้งฝั่งลูกค้าและหลังร้าน
+export default function CosMateLogo({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
+  const height = size === 'lg' ? 'h-10' : size === 'sm' ? 'h-7' : 'h-8'
+  return <Image src="/images/logo.png" alt="CosMate" width={1144} height={274} priority className={`${height} w-auto`} />
 }

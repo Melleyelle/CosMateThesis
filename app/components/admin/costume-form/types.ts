@@ -41,6 +41,7 @@ export type ProductInclusion = {
   id: string
   name: string
   imageUrl: string
+  price: string // ค่าเช่าเมื่อลูกค้าเลือกแยกชิ้น — เว้นว่าง = ไม่เปิดให้เช่าแยก (product_inclusions.rental_price)
 }
 
 // สเตป 3 — ตรงกับตาราง product_variants และ size_charts

@@ -47,7 +47,7 @@ const EMPTY_REFUND = EMPTY_BANK
 const refundProblem = bankProblem
 
 const inputClass =
-  'w-full rounded-lg bg-[#EFEFEF] px-3 py-2.5 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:bg-white focus:ring-2 focus:ring-[#E5457F]/30'
+  'w-full rounded-lg bg-[#EFEFEF] px-3 py-2.5 text-base text-gray-900 outline-none placeholder:text-gray-400 focus:bg-white focus:ring-2 focus:ring-[#E5457F]/30'
 
 // ---------------------------------------------------------------------------
 // หน้า
@@ -124,8 +124,13 @@ function CheckoutInner() {
             .eq('user_id', user.id)
             .eq('is_default', true)
             .maybeSingle(),
-          // บัญชีถาวรจากหน้า "บัญชีของฉัน" (Step 13)
-          supabase.from('user_bank_accounts').select('account_name, bank, account_number').eq('user_id', user.id).maybeSingle(),
+          // บัญชีค่าเริ่มต้นจากหน้า "บัญชีของฉัน" (Step 13 + 15)
+          supabase
+            .from('user_bank_accounts')
+            .select('account_name, bank, account_number')
+            .eq('user_id', user.id)
+            .eq('is_default', true)
+            .maybeSingle(),
           // สำรอง: บัญชีที่กรอกไว้ในออเดอร์ล่าสุด (กรณียังไม่มีบัญชีถาวร)
           supabase
             .from('orders')
@@ -310,7 +315,7 @@ function CheckoutInner() {
     <>
       <Link
         href={backHref}
-        className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-[#263544]/60 hover:text-[#263544]"
+        className="mb-3 inline-flex items-center gap-1 text-base font-medium text-[#263544]/60 hover:text-[#263544]"
       >
         <ArrowLeftIcon size={16} />
         {fromCart ? 'กลับไปตะกร้า' : 'กลับไปแก้ไซส์หรือวันที่'}
@@ -332,7 +337,7 @@ function CheckoutInner() {
                 </div>
 
                 {!editingAddress ? (
-                  <div className="mt-2 text-sm">
+                  <div className="mt-2 text-base">
                     <p className="font-semibold text-[#263544]">
                       {address.name} ({address.phone})
                     </p>
@@ -402,7 +407,7 @@ function CheckoutInner() {
                         className={inputClass}
                       />
                     </Field>
-                    <label className="flex cursor-pointer items-center gap-2 text-sm text-[#263544] sm:col-span-2">
+                    <label className="flex cursor-pointer items-center gap-2 text-base text-[#263544] sm:col-span-2">
                       <input
                         type="checkbox"
                         checked={saveAsDefault}
@@ -416,7 +421,7 @@ function CheckoutInner() {
                       <button
                         type="button"
                         onClick={confirmAddress}
-                        className="rounded-lg bg-[#263544] px-5 py-2 text-sm font-semibold text-white hover:bg-[#1a2632]"
+                        className="pop rounded-full bg-[#263544] px-5 py-2 text-base font-semibold text-white"
                       >
                         ใช้ที่อยู่นี้
                       </button>
@@ -448,7 +453,7 @@ function CheckoutInner() {
                 <div className="min-w-0 flex-1">
                   {!editingRefund ? (
                     <div className="flex items-start justify-between gap-2">
-                      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-base">
                         <dt className="text-[#263544]/70">ชื่อเจ้าของบัญชี:</dt>
                         <dd className="font-medium text-[#263544]">{refund.accountName}</dd>
                         <dt className="text-[#263544]/70">ธนาคาร:</dt>
@@ -491,7 +496,7 @@ function CheckoutInner() {
                           className={`${inputClass} tabular-nums`}
                         />
                       </RefundRow>
-                      <label className="flex cursor-pointer items-center gap-2 text-sm text-[#263544]">
+                      <label className="flex cursor-pointer items-center gap-2 text-base text-[#263544]">
                         <input
                           type="checkbox"
                           checked={saveBank}
@@ -505,11 +510,11 @@ function CheckoutInner() {
                         <button
                           type="button"
                           onClick={confirmRefund}
-                          className="rounded-lg bg-[#263544] px-5 py-2 text-sm font-semibold text-white hover:bg-[#1a2632]"
+                          className="pop rounded-full bg-[#263544] px-5 py-2 text-base font-semibold text-white"
                         >
                           ใช้บัญชีนี้
                         </button>
-                        <p className="text-xs text-[#263544]/60">
+                        <p className="text-base text-[#263544]/60">
                           ร้านโอนมัดจำคืนภายใน {returnHours} ชม. หลังได้รับชุดคืนและตรวจสภาพเรียบร้อย
                         </p>
                       </div>
@@ -548,7 +553,7 @@ function CheckoutInner() {
                     </div>
                   )}
                 </div>
-                <div className="min-w-0 flex-1 text-sm">
+                <div className="min-w-0 flex-1 text-base">
                   <p className="text-lg font-medium leading-snug text-[#263544]">
                     {l.variant?.productName ?? 'ชุดที่ปิดให้เช่าแล้ว'}
                   </p>
@@ -559,11 +564,11 @@ function CheckoutInner() {
                       <p className="text-[#263544]">
                         {formatThaiDateLong(l.timeline.receiveDate)} ถึง {formatThaiDateLong(l.timeline.returnBy)}
                       </p>
-                      <p className="text-xs text-[#E5457F]">วันใช้งาน {formatThaiDateLong(l.request.startDate)}</p>
+                      <p className="text-base text-[#E5457F]">วันใช้งาน {formatThaiDateLong(l.request.startDate)}</p>
                     </div>
                   )}
                   {l.problem && (
-                    <p className="mt-2 flex gap-1 rounded-lg bg-[#FFF3B0] px-2 py-1 text-xs text-[#263544]">
+                    <p className="mt-2 flex gap-1 rounded-lg bg-[#FFF3B0] px-2 py-1 text-base text-[#263544]">
                       <WarningCircleIcon size={14} className="mt-0.5 flex-shrink-0" />
                       {l.problem}
                     </p>
@@ -574,7 +579,7 @@ function CheckoutInner() {
           </ul>
 
           <div className="my-5 border-t-2 border-gray-200" />
-          <dl className="space-y-3 text-sm">
+          <dl className="space-y-3 text-base">
             <PriceRow label="จำนวนเงินค่าเช่า:" value={totals.rental} />
             <PriceRow label="เงินค่ามัดจำ:" value={totals.deposit} />
             <PriceRow label="ค่าซักรีด:" value={totals.laundry} />
@@ -582,11 +587,11 @@ function CheckoutInner() {
           </dl>
           <div className="my-5 border-t-2 border-gray-200" />
           <div className="flex items-center justify-between">
-            <span className="text-sm text-[#263544]">จำนวนเงินสุทธิ:</span>
+            <span className="text-base text-[#263544]">จำนวนเงินสุทธิ:</span>
             <span className="text-3xl font-bold text-[#263544]">{formatBaht(grandTotal)}</span>
           </div>
 
-          <label className="mt-5 flex cursor-pointer gap-2 text-xs leading-relaxed text-[#263544]/70">
+          <label className="mt-5 flex cursor-pointer gap-2 text-base leading-relaxed text-[#263544]/70">
             <input
               type="checkbox"
               checked={accepted}
@@ -601,7 +606,7 @@ function CheckoutInner() {
           </label>
 
           {submitError && (
-            <div role="alert" className="mt-4 rounded-xl bg-red-50 px-3 py-2.5 text-sm text-red-600">
+            <div role="alert" className="mt-4 rounded-xl bg-red-50 px-3 py-2.5 text-base text-red-600">
               {submitError}
               {dateProblem && (
                 <Link href={backHref} className="mt-1 block font-semibold underline">
@@ -619,12 +624,12 @@ function CheckoutInner() {
           <button
             type="submit"
             disabled={submitting || !accepted || hasProblem}
-            className="mt-5 w-full rounded-xl bg-[#263544] py-4 text-base font-semibold text-white transition hover:bg-[#1a2632] disabled:cursor-not-allowed disabled:opacity-40"
+            className="pop mt-5 w-full rounded-full bg-[#263544] py-4 text-base font-semibold text-white disabled:opacity-40"
           >
             {submitting ? 'กำลังจองชุด...' : 'ยืนยัน'}
           </button>
           {hasProblem && (
-            <p className="mt-2 text-center text-xs text-red-600">มีบางรายการจองไม่ได้ กรุณากลับไปแก้ไขก่อน</p>
+            <p className="mt-2 text-center text-base text-red-600">มีบางรายการจองไม่ได้ กรุณากลับไปแก้ไขก่อน</p>
           )}
         </aside>
       </form>
@@ -652,7 +657,7 @@ function EditButton({ onClick, label }: { onClick: () => void; label: string }) 
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="rounded-lg p-1.5 text-[#263544] transition hover:bg-[#FDE3EE] hover:text-[#E5457F]"
+      className="nudge rounded-lg p-1.5 text-[#263544]"
     >
       <NotePencilIcon size={26} />
     </button>
@@ -665,7 +670,7 @@ function FixedChoice({ label }: { label: string }) {
       <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[#263544] text-white">
         <CheckIcon size={16} weight="bold" />
       </span>
-      <span className="text-sm text-[#263544]">{label}</span>
+      <span className="text-base text-[#263544]">{label}</span>
     </div>
   )
 }
@@ -673,7 +678,7 @@ function FixedChoice({ label }: { label: string }) {
 function Field({ label, wide = false, children }: { label: string; wide?: boolean; children: ReactNode }) {
   return (
     <label className={`block ${wide ? 'sm:col-span-2' : ''}`}>
-      <span className="mb-1 block text-xs font-medium text-[#263544]/70">{label}</span>
+      <span className="mb-1 block text-base font-medium text-[#263544]/70">{label}</span>
       {children}
     </label>
   )
@@ -682,7 +687,7 @@ function Field({ label, wide = false, children }: { label: string; wide?: boolea
 function RefundRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="grid items-center gap-1 sm:grid-cols-[140px_1fr] sm:gap-3">
-      <span className="text-sm text-[#263544]">{label}</span>
+      <span className="text-base text-[#263544]">{label}</span>
       <span className="sm:max-w-sm">{children}</span>
     </label>
   )
@@ -690,7 +695,7 @@ function RefundRow({ label, children }: { label: string; children: ReactNode }) 
 
 function ErrorText({ children }: { children: ReactNode }) {
   return (
-    <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 sm:col-span-2">
+    <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-base text-red-600 sm:col-span-2">
       {children}
     </p>
   )

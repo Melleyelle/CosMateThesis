@@ -7,6 +7,7 @@ export type BookingSettings = {
   minLeadDays: number
   shippingFlatRate: number
   lateFeePerDay: number
+  maxPendingOrders: number | null // null = ฐานข้อมูลยังไม่มีคอลัมน์ max_pending_orders
 }
 
 export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
@@ -15,6 +16,7 @@ export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
   minLeadDays: 1,
   shippingFlatRate: 0,
   lateFeePerDay: 0,
+  maxPendingOrders: null,
 }
 
 function settingValue(value: unknown, fallback: number): number {
@@ -40,7 +42,8 @@ export async function fetchBookingSettings(): Promise<BookingSettings> {
 
   const { data, error } = await supabase
     .from('booking_settings')
-    .select('buffer_days_before, buffer_days_after, min_lead_days, shipping_flat_rate, late_fee_per_day')
+    // ใช้ * เพื่อให้คอลัมน์เสริม (max_pending_orders) ที่อาจยังไม่มี ไม่ทำให้ทั้ง query error
+    .select('*')
     .limit(1)
     .maybeSingle()
 
@@ -52,5 +55,6 @@ export async function fetchBookingSettings(): Promise<BookingSettings> {
     minLeadDays: settingValue(data.min_lead_days, DEFAULT_BOOKING_SETTINGS.minLeadDays),
     shippingFlatRate: settingValue(data.shipping_flat_rate, DEFAULT_BOOKING_SETTINGS.shippingFlatRate),
     lateFeePerDay: settingValue(data.late_fee_per_day, DEFAULT_BOOKING_SETTINGS.lateFeePerDay),
+    maxPendingOrders: data.max_pending_orders == null ? null : settingValue(data.max_pending_orders, 0) || null,
   }
 }

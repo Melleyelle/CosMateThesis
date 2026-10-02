@@ -60,12 +60,12 @@ export default function ProductReviews({ productId }: { productId: string }) {
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-[#263544]">รีวิวจากผู้เช่า</h2>
-          <p className="mt-1 text-sm text-[#263544]/60">
+          <p className="mt-1 text-base text-[#263544]/60">
             {reviews.length > 0 ? `${reviews.length} รีวิว` : 'ความคิดเห็นจากผู้ที่เคยเช่าชุดนี้'}
           </p>
         </div>
         {reviews.length > 0 && (
-          <div className="flex items-center gap-1.5 text-sm font-semibold text-[#263544]">
+          <div className="flex items-center gap-1.5 text-base font-semibold text-[#263544]">
             <StarIcon size={18} weight="fill" className="text-[#E5A900]" />
             {average.toFixed(1)} / 5
           </div>
@@ -78,13 +78,13 @@ export default function ProductReviews({ productId }: { productId: string }) {
           <div className="h-24 animate-pulse rounded-xl bg-gray-100" />
         </div>
       ) : loadError ? (
-        <p role="status" className="rounded-xl bg-[#F7F7F8] px-5 py-8 text-center text-sm text-[#263544]/60">
+        <p role="status" className="rounded-xl bg-[#F7F7F8] px-5 py-8 text-center text-base text-[#263544]/60">
           ยังโหลดรีวิวไม่ได้ในขณะนี้
         </p>
       ) : reviews.length === 0 ? (
         <div className="rounded-xl bg-[#F7F7F8] px-5 py-10 text-center">
           <ChatCircleDotsIcon size={28} className="mx-auto text-[#E5457F]/70" />
-          <p className="mt-2 text-sm text-[#263544]/60">ยังไม่มีรีวิวชุดนี้</p>
+          <p className="mt-2 text-base text-[#263544]/60">ยังไม่มีรีวิวชุดนี้</p>
         </div>
       ) : (
         <ul className="divide-y divide-[#263544]/10">
@@ -101,15 +101,15 @@ export default function ProductReviews({ productId }: { productId: string }) {
                     />
                   ))}
                 </div>
-                <time className="text-xs text-[#263544]/50" dateTime={review.created_at}>
+                <time className="text-base text-[#263544]/50" dateTime={review.created_at}>
                   {formatDateTime(review.created_at)}
                 </time>
               </div>
-              {review.comment && <p className="mt-3 whitespace-pre-wrap text-sm text-[#263544]/80">{review.comment}</p>}
+              {review.comment && <p className="mt-3 whitespace-pre-wrap text-base text-[#263544]/80">{review.comment}</p>}
               {review.admin_reply && (
                 <div className="mt-3 rounded-lg bg-[#FDE3EE]/60 px-4 py-3">
-                  <p className="text-xs font-semibold text-[#263544]">คำตอบจากร้าน</p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-[#263544]/75">{review.admin_reply}</p>
+                  <p className="text-base font-semibold text-[#263544]">คำตอบจากร้าน</p>
+                  <p className="mt-1 whitespace-pre-wrap text-base text-[#263544]/75">{review.admin_reply}</p>
                 </div>
               )}
             </li>

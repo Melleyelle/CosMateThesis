@@ -38,7 +38,7 @@ export default function FavoritesPage() {
   return (
     <CustomerLayout>
       <h1 className="text-3xl font-bold text-[#263544]">รายการโปรด</h1>
-      <p className="mb-6 text-sm text-[#263544]/60">ชุดที่คุณกดหัวใจไว้</p>
+      <p className="mb-6 text-base text-[#263544]/60">ชุดที่คุณกดหัวใจไว้</p>
 
       {loading || !loggedIn ? (
         <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
@@ -54,7 +54,7 @@ export default function FavoritesPage() {
           action={
             <Link
               href="/costumes"
-              className="inline-block rounded-full border-2 border-[#263544] bg-[#E5457F] px-6 py-2.5 text-sm font-bold text-white shadow-[3px_3px_0_0_#263544]"
+              className="pop inline-block rounded-full bg-[#E5457F] px-6 py-2.5 text-base font-bold text-white"
             >
               สำรวจชุด
             </Link>

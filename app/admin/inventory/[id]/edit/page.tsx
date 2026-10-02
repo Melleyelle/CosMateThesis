@@ -15,6 +15,7 @@ import ItemConditionCard from '@/app/components/admin/costume-form/ItemCondition
 import { PageHeader, primaryButtonClass, secondaryButtonClass } from '@/app/components/admin/ui'
 import { EMPTY_FORM_DATA, type CostumeFormData } from '@/app/components/admin/costume-form/types'
 import { fetchCostumeForEdit } from '@/utils/fetchCostumeForEdit'
+import { saveInclusionPrices } from '@/utils/saveInclusionPrices'
 
 // แก้ไขชุดเดิม — ใช้การ์ดฟอร์มชุดเดียวกับหน้า "เพิ่มชุดใหม่" ทั้งหมด ต่างกันแค่:
 // 1) โหลดข้อมูลเดิมมาใส่ฟอร์มก่อน (id ของไซส์/ตัวชุดเป็น id จริงจาก DB)
@@ -170,10 +171,19 @@ export default function EditCostumePage() {
     }
 
     const { error } = await supabase.rpc('update_costume', payload)
-    setSaving(false)
 
     if (error) {
+      setSaving(false)
       setSaveError(translateSaveError(error.message))
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
+    const priceError = await saveInclusionPrices(productId, inclusions)
+    setSaving(false)
+    if (priceError) {
+      // ข้อมูลชุดบันทึกแล้ว กดบันทึกซ้ำได้อย่างปลอดภัย
+      setSaveError(`บันทึกข้อมูลชุดแล้ว แต่${priceError}`)
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
