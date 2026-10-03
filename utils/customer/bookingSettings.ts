@@ -24,8 +24,10 @@ function settingValue(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
 }
 
-export function customerHeldDays(packageDays: number | null | undefined, settings: BookingSettings): number {
-  return Math.max(0, packageDays ?? 0) + settings.bufferDaysBefore + settings.bufferDaysAfter
+// จำนวนวันเช่าที่ลูกค้าเห็น = จำนวนวันในแพ็กเกจเท่านั้น
+// buffer ก่อน/หลัง (ขนส่ง ตรวจ ซัก) ยังกันคิวอยู่ในฐานข้อมูล แต่ไม่บวกให้ลูกค้าเห็น จะได้ไม่สับสน
+export function customerHeldDays(packageDays: number | null | undefined): number {
+  return Math.max(0, packageDays ?? 0)
 }
 
 export function getRentalTimeline(useDate: string, packageDays: number, settings: BookingSettings) {

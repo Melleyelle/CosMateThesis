@@ -17,6 +17,10 @@ const MESSAGES: Record<string, string> = {
   INVALID_REVIEW: 'ข้อมูลรีวิวไม่ถูกต้อง กรุณาตรวจคะแนน ส่วนสูง หรือรูปภาพอีกครั้ง',
   NO_REFUND_DUE: 'ออเดอร์นี้ไม่มียอดที่ต้องคืนเงิน',
   INVALID_REFUND_STATUS: 'สถานะการคืนเงินไม่ถูกต้อง',
+  INVALID_PIECES: 'บางชิ้นที่เลือกไม่เปิดให้เช่าแยกแล้ว กรุณากลับไปเลือกชิ้นใหม่',
+  INVALID_TRACKING: 'เลขพัสดุหรือขนส่งไม่ถูกต้อง',
+  SHIP_TRACKING_REQUIRED: 'กรุณากรอกเลขพัสดุก่อนกดจัดส่งแล้ว',
+  RETURN_TRACKING_REQUIRED: 'ลูกค้ายังไม่ได้กรอกเลขพัสดุส่งคืน จึงยังยืนยันรับชุดคืนไม่ได้',
 }
 
 export function translateRpcError(message: string | null | undefined): string {

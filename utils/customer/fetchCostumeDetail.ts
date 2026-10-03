@@ -32,10 +32,9 @@ export type CostumeDetail = {
   colorTags: string[]
   crossplayFriendly: boolean
   isGroupSet: boolean
-  description: string | null
   images: string[]
   // price = ค่าเช่าเมื่อเลือกแยกชิ้น (null = ชิ้นนี้ไม่เปิดให้เช่าแยก)
-  inclusions: { id: string; name: string; imageUrl: string | null; price: number | null }[]
+  inclusions: { id: string; name: string; imageUrl: string | null; price: number | null; laundryFee: number }[]
   variants: CostumeVariant[]
 }
 
@@ -71,7 +70,6 @@ type CostumeRow = {
   color_tags: string[] | null
   crossplay_friendly: boolean | null
   is_group_set: boolean | null
-  description: string | null
   cover_image_url: string | null
   product_images: { image_url: string | null; display_order: number }[] | null
   product_inclusions: { id: string; name: string; image_url: string | null; display_order: number }[] | null
@@ -109,7 +107,7 @@ export async function fetchCostumeDetail(productId: string): Promise<{
     .select(
       `
       id, name, character_name, series_name, franchise_type, costume_category,
-      gender_tag, color_tags, crossplay_friendly, is_group_set, description, cover_image_url,
+      gender_tag, color_tags, crossplay_friendly, is_group_set, cover_image_url,
       product_images ( image_url, display_order ),
       product_inclusions ( id, name, image_url, display_order ),
       product_variants (
@@ -131,12 +129,14 @@ export async function fetchCostumeDetail(productId: string): Promise<{
   // ราคาแยกชิ้นดึงแยก เพราะถ้ายังไม่ได้รัน Step 16 คอลัมน์ rental_price ยังไม่มี → ถือว่าเช่าแยกไม่ได้ หน้าไม่พัง
   const { data: priceRows, error: priceError } = await supabase
     .from('product_inclusions')
-    .select('id, rental_price')
+    .select('id, rental_price, laundry_fee')
     .eq('product_id', productId)
   const priceById = new Map<string, number>()
+  const laundryById = new Map<string, number>()
   if (!priceError) {
     for (const r of priceRows ?? []) {
       if (r.rental_price != null) priceById.set(r.id, Number(r.rental_price))
+      if (r.laundry_fee != null) laundryById.set(r.id, Number(r.laundry_fee))
     }
   }
   const galleryImages = (product.product_images ?? [])
@@ -169,16 +169,17 @@ export async function fetchCostumeDetail(productId: string): Promise<{
       colorTags: product.color_tags ?? [],
       crossplayFriendly: product.crossplay_friendly ?? false,
       isGroupSet: product.is_group_set ?? false,
-      description: product.description,
       images,
       inclusions: (product.product_inclusions ?? [])
-        .slice()
+        // ตัดแถวว่างที่แอดมินเพิ่มไว้แต่ไม่ได้กรอก — ถ้าไม่เหลือเลย หน้าชุดจะไม่แสดง section สิ่งที่ได้รับ
+        .filter((inclusion) => inclusion.name?.trim() || inclusion.image_url)
         .sort((a, b) => a.display_order - b.display_order)
         .map((inclusion) => ({
           id: inclusion.id,
           name: inclusion.name,
           imageUrl: inclusion.image_url,
           price: priceById.get(inclusion.id) ?? null,
+          laundryFee: laundryById.get(inclusion.id) ?? 0,
         })),
       variants,
     },

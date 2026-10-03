@@ -39,9 +39,8 @@ function mockEvents(): CalendarEvent[] {
   ]
 }
 
-// isMock = true ให้หน้าเว็บติดป้าย "ข้อมูลตัวอย่าง" ไว้ ลูกค้าจะได้ไม่เข้าใจผิดว่าเป็นงานจริง
-export async function fetchEvents(): Promise<{ events: CalendarEvent[]; isMock: boolean }> {
-  return { events: mockEvents(), isMock: true }
+export async function fetchEvents(): Promise<{ events: CalendarEvent[] }> {
+  return { events: mockEvents() }
 }
 
 // รวมงานตามวัน เพื่อให้ปฏิทินเช็กได้เร็วว่าวันไหนมีงาน

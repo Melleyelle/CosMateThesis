@@ -5,12 +5,14 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   HeartIcon,
+  ListIcon,
   ReceiptIcon,
   ShoppingBagIcon,
   SignInIcon,
   SignOutIcon,
   StorefrontIcon,
   UserIcon,
+  XIcon,
 } from '@phosphor-icons/react'
 import { createClient } from '@/utils/client'
 import { useCart } from '@/utils/customer/cart'
@@ -20,7 +22,7 @@ import CosMateLogo from './CosMateLogo'
 const NAV_LINKS = [
   { href: '/', label: 'หน้าหลัก' },
   { href: '/costumes', label: 'สำรวจชุด' },
-  { href: '/how-it-works', label: 'วิธีการเช่า' },
+  // ซ่อนไว้ก่อนระหว่างออกแบบหน้าใหม่: { href: '/how-it-works', label: 'วิธีการเช่า' },
 ]
 
 export default function CustomerNavbar() {
@@ -33,6 +35,7 @@ export default function CustomerNavbar() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [ready, setReady] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [navOpen, setNavOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -72,6 +75,7 @@ export default function CustomerNavbar() {
 
   useEffect(() => {
     setMenuOpen(false)
+    setNavOpen(false)
   }, [pathname])
 
   async function handleLogout() {
@@ -128,7 +132,10 @@ export default function CustomerNavbar() {
           <div ref={menuRef} className="relative">
             <button
               type="button"
-              onClick={() => setMenuOpen((o) => !o)}
+              onClick={() => {
+                setMenuOpen((o) => !o)
+                setNavOpen(false)
+              }}
               aria-label="บัญชีของฉัน"
               aria-expanded={menuOpen}
               className={`nudge flex h-10 w-10 items-center justify-center rounded-full ${
@@ -177,21 +184,47 @@ export default function CustomerNavbar() {
               </div>
             )}
           </div>
+
+          {/* ปุ่มแฮมเบอร์เกอร์: จอเล็กกว่า md หุบเมนูหลักไว้ในนี้ */}
+          <button
+            type="button"
+            onClick={() => {
+              setNavOpen((o) => !o)
+              setMenuOpen(false)
+            }}
+            aria-label={navOpen ? 'ปิดเมนู' : 'เปิดเมนู'}
+            aria-expanded={navOpen}
+            aria-controls="mobile-nav"
+            className={`${iconButton} md:hidden`}
+          >
+            {navOpen ? <XIcon size={24} /> : <ListIcon size={24} />}
+          </button>
         </div>
       </div>
 
       {/* เมนูหลักบนมือถือ */}
-      <nav className="flex justify-center gap-6 border-t border-gray-100 py-2 md:hidden">
-        {NAV_LINKS.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={`text-base font-medium ${isActive(link.href) ? 'text-[#E5457F]' : 'text-[#263544]'}`}
-          >
-            {link.label}
-          </Link>
-        ))}
-      </nav>
+      {navOpen && (
+        <nav id="mobile-nav" className="border-t border-gray-100 bg-white px-4 pb-4 pt-2 md:hidden">
+          <ul className="space-y-1">
+            {NAV_LINKS.map((link) => {
+              const active = isActive(link.href)
+              return (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    aria-current={active ? 'page' : undefined}
+                    className={`block rounded-xl px-4 py-3 text-base font-medium ${
+                      active ? 'bg-[#FDE3EE] text-[#E5457F]' : 'text-[#263544] hover:bg-[#F7F7F8]'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </nav>
+      )}
     </header>
   )
 }

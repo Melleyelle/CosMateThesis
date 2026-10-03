@@ -10,7 +10,6 @@ import {
   CaretDownIcon,
   CheckCircleIcon,
   ImageIcon,
-  InfoIcon,
   MagnifyingGlassPlusIcon,
   PackageIcon,
   RulerIcon,
@@ -25,6 +24,7 @@ import ProductReviews from '@/app/components/customer/ProductReviews'
 import { StarDisplay } from '@/app/components/customer/StarRating'
 import { fetchRatingSummaries, type RatingSummary } from '@/utils/customer/reviews'
 import { addToCart, encodeCheckoutItems } from '@/utils/customer/cart'
+import { loginHref } from '@/utils/customer/authUser'
 import { COLOR_HEX, colorKeysOf } from '@/utils/customer/filterOptions'
 import { fetchCostumeDetail, type CostumeDetail } from '@/utils/customer/fetchCostumeDetail'
 import {
@@ -58,10 +58,8 @@ export default function CostumeDetailPage() {
   const [datesLoading, setDatesLoading] = useState(false)
   const [datesError, setDatesError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [cartNotice, setCartNotice] = useState<string | null>(null)
   const [rating, setRating] = useState<RatingSummary | null>(null)
   const [events, setEvents] = useState<CalendarEvent[]>([])
-  const [eventsAreMock, setEventsAreMock] = useState(false)
   const [previewInclusion, setPreviewInclusion] = useState<{ url: string; name: string } | null>(null)
   const [rentMode, setRentMode] = useState<'set' | 'pieces'>('set')
   const [selectedPieces, setSelectedPieces] = useState<Set<string>>(new Set())
@@ -79,10 +77,7 @@ export default function CostumeDetailPage() {
   }, [productId])
 
   useEffect(() => {
-    fetchEvents().then(({ events, isMock }) => {
-      setEvents(events)
-      setEventsAreMock(isMock)
-    })
+    fetchEvents().then(({ events }) => setEvents(events))
   }, [])
 
   useEffect(() => {
@@ -147,16 +142,23 @@ export default function CostumeDetailPage() {
 
   const hasSizeChart = detail?.variants.some((v) => v.chart) ?? false
 
+  // โหมดแยกชิ้น → ส่ง id ชิ้นที่เลือกไปด้วย (ราคาจริงคำนวณใหม่ในฐานข้อมูลตอนจอง)
+  const chosenPieces = (): string[] | undefined =>
+    rentMode === 'pieces' && selectedPieces.size > 0 ? Array.from(selectedPieces) : undefined
+
   function handleRent() {
     if (!variant || !selectedDate) return
-    router.push(`/checkout?items=${encodeCheckoutItems([{ variantId: variant.id, startDate: selectedDate }])}`)
+    router.push(
+      `/checkout?items=${encodeCheckoutItems([{ variantId: variant.id, startDate: selectedDate, pieces: chosenPieces()?.sort() }])}`,
+    )
   }
 
   function handleAddToCart() {
     if (!variant || !selectedDate) return
-    const result = addToCart(variant.id, selectedDate)
-    setCartNotice(result === 'added' ? 'เพิ่มลงตะกร้าแล้ว' : 'ชุดไซส์นี้วันนี้อยู่ในตะกร้าแล้ว')
-    window.setTimeout(() => setCartNotice(null), 4000)
+    // ยังไม่ล็อกอิน → ไปเข้าสู่ระบบก่อน แล้วกลับมาหน้านี้
+    if (addToCart(variant.id, selectedDate, chosenPieces()) === 'login') {
+      router.push(loginHref(window.location.pathname + window.location.search))
+    }
   }
 
   if (loading) {
@@ -189,14 +191,12 @@ export default function CostumeDetailPage() {
   const canSplit = pricedPieces.length > 0
   const pieceMode = canSplit && rentMode === 'pieces'
   const piecesTotal = pricedPieces.filter((p) => selectedPieces.has(p.id)).reduce((sum, p) => sum + (p.price ?? 0), 0)
-  const allPiecesTotal = pricedPieces.reduce((sum, p) => sum + (p.price ?? 0), 0)
-  // เทียบกับเช่าทุกชิ้นแยกกัน → ทั้งชุดถูกกว่าเท่าไหร่ (เทียบได้เมื่อทุกชิ้นมีราคา)
-  const setSavings = variant && pricedPieces.length === detail.inclusions.length ? allPiecesTotal - variant.packagePrice : 0
   const pieceDeposit = depositForRental(piecesTotal)
+  const piecesLaundry = pricedPieces.filter((p) => selectedPieces.has(p.id)).reduce((sum, p) => sum + p.laundryFee, 0)
 
   const rentalPrice = pieceMode ? piecesTotal : (variant?.packagePrice ?? 0)
   const depositAmount = pieceMode ? pieceDeposit.amount : (variant?.depositAmount ?? 0)
-  const laundryFee = pieceMode ? 0 : (variant?.laundryFee ?? 0)
+  const laundryFee = pieceMode ? piecesLaundry : (variant?.laundryFee ?? 0)
   const grandTotal = variant ? rentalPrice + depositAmount + laundryFee + settings.shippingFlatRate : 0
 
   function togglePiece(id: string) {
@@ -208,8 +208,8 @@ export default function CostumeDetailPage() {
     })
   }
 
-  // ระบบจองยังรับเฉพาะแบบทั้งชุด — โหมดแยกชิ้นตอนนี้ใช้ดูราคาเปรียบเทียบ
-  const bookingBlocked = !selectedDate || pieceMode
+  // โหมดแยกชิ้นต้องเลือกอย่างน้อย 1 ชิ้น
+  const bookingBlocked = !selectedDate || (pieceMode && selectedPieces.size === 0)
 
   return (
     <CustomerLayout>
@@ -263,17 +263,17 @@ export default function CostumeDetailPage() {
         <div className="min-w-0">
           <div className="flex flex-wrap gap-2">
             {detail.costumeCategory && (
-              <span className="rounded-full bg-[#E5457F] px-3 py-1 text-sm font-semibold text-white">
+              <span className="rounded-full bg-[#FFF3B0] px-3 py-1 text-sm font-semibold text-[#7A5A00]">
                 {CATEGORY_LABEL[detail.costumeCategory] ?? detail.costumeCategory}
               </span>
             )}
             {detail.franchiseType && (
-              <span className="rounded-full bg-[#263544] px-3 py-1 text-sm font-semibold text-white">
+              <span className="rounded-full bg-[#FDE3EE] px-3 py-1 text-sm font-semibold text-[#B8285D]">
                 {FRANCHISE_LABEL[detail.franchiseType] ?? detail.franchiseType}
               </span>
             )}
             {detail.genderTag && (
-              <span className="rounded-full bg-[#EDE6FA] px-3 py-1 text-sm font-semibold text-[#263544]">
+              <span className="rounded-full bg-[#EDE6FA] px-3 py-1 text-sm font-semibold text-[#5B3FA8]">
                 {GENDER_LABEL[detail.genderTag] ?? detail.genderTag}
               </span>
             )}
@@ -316,7 +316,7 @@ export default function CostumeDetailPage() {
           {detail.variants.length > 0 && (
             <p className="mt-3 text-2xl font-bold text-[#E5457F]">
               {formatBaht((variant ?? detail.variants[0]).packagePrice)} /{' '}
-              {customerHeldDays((variant ?? detail.variants[0]).packageDays, settings)} วัน
+              {customerHeldDays((variant ?? detail.variants[0]).packageDays)} วัน
             </p>
           )}
 
@@ -360,13 +360,6 @@ export default function CostumeDetailPage() {
             </section>
           )}
 
-          {detail.description && (
-            <section className="mt-6">
-              <h2 className="mb-2 text-base font-bold text-[#263544]">รายละเอียดชุด</h2>
-              <p className="whitespace-pre-line text-base leading-relaxed text-[#263544]/80">{detail.description}</p>
-            </section>
-          )}
-
           {/* ขั้นที่ 1: ไซส์ */}
           <section className="mt-6">
             <p className="mb-2 text-base font-semibold text-[#263544]">1. เลือกไซส์</p>
@@ -399,7 +392,8 @@ export default function CostumeDetailPage() {
             )}
             {variant && (
               <p className="mt-2 text-base text-[#263544]/60">
-                ค่าเช่า {formatBaht(variant.packagePrice)} · ใช้งาน 1 วัน + ส่งคืนวันถัดไป
+                ค่าเช่า {formatBaht(variant.packagePrice)} · เช่า {customerHeldDays(variant.packageDays)} วัน
+                นับจากวันใช้งานถึงวันส่งคืน
               </p>
             )}
 
@@ -465,7 +459,6 @@ export default function CostumeDetailPage() {
                   loading={datesLoading}
                   getTimeline={getTimeline}
                   events={events}
-                  eventsAreMock={eventsAreMock}
                 />
               )}
             </section>
@@ -492,9 +485,12 @@ export default function CostumeDetailPage() {
                     label="ส่งคืนภายใน"
                     date={formatThaiDateWithWeekday(timeline.returnBy)}
                   />
+                  <p className="col-span-3 text-sm text-[#263544]/60">
+                    เช่า {customerHeldDays(variant.packageDays)} วัน (วันใช้งานถึงวันส่งคืน) · วันที่ชุดถึงมือคุณไม่นับเป็นวันเช่า
+                  </p>
                 </div>
               ) : (
-                <p className="mb-4 rounded-xl bg-[#FFF3B0] px-4 py-2.5 text-center text-base text-[#263544]">
+                <p className="mb-4 rounded-xl bg-[#F7F7F8] px-4 py-2.5 text-center text-base text-[#263544]/75">
                   เลือกวันที่จะใส่ชุดในปฏิทิน เพื่อดูวันรับและวันคืนชุด
                 </p>
               )}
@@ -536,24 +532,19 @@ export default function CostumeDetailPage() {
                                 onChange={() => togglePiece(p.id)}
                                 className="h-5 w-5 shrink-0 accent-[#E5457F]"
                               />
-                              <span className="flex-1 font-medium">{p.name}</span>
+                              <span className="flex-1 font-medium">
+                                {p.name}
+                                {p.laundryFee > 0 && (
+                                  <span className="block text-sm font-normal text-[#263544]/50">
+                                    ค่าซักรีด {formatBaht(p.laundryFee)}
+                                  </span>
+                                )}
+                              </span>
                               <span className="tabular-nums text-[#263544]/70">{formatBaht(p.price)}</span>
                             </label>
                           </li>
                         ))}
                       </ul>
-                      {setSavings > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setRentMode('set')}
-                          className="mt-3 flex w-full items-center gap-2 rounded-xl bg-[#EDE6FA] px-4 py-3 text-left text-base text-[#263544]"
-                        >
-                          <InfoIcon size={20} className="shrink-0 text-[#E5457F]" />
-                          <span>
-                            เช่าทั้งชุดประหยัดกว่าเช่าครบทุกชิ้นแยกกัน <b className="text-[#E5457F]">{formatBaht(setSavings)}</b>
-                          </span>
-                        </button>
-                      )}
                     </>
                   )}
                 </div>
@@ -563,7 +554,8 @@ export default function CostumeDetailPage() {
                 {pieceMode ? (
                   <>
                     <PriceRow label={`ยอดรวมค่าเช่า (${selectedPieces.size} ชิ้น)`} value={piecesTotal} />
-                    <PriceRow label={`ค่ามัดจำ (${pieceDeposit.label})`} value={pieceDeposit.amount} />
+                    <PriceRow label="ค่ามัดจำ" value={pieceDeposit.amount} />
+                    {piecesLaundry > 0 && <PriceRow label="ค่าซักรีด" value={piecesLaundry} />}
                   </>
                 ) : (
                   <>
@@ -595,23 +587,9 @@ export default function CostumeDetailPage() {
                   disabled={bookingBlocked}
                   className="pop rounded-full bg-[#E5457F] py-3 text-base font-bold text-white disabled:bg-gray-200 disabled:text-gray-400"
                 >
-                  {selectedDate ? 'เช่าเลย' : 'เลือกวันใช้งานก่อน'}
+                  {!selectedDate ? 'เลือกวันใช้งานก่อน' : pieceMode && selectedPieces.size === 0 ? 'เลือกชิ้นก่อน' : 'เช่าเลย'}
                 </button>
               </div>
-              {pieceMode && (
-                <p className="mt-3 rounded-xl bg-[#FFF3B0] px-4 py-2.5 text-center text-base text-[#263544]">
-                  ตอนนี้จองได้เฉพาะแบบเช่าทั้งชุด การจองแยกชิ้นกำลังจะเปิดให้ใช้เร็ว ๆ นี้
-                </p>
-              )}
-              {cartNotice && (
-                <p className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-[#EDE6FA] px-3 py-2 text-base text-[#263544]">
-                  <CheckCircleIcon size={18} weight="fill" className="text-[#E5457F]" />
-                  {cartNotice}
-                  <Link href="/cart" className="font-semibold text-[#E5457F] underline">
-                    ไปที่ตะกร้า
-                  </Link>
-                </p>
-              )}
               <p className="mt-2 text-center text-base text-[#263544]/50">
                 มัดจำคืนภายใน {variant.depositReturnHours} ชม. หลังร้านได้รับชุดคืนและตรวจสภาพเรียบร้อย
               </p>

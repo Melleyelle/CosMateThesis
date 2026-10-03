@@ -16,7 +16,6 @@ interface BookingCalendarProps {
   // คำนวณวันรับ/วันคืนจากวันใช้งาน
   getTimeline: (useDate: string) => Timeline
   events?: CalendarEvent[]
-  eventsAreMock?: boolean
 }
 
 const WEEKDAYS = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.']
@@ -35,7 +34,6 @@ export default function BookingCalendar({
   loading,
   getTimeline,
   events = [],
-  eventsAreMock = false,
 }: BookingCalendarProps) {
   const today = todayISO()
   const lastDate = addDays(today, Math.max(0, daysAhead))
@@ -135,7 +133,7 @@ export default function BookingCalendar({
               {dayEvents && (
                 <span className="absolute right-1.5 top-1.5 flex gap-0.5" aria-hidden="true">
                   {dayEvents.slice(0, 2).map((ev) => (
-                    <span key={ev.id} className={`h-1.5 w-1.5 rounded-full ${EVENT_TONE[ev.tone].dot} ring-1 ring-white`} />
+                    <span key={ev.id} className={`h-1.5 w-1.5 rounded-full ${EVENT_TONE.yellow.dot} ring-1 ring-white`} />
                   ))}
                 </span>
               )}
@@ -173,19 +171,14 @@ export default function BookingCalendar({
       {/* งานอีเวนต์ของเดือนที่แสดง */}
       {events.length > 0 && (
         <div className="mt-4 border-t border-[#263544]/10 pt-4">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-base font-bold text-[#263544]">งานอีเวนต์เดือนนี้</p>
-            {eventsAreMock && (
-              <span className="rounded-full bg-[#FFF3B0] px-2 py-0.5 text-xs font-bold text-[#7A5A00]">ข้อมูลตัวอย่าง</span>
-            )}
-          </div>
+          <p className="mb-2 text-base font-bold text-[#263544]">งานอีเวนต์เดือนนี้</p>
           {monthEvents.length === 0 ? (
             <p className="text-base text-[#263544]/50">ยังไม่มีงานอีเวนต์ในเดือนนี้</p>
           ) : (
             <ul className="space-y-2">
               {monthEvents.map((ev) => (
                 <li key={ev.id} className="flex items-center gap-3 rounded-xl border border-[#263544]/10 p-2.5">
-                  <span className={`shrink-0 rounded-lg px-2 py-1 text-center text-sm font-bold leading-tight ${EVENT_TONE[ev.tone].chip}`}>
+                  <span className={`shrink-0 rounded-lg px-2 py-1 text-center text-sm font-bold leading-tight ${EVENT_TONE.yellow.chip}`}>
                     {formatThaiDateWithWeekday(ev.startDate)}
                     {ev.endDate !== ev.startDate && (
                       <span className="block font-medium">ถึง {formatThaiDateWithWeekday(ev.endDate)}</span>

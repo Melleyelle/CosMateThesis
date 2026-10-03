@@ -25,7 +25,6 @@ export type ProductBasicInfo = {
   themeTags: string[]
   crossplayFriendly: boolean
   isGroupSet: boolean
-  description: string
 }
 
 // สเตป 2 — ตรงกับตาราง product_images และ product_inclusions
@@ -42,6 +41,7 @@ export type ProductInclusion = {
   name: string
   imageUrl: string
   price: string // ค่าเช่าเมื่อลูกค้าเลือกแยกชิ้น — เว้นว่าง = ไม่เปิดให้เช่าแยก (product_inclusions.rental_price)
+  laundryFee: string // ค่าซักรีดเมื่อเช่าแยกชิ้น (ไม่บังคับ, ว่าง = 0) (product_inclusions.laundry_fee)
 }
 
 // สเตป 3 — ตรงกับตาราง product_variants และ size_charts
@@ -90,7 +90,6 @@ export const EMPTY_FORM_DATA: CostumeFormData = {
     themeTags: [],
     crossplayFriendly: false,
     isGroupSet: false,
-    description: '',
   },
   coverImage: null,
   images: [],

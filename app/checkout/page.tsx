@@ -15,7 +15,8 @@ import {
 } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
 import { createClient } from '@/utils/client'
-import { decodeCheckoutItems, removeFromCart, type CartKey } from '@/utils/customer/cart'
+import { cartKeyOf, decodeCheckoutItems, removeFromCart, type CartKey } from '@/utils/customer/cart'
+import { fetchPieces, priceLine, type PieceInfo } from '@/utils/customer/pieces'
 import { fetchVariantSummaries, type VariantSummary } from '@/utils/customer/fetchVariantSummaries'
 import {
   DEFAULT_BOOKING_SETTINGS,
@@ -47,7 +48,10 @@ const EMPTY_REFUND = EMPTY_BANK
 const refundProblem = bankProblem
 
 const inputClass =
-  'w-full rounded-lg bg-[#EFEFEF] px-3 py-2.5 text-base text-gray-900 outline-none placeholder:text-gray-400 focus:bg-white focus:ring-2 focus:ring-[#E5457F]/30'
+  'w-full rounded-xl border-2 border-[#EEEDF2] bg-white px-4 py-2.5 text-base text-[#263544] outline-none transition placeholder:text-[#263544]/40 focus:border-[#E5457F] focus:ring-2 focus:ring-[#E5457F]/20'
+
+// กล่องหลักแบบเดียวกับหน้ารายละเอียดชุด/บัญชีของฉัน
+const cardClass = 'rounded-2xl border-2 border-[#263544] bg-white p-5 shadow-[4px_4px_0_0_#263544]'
 
 // ---------------------------------------------------------------------------
 // หน้า
@@ -67,6 +71,7 @@ function CheckoutInner() {
   const fromCart = !!searchParams.get('items')
 
   const [variants, setVariants] = useState<Record<string, VariantSummary>>({})
+  const [pieces, setPieces] = useState<Record<string, PieceInfo>>({})
   const [settings, setSettings] = useState<BookingSettings>(DEFAULT_BOOKING_SETTINGS)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -108,10 +113,12 @@ function CheckoutInner() {
         fetchBookingSettings(),
         supabase.auth.getUser(),
       ])
+      const pieceRes = await fetchPieces(Object.values(variantRes.data).map((v) => v.productId))
       if (cancelled) return
       setSettings(s)
       if (variantRes.error) setLoadError(variantRes.error)
       setVariants(variantRes.data)
+      setPieces(pieceRes)
 
       // เติมที่อยู่/บัญชีคืนมัดจำให้อัตโนมัติ จากที่อยู่หลักและออเดอร์ล่าสุด
       const user = userRes.data.user
@@ -188,26 +195,30 @@ function CheckoutInner() {
   const minStart = addDays(todayISO(), Math.max(settings.minLeadDays, settings.bufferDaysBefore))
   const lines = requested.map((r) => {
     const v = variants[r.variantId]
+    const price = v ? priceLine(v, r.pieces, pieces) : null
     return {
-      key: `${r.variantId}:${r.startDate}`,
+      key: cartKeyOf(r),
       request: r,
       variant: v,
+      price,
       timeline: v ? getRentalTimeline(r.startDate, v.packageDays, settings) : null,
       problem: !v
         ? 'ชุดหรือไซส์นี้ปิดให้เช่าแล้ว'
-        : r.startDate < minStart
-          ? `วันใช้งานกระชั้นเกินไป (ต้องจองล่วงหน้าอย่างน้อย ${settings.minLeadDays} วัน)`
-          : null,
+        : price?.invalid
+          ? 'บางชิ้นที่เลือกไม่เปิดให้เช่าแยกแล้ว'
+          : r.startDate < minStart
+            ? `วันใช้งานกระชั้นเกินไป (ต้องจองล่วงหน้าอย่างน้อย ${settings.minLeadDays} วัน)`
+            : null,
     }
   })
   const hasProblem = lines.some((l) => l.problem)
   const totals = lines.reduce(
     (acc, l) =>
-      l.variant
+      l.price
         ? {
-            rental: acc.rental + l.variant.packagePrice,
-            deposit: acc.deposit + l.variant.depositAmount,
-            laundry: acc.laundry + l.variant.laundryFee,
+            rental: acc.rental + l.price.rental,
+            deposit: acc.deposit + l.price.deposit,
+            laundry: acc.laundry + l.price.laundry,
           }
         : acc,
     { rental: 0, deposit: 0, laundry: 0 },
@@ -249,7 +260,11 @@ function CheckoutInner() {
     setDateProblem(false)
 
     const { data, error } = await supabase.rpc('create_booking', {
-      p_items: requested.map((r) => ({ variant_id: r.variantId, start_date: r.startDate })),
+      p_items: requested.map((r) => ({
+        variant_id: r.variantId,
+        start_date: r.startDate,
+        ...(r.pieces ? { pieces: r.pieces } : {}),
+      })),
       p_ship_name: address.name.trim(),
       p_ship_phone: address.phone,
       p_ship_address: address.line.trim(),
@@ -325,12 +340,12 @@ function CheckoutInner() {
       <form onSubmit={handleSubmit} noValidate className="grid gap-6 lg:grid-cols-[1fr_420px]">
         <div className="space-y-7">
           {/* ---------------- ที่อยู่จัดส่ง ---------------- */}
-          <section className="rounded-2xl border border-[#263544] bg-white p-5">
+          <section className={cardClass}>
             <div className="flex items-start gap-3">
-              <MapPinIcon size={26} weight="fill" className="flex-shrink-0 text-[#263544]" />
+              <MapPinIcon size={26} weight="fill" className="flex-shrink-0 text-[#E5457F]" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-lg font-medium text-[#263544]">ที่อยู่สำหรับจัดส่ง:</h2>
+                  <h2 className="text-lg font-bold text-[#263544]">ที่อยู่สำหรับจัดส่ง</h2>
                   {!editingAddress && (
                     <EditButton onClick={() => setEditingAddress(true)} label="แก้ไขที่อยู่" />
                   )}
@@ -412,7 +427,7 @@ function CheckoutInner() {
                         type="checkbox"
                         checked={saveAsDefault}
                         onChange={(e) => setSaveAsDefault(e.target.checked)}
-                        className="h-4 w-4 accent-[#263544]"
+                        className="h-5 w-5 accent-[#E5457F]"
                       />
                       {hadDefaultAddress ? 'อัปเดตเป็นที่อยู่หลักของฉัน' : 'บันทึกเป็นที่อยู่หลักของฉัน'}
                     </label>
@@ -421,7 +436,7 @@ function CheckoutInner() {
                       <button
                         type="button"
                         onClick={confirmAddress}
-                        className="pop rounded-full bg-[#263544] px-5 py-2 text-base font-semibold text-white"
+                        className="pop rounded-full bg-[#E5457F] px-6 py-2.5 text-base font-semibold text-white"
                       >
                         ใช้ที่อยู่นี้
                       </button>
@@ -435,21 +450,21 @@ function CheckoutInner() {
           {/* ---------------- การจัดส่ง + วิธีชำระ ---------------- */}
           <div className="grid gap-6 sm:grid-cols-2">
             <div>
-              <h2 className="mb-3 text-lg font-medium text-[#263544]">การจัดส่ง</h2>
+              <h2 className="mb-3 text-lg font-bold text-[#263544]">การจัดส่ง</h2>
               <FixedChoice label="ไปรษณีย์ไทย (ส่งด่วน EMS)" />
             </div>
             <div>
-              <h2 className="mb-3 text-lg font-medium text-[#263544]">วิธีการชำระ</h2>
+              <h2 className="mb-3 text-lg font-bold text-[#263544]">วิธีการชำระ</h2>
               <FixedChoice label="QR พร้อมเพย์" />
             </div>
           </div>
 
           {/* ---------------- บัญชีรับเงินมัดจำคืน ---------------- */}
           <div>
-            <h2 className="mb-3 text-lg font-medium text-[#263544]">ช่องทางรับเงินมัดจำคืน</h2>
-            <section className="rounded-2xl border border-[#263544] bg-white p-5">
+            <h2 className="mb-3 text-lg font-bold text-[#263544]">ช่องทางรับเงินมัดจำคืน</h2>
+            <section className={cardClass}>
               <div className="flex items-start gap-3">
-                <BankIcon size={24} className="mt-1 flex-shrink-0 text-[#263544]" />
+                <BankIcon size={24} weight="fill" className="mt-1 flex-shrink-0 text-[#E5457F]" />
                 <div className="min-w-0 flex-1">
                   {!editingRefund ? (
                     <div className="flex items-start justify-between gap-2">
@@ -501,7 +516,7 @@ function CheckoutInner() {
                           type="checkbox"
                           checked={saveBank}
                           onChange={(e) => setSaveBank(e.target.checked)}
-                          className="h-4 w-4 accent-[#263544]"
+                          className="h-5 w-5 accent-[#E5457F]"
                         />
                         {hadSavedBank ? 'อัปเดตเป็นบัญชีของฉัน' : 'บันทึกเป็นบัญชีของฉัน ใช้ครั้งต่อไปได้เลย'}
                       </label>
@@ -510,7 +525,7 @@ function CheckoutInner() {
                         <button
                           type="button"
                           onClick={confirmRefund}
-                          className="pop rounded-full bg-[#263544] px-5 py-2 text-base font-semibold text-white"
+                          className="pop rounded-full bg-[#E5457F] px-6 py-2.5 text-base font-semibold text-white"
                         >
                           ใช้บัญชีนี้
                         </button>
@@ -526,25 +541,29 @@ function CheckoutInner() {
           </div>
 
           <div>
-            <h2 className="mb-3 text-lg font-medium text-[#263544]">หมายเหตุถึงร้าน (ไม่บังคับ)</h2>
+            <h2 className="mb-3 text-lg font-bold text-[#263544]">
+              หมายเหตุถึงร้าน <span className="font-normal text-[#263544]/50">(ไม่บังคับ)</span>
+            </h2>
             <textarea
               rows={2}
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="เช่น ใช้ไปงาน Comic Con อยากได้ของก่อนเที่ยง"
-              className={`${inputClass} border border-gray-200`}
+              className={inputClass}
             />
           </div>
         </div>
 
         {/* ---------------- สรุปการเช่า ---------------- */}
-        <aside className="h-fit rounded-2xl border border-[#263544] bg-white p-6 lg:sticky lg:top-24">
-          <h2 className="mb-5 text-2xl font-medium text-[#263544]">สรุปการเช่า: {lines.length} รายการ</h2>
+        <aside className={`${cardClass} h-fit p-6 lg:sticky lg:top-24`}>
+          <h2 className="mb-5 border-b border-[#263544]/10 pb-4 text-2xl font-bold text-[#263544]">
+            สรุปการเช่า <span className="text-[#E5457F]">{lines.length} รายการ</span>
+          </h2>
 
           <ul className="space-y-5">
             {lines.map((l) => (
               <li key={l.key} className="flex gap-4">
-                <div className="h-28 w-24 flex-shrink-0 overflow-hidden rounded-xl bg-[#FDE3EE]">
+                <div className="h-28 w-24 flex-shrink-0 overflow-hidden rounded-xl border-2 border-[#263544] bg-[#FDE3EE]">
                   {l.variant?.coverImageUrl ? (
                     <img src={l.variant.coverImageUrl} alt="" className="h-full w-full object-cover" />
                   ) : (
@@ -554,21 +573,26 @@ function CheckoutInner() {
                   )}
                 </div>
                 <div className="min-w-0 flex-1 text-base">
-                  <p className="text-lg font-medium leading-snug text-[#263544]">
+                  <p className="text-lg font-semibold leading-snug text-[#263544]">
                     {l.variant?.productName ?? 'ชุดที่ปิดให้เช่าแล้ว'}
                   </p>
                   {l.variant && <p className="text-[#263544]/80">ไซส์: {l.variant.size}</p>}
+                  {l.price?.pieceNames && (
+                    <p className="text-[#263544]/80">เช่าแยกชิ้น: {l.price.pieceNames.join(', ')}</p>
+                  )}
                   {l.timeline && (
                     <div className="mt-2">
                       <p className="text-[#263544]/60">วันที่เช่า:</p>
                       <p className="text-[#263544]">
-                        {formatThaiDateLong(l.timeline.receiveDate)} ถึง {formatThaiDateLong(l.timeline.returnBy)}
+                        {formatThaiDateLong(l.timeline.useDate)} ถึง {formatThaiDateLong(l.timeline.returnBy)}
                       </p>
-                      <p className="text-base text-[#E5457F]">วันใช้งาน {formatThaiDateLong(l.request.startDate)}</p>
+                      <p className="text-base text-[#263544]/60">
+                        ชุดถึงมือคุณ {formatThaiDateLong(l.timeline.receiveDate)} (ไม่นับวันเช่า)
+                      </p>
                     </div>
                   )}
                   {l.problem && (
-                    <p className="mt-2 flex gap-1 rounded-lg bg-[#FFF3B0] px-2 py-1 text-base text-[#263544]">
+                    <p className="mt-2 flex gap-1.5 rounded-xl bg-[#FFF3B0] px-3 py-2 text-base text-[#263544]">
                       <WarningCircleIcon size={14} className="mt-0.5 flex-shrink-0" />
                       {l.problem}
                     </p>
@@ -578,25 +602,24 @@ function CheckoutInner() {
             ))}
           </ul>
 
-          <div className="my-5 border-t-2 border-gray-200" />
-          <dl className="space-y-3 text-base">
-            <PriceRow label="จำนวนเงินค่าเช่า:" value={totals.rental} />
-            <PriceRow label="เงินค่ามัดจำ:" value={totals.deposit} />
-            <PriceRow label="ค่าซักรีด:" value={totals.laundry} />
-            <PriceRow label="ค่าขนส่ง:" value={settings.shippingFlatRate} />
+          <div className="my-5 border-t border-[#263544]/10" />
+          <dl className="space-y-2 text-base">
+            <PriceRow label="ค่าเช่าชุด" value={totals.rental} />
+            <PriceRow label="ค่ามัดจำ (ได้คืนหลังตรวจชุด)" value={totals.deposit} />
+            <PriceRow label="ค่าซักรีด" value={totals.laundry} />
+            <PriceRow label="ค่าจัดส่ง" value={settings.shippingFlatRate} />
+            <div className="flex items-center justify-between border-t-2 border-dashed border-gray-200 pt-3">
+              <dt className="font-bold text-[#263544]">ยอดชำระทั้งหมด</dt>
+              <dd className="text-3xl font-extrabold text-[#E5457F]">{formatBaht(grandTotal)}</dd>
+            </div>
           </dl>
-          <div className="my-5 border-t-2 border-gray-200" />
-          <div className="flex items-center justify-between">
-            <span className="text-base text-[#263544]">จำนวนเงินสุทธิ:</span>
-            <span className="text-3xl font-bold text-[#263544]">{formatBaht(grandTotal)}</span>
-          </div>
 
-          <label className="mt-5 flex cursor-pointer gap-2 text-base leading-relaxed text-[#263544]/70">
+          <label className="mt-5 flex cursor-pointer gap-2.5 rounded-xl bg-[#F7F7F8] p-3 text-base leading-relaxed text-[#263544]/80">
             <input
               type="checkbox"
               checked={accepted}
               onChange={(e) => setAccepted(e.target.checked)}
-              className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#263544]"
+              className="mt-1 h-5 w-5 flex-shrink-0 accent-[#E5457F]"
             />
             <span>
               ยอมรับเงื่อนไขการเช่า: ส่งชุดคืน
@@ -624,9 +647,9 @@ function CheckoutInner() {
           <button
             type="submit"
             disabled={submitting || !accepted || hasProblem}
-            className="pop mt-5 w-full rounded-full bg-[#263544] py-4 text-base font-semibold text-white disabled:opacity-40"
+            className="pop mt-5 w-full rounded-full bg-[#E5457F] py-4 text-lg font-bold text-white disabled:bg-gray-200 disabled:text-gray-400"
           >
-            {submitting ? 'กำลังจองชุด...' : 'ยืนยัน'}
+            {submitting ? 'กำลังจองชุด...' : 'ยืนยันการเช่า'}
           </button>
           {hasProblem && (
             <p className="mt-2 text-center text-base text-red-600">มีบางรายการจองไม่ได้ กรุณากลับไปแก้ไขก่อน</p>
@@ -657,7 +680,7 @@ function EditButton({ onClick, label }: { onClick: () => void; label: string }) 
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="nudge rounded-lg p-1.5 text-[#263544]"
+      className="nudge rounded-lg p-1.5 text-[#263544] hover:text-[#E5457F]"
     >
       <NotePencilIcon size={26} />
     </button>
@@ -666,11 +689,11 @@ function EditButton({ onClick, label }: { onClick: () => void; label: string }) 
 
 function FixedChoice({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-4 rounded-2xl border border-[#263544] bg-white px-5 py-4">
-      <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[#263544] text-white">
+    <div className="flex items-center gap-4 rounded-2xl border-2 border-[#263544] bg-white px-5 py-4 shadow-[4px_4px_0_0_#263544]">
+      <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#E5457F] text-white">
         <CheckIcon size={16} weight="bold" />
       </span>
-      <span className="text-base text-[#263544]">{label}</span>
+      <span className="text-base font-semibold text-[#263544]">{label}</span>
     </div>
   )
 }

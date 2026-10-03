@@ -136,7 +136,6 @@ export default function EditCostumePage() {
         theme_tags: basicInfo.themeTags,
         crossplay_friendly: basicInfo.crossplayFriendly,
         is_group_set: basicInfo.isGroupSet,
-        description: basicInfo.description,
         cover_image_url: coverImage?.uploadedUrl ?? '',
       },
       p_images: images

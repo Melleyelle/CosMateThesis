@@ -180,7 +180,7 @@ export function Segmented<T extends string>({
             aria-checked={active}
             onClick={() => onChange(o.value)}
             className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
-              active ? 'bg-[#263544] text-white' : 'text-[#5B6472] hover:text-[#263544]'
+              active ? 'bg-[#E5457F] text-white' : 'text-[#5B6472] hover:text-[#263544]'
             }`}
           >
             {o.label}

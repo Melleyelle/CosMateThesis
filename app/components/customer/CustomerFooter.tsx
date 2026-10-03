@@ -59,13 +59,6 @@ export default function CustomerFooter() {
           <p className="mt-5 max-w-xs text-base leading-relaxed text-[#263544]/80">
             เช่าชุดคอสเพลย์/แฟนซีคุณภาพสูง ส่งตรงถึงบ้าน เพื่อทุกโอกาสพิเศษของคุณ
           </p>
-          <Link
-            href="/costumes"
-            className="pop mt-6 inline-flex items-center gap-2 rounded-full bg-[#E5457F] px-5 py-2.5 text-base font-semibold text-white"
-          >
-            เริ่มเลือกชุดเลย
-            <ArrowRightIcon size={16} weight="bold" />
-          </Link>
         </div>
 
         {LINK_GROUPS.map((group) => (
@@ -99,19 +92,12 @@ export default function CustomerFooter() {
               </a>
             </li>
           </ul>
-          <p className="mt-5 text-base leading-relaxed text-[#263544]/60">
-            มีคำถามเรื่องขนาดชุดหรือการจอง ทักมาได้เลย เรายินดีช่วยเลือกให้
-          </p>
         </div>
       </div>
 
       <div className="border-t border-[#263544]/15">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-5 text-base text-[#263544]/70 sm:flex-row sm:px-6">
           <p>© {new Date().getFullYear()} CosMate. All rights reserved.</p>
-          <a href="#" className="flex items-center gap-1 transition hover:text-[#E5457F]">
-            กลับขึ้นด้านบน
-            <ArrowUpIcon size={14} weight="bold" />
-          </a>
         </div>
       </div>
     </footer>

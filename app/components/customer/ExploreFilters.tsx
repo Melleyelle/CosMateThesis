@@ -1,7 +1,9 @@
 'use client'
 
-import type { Dispatch, SetStateAction } from 'react'
+import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import { CheckIcon } from '@phosphor-icons/react'
 import { COLOR_OPTIONS, THEME_OPTIONS } from '@/utils/customer/filterOptions'
+import { formatBaht } from '@/utils/dateUtils'
 
 export type ExploreFilterState = {
   categories: string[]
@@ -9,9 +11,10 @@ export type ExploreFilterState = {
   sizes: string[]
   colors: string[]
   themes: string[]
-  series: string[]
-  priceMin: number | null
-  priceMax: number | null
+  series: string | null // เลือกจากแถวบนของผลลัพธ์
+  character: string | null // เลือกได้หลังเลือกเรื่องแล้วเท่านั้น
+  priceMin: number | null // null = ไม่จำกัด (ต่ำกว่า PRICE_FLOOR ก็ผ่าน)
+  priceMax: number | null // null = ไม่จำกัด (เกิน PRICE_CEILING ก็ผ่าน)
 }
 
 export const EMPTY_FILTERS: ExploreFilterState = {
@@ -20,19 +23,23 @@ export const EMPTY_FILTERS: ExploreFilterState = {
   sizes: [],
   colors: [],
   themes: [],
-  series: [],
+  series: null,
+  character: null,
   priceMin: null,
   priceMax: null,
 }
 
-type FilterField = 'categories' | 'genders' | 'sizes' | 'colors' | 'themes' | 'series'
+// แถบเลื่อนราคา: ซ้ายสุด = "ต่ำกว่า ฿250" (ไม่จำกัดขั้นต่ำ) / ขวาสุด = ฿2,500 ขึ้นไป (ไม่จำกัดเพดาน)
+export const PRICE_FLOOR = 250
+export const PRICE_CEILING = 2500
+const PRICE_STEP = 50
+
+type ListField = 'categories' | 'genders' | 'sizes' | 'colors' | 'themes'
 
 interface ExploreFiltersProps {
   value: ExploreFilterState
   onChange: Dispatch<SetStateAction<ExploreFilterState>>
   categoryCounts: Record<string, number>
-  seriesOptions: { name: string; count: number }[]
-  priceBounds: { min: number; max: number }
 }
 
 const CATEGORY_OPTIONS = [
@@ -56,19 +63,21 @@ export function countActiveFilters(filters: ExploreFilterState): number {
     filters.sizes.length +
     filters.colors.length +
     filters.themes.length +
-    filters.series.length +
+    (filters.series ? 1 : 0) +
+    (filters.character ? 1 : 0) +
     (filters.priceMin !== null || filters.priceMax !== null ? 1 : 0)
   )
 }
 
-export default function ExploreFilters({
-  value,
-  onChange,
-  categoryCounts,
-  seriesOptions,
-  priceBounds,
-}: ExploreFiltersProps) {
-  function toggle(field: FilterField, key: string) {
+export function priceRangeLabel(min: number | null, max: number | null): string {
+  if (min === null && max === null) return 'ทุกราคา'
+  if (min === null) return `ไม่เกิน ${formatBaht(max ?? 0)}`
+  if (max === null) return `${formatBaht(min)} ขึ้นไป`
+  return `${formatBaht(min)} – ${formatBaht(max)}`
+}
+
+export default function ExploreFilters({ value, onChange, categoryCounts }: ExploreFiltersProps) {
+  function toggle(field: ListField, key: string) {
     onChange((current) => ({
       ...current,
       [field]: current[field].includes(key)
@@ -77,147 +86,154 @@ export default function ExploreFilters({
     }))
   }
 
-  function setPrice(field: 'priceMin' | 'priceMax', raw: string) {
-    const parsed = raw === '' ? null : Number(raw)
-    onChange((current) => ({ ...current, [field]: parsed !== null && Number.isFinite(parsed) ? parsed : null }))
+  const lo = value.priceMin ?? PRICE_FLOOR
+  const hi = value.priceMax ?? PRICE_CEILING
+
+  function setRange(nextLo: number, nextHi: number) {
+    onChange((current) => ({
+      ...current,
+      priceMin: nextLo <= PRICE_FLOOR ? null : nextLo,
+      priceMax: nextHi >= PRICE_CEILING ? null : nextHi,
+    }))
   }
 
+  const pct = (n: number) => ((n - PRICE_FLOOR) / (PRICE_CEILING - PRICE_FLOOR)) * 100
+
   return (
-    <div className="space-y-6 py-5">
+    <div className="space-y-6 py-6">
       <FilterSection title="ประเภทชุด">
-        {CATEGORY_OPTIONS.map((option) => (
-          <FilterCheckbox
-            key={option.key}
-            label={option.label}
-            count={categoryCounts[option.key] ?? 0}
-            checked={value.categories.includes(option.key)}
-            onChange={() => toggle('categories', option.key)}
-          />
-        ))}
+        <div className="flex flex-wrap gap-2">
+          {CATEGORY_OPTIONS.map((option) => (
+            <Pill
+              key={option.key}
+              active={value.categories.includes(option.key)}
+              onClick={() => toggle('categories', option.key)}
+            >
+              {option.label}
+              <span className="ml-1 opacity-60">{categoryCounts[option.key] ?? 0}</span>
+            </Pill>
+          ))}
+        </div>
       </FilterSection>
 
       <FilterSection title="เพศ">
-        {GENDER_OPTIONS.map((option) => (
-          <FilterCheckbox
-            key={option.key}
-            label={option.label}
-            checked={value.genders.includes(option.key)}
-            onChange={() => toggle('genders', option.key)}
-          />
-        ))}
+        <div className="flex flex-wrap gap-2">
+          {GENDER_OPTIONS.map((option) => (
+            <Pill key={option.key} active={value.genders.includes(option.key)} onClick={() => toggle('genders', option.key)}>
+              {option.label}
+            </Pill>
+          ))}
+        </div>
       </FilterSection>
 
       <FilterSection title="ไซส์">
-        {SIZE_OPTIONS.map((size) => (
-          <FilterCheckbox
-            key={size}
-            label={size}
-            checked={value.sizes.includes(size)}
-            onChange={() => toggle('sizes', size)}
-          />
-        ))}
+        <div className="flex flex-wrap gap-2">
+          {SIZE_OPTIONS.map((size) => (
+            <Pill key={size} active={value.sizes.includes(size)} onClick={() => toggle('sizes', size)}>
+              {size}
+            </Pill>
+          ))}
+        </div>
       </FilterSection>
 
       <FilterSection title="สี">
-        {COLOR_OPTIONS.map((option) => (
-          <FilterCheckbox
-            key={option.key}
-            label={option.label}
-            checked={value.colors.includes(option.key)}
-            onChange={() => toggle('colors', option.key)}
-            swatch={option.hex}
-          />
-        ))}
+        <div className="flex flex-wrap gap-2.5">
+          {COLOR_OPTIONS.map((option) => {
+            const active = value.colors.includes(option.key)
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => toggle('colors', option.key)}
+                aria-pressed={active}
+                aria-label={`สี${option.label}`}
+                title={option.label}
+                className={`nudge flex h-9 w-9 items-center justify-center rounded-full border-2 transition ${
+                  active ? 'border-[#263544] ring-2 ring-[#E5457F] ring-offset-2' : 'border-black/10'
+                }`}
+                style={{ backgroundColor: option.hex }}
+              >
+                {active && (
+                  <CheckIcon size={16} weight="bold" className="text-white drop-shadow-[0_0_2px_rgba(0,0,0,0.8)]" />
+                )}
+              </button>
+            )
+          })}
+        </div>
       </FilterSection>
 
       <FilterSection title="ธีม">
-        {THEME_OPTIONS.map((option) => (
-          <FilterCheckbox
-            key={option.key}
-            label={option.label}
-            checked={value.themes.includes(option.key)}
-            onChange={() => toggle('themes', option.key)}
-          />
-        ))}
+        <div className="flex flex-wrap gap-2">
+          {THEME_OPTIONS.map((option) => (
+            <Pill key={option.key} active={value.themes.includes(option.key)} onClick={() => toggle('themes', option.key)}>
+              {option.label}
+            </Pill>
+          ))}
+        </div>
       </FilterSection>
 
-      {seriesOptions.length > 0 && (
-        <FilterSection title="เรื่อง / ซีรีส์">
-          {seriesOptions.map((option) => (
-            <FilterCheckbox
-              key={option.name}
-              label={option.name}
-              count={option.count}
-              checked={value.series.includes(option.name)}
-              onChange={() => toggle('series', option.name)}
-            />
-          ))}
-        </FilterSection>
-      )}
-
-      <FilterSection title="ราคาเริ่มต้น">
-        <div className="grid grid-cols-2 gap-2">
-          <label className="text-base text-[#263544]/65">
-            ต่ำสุด
-            <input
-              type="number"
-              min={priceBounds.min}
-              max={priceBounds.max}
-              value={value.priceMin ?? ''}
-              onChange={(event) => setPrice('priceMin', event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[#263544]/20 bg-white px-2 py-2 text-base text-[#263544] outline-none focus:border-[#E5457F]"
-            />
-          </label>
-          <label className="text-base text-[#263544]/65">
-            สูงสุด
-            <input
-              type="number"
-              min={priceBounds.min}
-              max={priceBounds.max}
-              value={value.priceMax ?? ''}
-              onChange={(event) => setPrice('priceMax', event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[#263544]/20 bg-white px-2 py-2 text-base text-[#263544] outline-none focus:border-[#E5457F]"
-            />
-          </label>
+      <FilterSection title="ราคาเช่า">
+        <p className="mb-3 text-base font-semibold text-[#E5457F]">
+          {priceRangeLabel(value.priceMin, value.priceMax)}
+        </p>
+        <div className="relative h-6">
+          <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-[#263544]/10" />
+          <div
+            className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-[#E5457F]"
+            style={{ left: `${pct(lo)}%`, right: `${100 - pct(hi)}%` }}
+          />
+          <input
+            type="range"
+            min={PRICE_FLOOR}
+            max={PRICE_CEILING}
+            step={PRICE_STEP}
+            value={lo}
+            onChange={(e) => setRange(Math.min(Number(e.target.value), hi - PRICE_STEP), hi)}
+            aria-label="ราคาต่ำสุด"
+            className="range-thumb absolute inset-0 w-full"
+          />
+          <input
+            type="range"
+            min={PRICE_FLOOR}
+            max={PRICE_CEILING}
+            step={PRICE_STEP}
+            value={hi}
+            onChange={(e) => setRange(lo, Math.max(Number(e.target.value), lo + PRICE_STEP))}
+            aria-label="ราคาสูงสุด"
+            className="range-thumb absolute inset-0 w-full"
+          />
+        </div>
+        <div className="mt-2 flex justify-between text-sm text-[#263544]/55">
+          <span>ต่ำกว่า {formatBaht(PRICE_FLOOR)}</span>
+          <span>{formatBaht(PRICE_CEILING)}</span>
         </div>
       </FilterSection>
     </div>
   )
 }
 
-function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
+function FilterSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="border-b border-[#263544]/10 pb-5 last:border-0 last:pb-0">
+    <section className="border-b border-[#263544]/10 pb-6 last:border-0 last:pb-0">
       <h2 className="mb-3 text-base font-bold text-[#263544]">{title}</h2>
-      <div className="space-y-2">{children}</div>
+      {children}
     </section>
   )
 }
 
-function FilterCheckbox({
-  label,
-  count,
-  checked,
-  onChange,
-  swatch,
-}: {
-  label: string
-  count?: number
-  checked: boolean
-  onChange: () => void
-  swatch?: string
-}) {
+function Pill({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2 text-base text-[#263544]/80">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        className="h-4 w-4 accent-[#E5457F]"
-      />
-      {swatch && <span aria-hidden="true" className="h-3.5 w-3.5 rounded-full border border-black/15" style={{ backgroundColor: swatch }} />}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {count != null && <span className="text-base text-[#263544]/45">{count}</span>}
-    </label>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-full border-2 px-3.5 py-1.5 text-base font-medium transition ${
+        active
+          ? 'border-[#263544] bg-[#E5457F] text-white shadow-[2px_2px_0_0_#263544]'
+          : 'border-transparent bg-white text-[#263544] hover:border-[#263544]/30'
+      }`}
+    >
+      {children}
+    </button>
   )
 }

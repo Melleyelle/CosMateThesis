@@ -8,24 +8,17 @@ import CostumeGridCard from '@/app/components/customer/CostumeGridCard'
 import { fetchCatalog, type CatalogCostume } from '@/utils/customer/fetchCatalog'
 import { useFavorites } from '@/utils/customer/favorites'
 import { useRequireLogin } from '@/utils/customer/authUser'
-import {
-  DEFAULT_BOOKING_SETTINGS,
-  customerHeldDays,
-  fetchBookingSettings,
-  type BookingSettings,
-} from '@/utils/customer/bookingSettings'
+import { customerHeldDays } from '@/utils/customer/bookingSettings'
 
 export default function FavoritesPage() {
   const loggedIn = useRequireLogin()
   const favoriteIds = useFavorites()
   const [catalog, setCatalog] = useState<CatalogCostume[]>([])
-  const [settings, setSettings] = useState<BookingSettings>(DEFAULT_BOOKING_SETTINGS)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([fetchCatalog(), fetchBookingSettings()]).then(([res, s]) => {
+    fetchCatalog().then((res) => {
       setCatalog(res.data)
-      setSettings(s)
       setLoading(false)
     })
   }, [])
@@ -63,7 +56,7 @@ export default function FavoritesPage() {
       ) : (
         <div className="grid grid-cols-2 gap-x-5 gap-y-8 md:grid-cols-3 lg:grid-cols-4">
           {favorites.map((c) => (
-            <CostumeGridCard key={c.id} costume={c} heldDays={customerHeldDays(c.minPricePackageDays, settings)} />
+            <CostumeGridCard key={c.id} costume={c} heldDays={customerHeldDays(c.minPricePackageDays)} />
           ))}
         </div>
       )}

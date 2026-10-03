@@ -2,24 +2,19 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ArrowsDownUpIcon, FunnelSimpleIcon, MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react'
+import { ArrowsDownUpIcon, CaretDownIcon, FunnelSimpleIcon, MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
 import CostumeGridCard from '@/app/components/customer/CostumeGridCard'
 import Pagination from '@/app/components/customer/Pagination'
 import ExploreFilters, {
   EMPTY_FILTERS,
   countActiveFilters,
+  priceRangeLabel,
   type ExploreFilterState,
 } from '@/app/components/customer/ExploreFilters'
 import { fetchCatalog, type CatalogCostume } from '@/utils/customer/fetchCatalog'
-import {
-  DEFAULT_BOOKING_SETTINGS,
-  customerHeldDays,
-  fetchBookingSettings,
-  type BookingSettings,
-} from '@/utils/customer/bookingSettings'
+import { customerHeldDays } from '@/utils/customer/bookingSettings'
 import { COLOR_OPTIONS, THEME_OPTIONS } from '@/utils/customer/filterOptions'
-import { formatBaht } from '@/utils/dateUtils'
 
 const PAGE_SIZE = 12
 
@@ -42,7 +37,6 @@ function ExploreInner() {
   const gridTopRef = useRef<HTMLDivElement>(null)
 
   const [costumes, setCostumes] = useState<CatalogCostume[]>([])
-  const [settings, setSettings] = useState<BookingSettings>(DEFAULT_BOOKING_SETTINGS)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -57,8 +51,7 @@ function ExploreInner() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
   useEffect(() => {
-    Promise.all([fetchCatalog(), fetchBookingSettings()]).then(([res, s]) => {
-      setSettings(s)
+    fetchCatalog().then((res) => {
       if (res.error) setLoadError(res.error)
       else setCostumes(res.data)
       setLoading(false)
@@ -79,21 +72,16 @@ function ExploreInner() {
     return counts
   }, [costumes])
 
-  const seriesOptions = useMemo(() => {
-    const counts = new Map<string, number>()
-    costumes.forEach((c) => {
-      if (c.seriesName) counts.set(c.seriesName, (counts.get(c.seriesName) ?? 0) + 1)
-    })
-    return Array.from(counts, ([name, count]) => ({ name, count })).sort(
-      (a, b) => b.count - a.count || a.name.localeCompare(b.name),
-    )
-  }, [costumes])
+  const seriesOptions = useMemo(() => countNames(costumes.map((c) => c.seriesName)), [costumes])
 
-  const priceBounds = useMemo(() => {
-    const prices = costumes.map((c) => c.minPrice).filter((p): p is number => p !== null)
-    if (prices.length === 0) return { min: 0, max: 0 }
-    return { min: Math.floor(Math.min(...prices) / 10) * 10, max: Math.ceil(Math.max(...prices) / 10) * 10 }
-  }, [costumes])
+  // ตัวละครแสดงเฉพาะของเรื่องที่เลือกไว้
+  const characterOptions = useMemo(
+    () =>
+      filters.series
+        ? countNames(costumes.filter((c) => c.seriesName === filters.series).map((c) => c.characterName))
+        : [],
+    [costumes, filters.series],
+  )
 
   const results = useMemo(() => {
     const keyword = search.trim().toLowerCase()
@@ -106,7 +94,8 @@ function ExploreInner() {
       if (f.sizes.length && !c.sizes.some((s) => f.sizes.includes(s))) return false
       if (f.colors.length && !c.colorKeys.some((k) => f.colors.includes(k))) return false
       if (f.themes.length && !c.themeKeys.some((k) => f.themes.includes(k))) return false
-      if (f.series.length && !f.series.includes(c.seriesName ?? '')) return false
+      if (f.series && c.seriesName !== f.series) return false
+      if (f.character && c.characterName !== f.character) return false
       if (priceActive) {
         if (c.minPrice === null) return false
         if (f.priceMin !== null && c.minPrice < f.priceMin) return false
@@ -140,7 +129,7 @@ function ExploreInner() {
   // ชิปแสดงตัวกรองที่เลือกอยู่ กดกากบาทเพื่อเอาออกทีละอัน
   const chips = useMemo(() => {
     const list: { key: string; label: string; remove: () => void }[] = []
-    const add = (field: 'categories' | 'genders' | 'sizes' | 'colors' | 'themes' | 'series', labels?: Record<string, string>) =>
+    const add = (field: 'categories' | 'genders' | 'sizes' | 'colors' | 'themes', labels?: Record<string, string>) =>
       filters[field].forEach((v) =>
         list.push({
           key: `${field}-${v}`,
@@ -153,16 +142,29 @@ function ExploreInner() {
     add('sizes')
     add('colors', COLOR_LABEL)
     add('themes', THEME_LABEL)
-    add('series')
+    if (filters.series) {
+      list.push({
+        key: 'series',
+        label: filters.series,
+        remove: () => setFilters((f) => ({ ...f, series: null, character: null })),
+      })
+    }
+    if (filters.character) {
+      list.push({
+        key: 'character',
+        label: filters.character,
+        remove: () => setFilters((f) => ({ ...f, character: null })),
+      })
+    }
     if (filters.priceMin !== null || filters.priceMax !== null) {
       list.push({
         key: 'price',
-        label: `${formatBaht(filters.priceMin ?? priceBounds.min)} – ${formatBaht(filters.priceMax ?? priceBounds.max)}`,
+        label: priceRangeLabel(filters.priceMin, filters.priceMax),
         remove: () => setFilters((f) => ({ ...f, priceMin: null, priceMax: null })),
       })
     }
     return list
-  }, [filters, priceBounds])
+  }, [filters])
 
   function goToPage(p: number) {
     setPage(Math.min(Math.max(1, p), totalPages))
@@ -170,13 +172,7 @@ function ExploreInner() {
   }
 
   const filterPanel = (
-    <ExploreFilters
-      value={filters}
-      onChange={setFilters}
-      categoryCounts={categoryCounts}
-      seriesOptions={seriesOptions}
-      priceBounds={priceBounds}
-    />
+    <ExploreFilters value={filters} onChange={setFilters} categoryCounts={categoryCounts} />
   )
 
   return (
@@ -220,12 +216,46 @@ function ExploreInner() {
 
       <div className="mx-auto mt-8 flex max-w-7xl gap-8 px-4 sm:px-6">
         {/* ---------------- ตัวกรองซ้าย (จอใหญ่) ---------------- */}
-        <aside className="hidden w-72 flex-shrink-0 self-start rounded-3xl bg-[#F7F7F8] px-6 pb-6 lg:block">
+        <aside className="hidden w-72 flex-shrink-0 self-start rounded-3xl bg-[#F7F7F8] px-6 pt-6 lg:sticky lg:top-24 lg:block lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
+          <div className="flex items-center justify-between">
+            <p className="flex items-center gap-2 text-lg font-bold text-[#263544]">
+              <FunnelSimpleIcon size={20} className="text-[#E5457F]" />
+              ตัวกรอง
+            </p>
+            {activeCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilters(EMPTY_FILTERS)}
+                className="text-base font-semibold text-[#E5457F] hover:underline"
+              >
+                ล้างทั้งหมด
+              </button>
+            )}
+          </div>
           {filterPanel}
         </aside>
 
         {/* ---------------- ผลลัพธ์ ---------------- */}
         <section className="min-w-0 flex-1" ref={gridTopRef}>
+          {/* เรื่อง → ตัวละคร (ต้องเลือกเรื่องก่อน) */}
+          <div className="mb-4 flex flex-wrap gap-3">
+            <SelectPill
+              label="คัดกรองจากชื่อเรื่อง"
+              value={filters.series ?? ''}
+              onChange={(v) => setFilters((f) => ({ ...f, series: v || null, character: null }))}
+              options={seriesOptions}
+              placeholder="ทุกเรื่อง"
+            />
+            <SelectPill
+              label="คัดกรองจากชื่อตัวละคร"
+              value={filters.character ?? ''}
+              onChange={(v) => setFilters((f) => ({ ...f, character: v || null }))}
+              options={characterOptions}
+              placeholder={filters.series ? 'ทุกตัวละคร' : 'เลือกเรื่องก่อน'}
+              disabled={!filters.series}
+            />
+          </div>
+
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -251,12 +281,12 @@ function ExploreInner() {
             </p>
 
             <label className="relative ml-auto flex items-center">
-              <ArrowsDownUpIcon size={16} className="pointer-events-none absolute left-3 text-[#263544]" />
+              <ArrowsDownUpIcon size={16} className="pointer-events-none absolute left-4 text-[#263544]" />
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortValue)}
                 aria-label="เรียงลำดับ"
-                className="appearance-none rounded-full border border-[#263544]/30 bg-white py-2 pl-9 pr-9 text-base font-medium text-[#263544] outline-none focus:border-[#E5457F]"
+                className={`${selectPillClass} pl-10`}
               >
                 {SORT_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -264,7 +294,7 @@ function ExploreInner() {
                   </option>
                 ))}
               </select>
-              <span className="pointer-events-none absolute right-3 text-[10px] text-[#263544]">▼</span>
+              <CaretDownIcon size={16} weight="bold" className="pointer-events-none absolute right-4 text-[#263544]" />
             </label>
           </div>
 
@@ -329,7 +359,7 @@ function ExploreInner() {
                   <CostumeGridCard
                     key={c.id}
                     costume={c}
-                    heldDays={customerHeldDays(c.minPricePackageDays, settings)}
+                    heldDays={customerHeldDays(c.minPricePackageDays)}
                   />
                 ))}
               </div>
@@ -369,6 +399,60 @@ function ExploreInner() {
         </div>
       )}
     </>
+  )
+}
+
+// นับจำนวนชุดต่อชื่อ เรียงจากมากไปน้อย
+function countNames(names: (string | null)[]): { name: string; count: number }[] {
+  const counts = new Map<string, number>()
+  names.forEach((n) => {
+    if (n) counts.set(n, (counts.get(n) ?? 0) + 1)
+  })
+  return Array.from(counts, ([name, count]) => ({ name, count })).sort(
+    (a, b) => b.count - a.count || a.name.localeCompare(b.name, 'th'),
+  )
+}
+
+const selectPillClass =
+  'appearance-none rounded-full border-2 border-[#263544] bg-white py-2 pl-4 pr-10 text-base font-medium text-[#263544] shadow-[3px_3px_0_0_#263544] outline-none transition focus-visible:ring-2 focus-visible:ring-[#E5457F]/40 disabled:cursor-not-allowed disabled:border-[#263544]/20 disabled:text-[#263544]/40 disabled:shadow-none'
+
+function SelectPill({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  disabled = false,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  options: { name: string; count: number }[]
+  placeholder: string
+  disabled?: boolean
+}) {
+  return (
+    <label className="relative flex min-w-[220px] flex-1 items-center sm:flex-none">
+      <span className="sr-only">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className={`${selectPillClass} w-full ${value ? 'bg-[#FDE3EE]' : ''}`}
+      >
+        <option value="">{value ? placeholder : label}</option>
+        {options.map((o) => (
+          <option key={o.name} value={o.name}>
+            {o.name} ({o.count})
+          </option>
+        ))}
+      </select>
+      <CaretDownIcon
+        size={16}
+        weight="bold"
+        className={`pointer-events-none absolute right-4 ${disabled ? 'text-[#263544]/30' : 'text-[#263544]'}`}
+      />
+    </label>
   )
 }
 

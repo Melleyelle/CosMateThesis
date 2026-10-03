@@ -35,7 +35,16 @@ function start() {
 function subscribe(listener: () => void) {
   start()
   listeners.add(listener)
-  return () => listeners.delete(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
+// ให้ store อื่น (ตะกร้า/รายการโปรด) รู้เมื่อผู้ใช้ล็อกอิน/ออก เพื่อสลับไปใช้ข้อมูลของคนนั้น
+export const subscribeAuthUser = subscribe
+
+export function getAuthState(): AuthState {
+  return state
 }
 
 export function getCurrentUserId(): string | null {

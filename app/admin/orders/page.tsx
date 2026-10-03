@@ -4,7 +4,8 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { CaretDownIcon, MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react'
 import AdminLayout from '../../components/admin/AdminLayout'
-import { EmptyState, FilterTabs, Metric, MetricStrip, PageHeader, StatusBadge } from '../../components/admin/ui'
+import { EmptyState, Metric, MetricStrip, PageHeader, StatusBadge } from '../../components/admin/ui'
+import DateRangeFilter, { inDateRange, type DateRange } from '../../components/admin/inventory/DateRangeFilter'
 import { createClient } from '@/utils/client'
 import { fetchAllOrdersForAdmin, type OrderSummary } from '@/utils/customer/fetchOrders'
 import { translateRpcError } from '@/utils/bookingErrors'
@@ -12,6 +13,7 @@ import { ADMIN_ACTIONS, type AdminAction, type OrderStatus } from '@/utils/order
 import { ADMIN_STATUS_LABEL, ORDER_STATUS_TONE } from '@/utils/admin/statusTone'
 import { dayDiff, shipByDate } from '@/utils/admin/fetchDashboard'
 import { formatBaht, formatDateTime, formatThaiDateWithWeekday, todayISO } from '@/utils/dateUtils'
+import { SHIP_CARRIER, normalizeTracking, trackingProblem } from '@/utils/tracking'
 import {
   DEFAULT_BOOKING_SETTINGS,
   fetchBookingSettings,
@@ -19,19 +21,31 @@ import {
 } from '@/utils/customer/bookingSettings'
 
 // แท็บจัดกลุ่มตาม "งานที่แอดมินต้องทำ" ไม่ใช่ตามสถานะดิบทีละตัว
+// เรียงตามลำดับงานจริง: ร้านต้องทำ → รอ/อยู่กับลูกค้า → ปิดแล้ว
 const TABS = [
-  { value: 'all', label: 'ทั้งหมด', statuses: null },
-  { value: 'review', label: 'ตรวจยอดชำระ', statuses: ['manual_review'] },
-  { value: 'refund', label: 'รอคืนเงิน', statuses: null }, // กรองด้วย refundStatus แทนสถานะ
-  { value: 'to_ship', label: 'รอแพ็กส่ง', statuses: ['paid'] },
-  { value: 'renting', label: 'อยู่กับลูกค้า', statuses: ['shipped', 'active'] },
-  { value: 'returning', label: 'ตรวจสภาพ', statuses: ['returned', 'inspecting'] },
-  { value: 'unpaid', label: 'รอลูกค้าชำระ', statuses: ['pending_payment'] },
-  { value: 'done', label: 'เสร็จสิ้น', statuses: ['completed'] },
-  { value: 'closed', label: 'ยกเลิก/หมดอายุ', statuses: ['cancelled', 'expired'] },
-] as const satisfies readonly { value: string; label: string; statuses: readonly OrderStatus[] | null }[]
+  { value: 'all', label: 'ทั้งหมด', statuses: null, group: 'all' },
+  { value: 'review', label: 'ตรวจยอดชำระ', statuses: ['manual_review'], group: 'todo' },
+  { value: 'to_ship', label: 'รอแพ็กส่ง', statuses: ['paid'], group: 'todo' },
+  { value: 'returning', label: 'ตรวจสภาพ', statuses: ['returned', 'inspecting'], group: 'todo' },
+  { value: 'refund', label: 'รอคืนเงิน', statuses: null, group: 'todo' }, // กรองด้วย refundStatus แทนสถานะ
+  { value: 'unpaid', label: 'รอลูกค้าชำระ', statuses: ['pending_payment'], group: 'tracking' },
+  { value: 'renting', label: 'อยู่กับลูกค้า', statuses: ['shipped', 'active'], group: 'tracking' },
+  { value: 'done', label: 'เสร็จสิ้น', statuses: ['completed'], group: 'closed' },
+  { value: 'closed', label: 'ยกเลิก/หมดอายุ', statuses: ['cancelled', 'expired'], group: 'closed' },
+] as const satisfies readonly {
+  value: string
+  label: string
+  statuses: readonly OrderStatus[] | null
+  group: 'all' | 'todo' | 'tracking' | 'closed'
+}[]
 
 type TabValue = (typeof TABS)[number]['value']
+
+const TAB_GROUPS = [
+  { key: 'todo', label: 'ร้านต้องทำ' },
+  { key: 'tracking', label: 'ติดตาม' },
+  { key: 'closed', label: 'ปิดแล้ว' },
+] as const
 
 // ปุ่มหลักของแต่ละแถวใช้ภาษาแบรนด์ (มีกรอบ+เงา) เพราะคือ "สิ่งที่ต้องกด" — ที่เหลือเรียบ
 const ACTION_STYLE: Record<AdminAction['tone'], string> = {
@@ -66,8 +80,10 @@ export default function AdminOrdersPage() {
 
   const [tab, setTab] = useState<TabValue>('all')
   const [search, setSearch] = useState('')
+  const [range, setRange] = useState<DateRange>({ from: '', to: '' })
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [shipTracking, setShipTracking] = useState<Record<string, string>>({})
   const today = todayISO()
 
   async function load() {
@@ -88,19 +104,41 @@ export default function AdminOrdersPage() {
     if (q) setSearch(q)
   }, [])
 
+  // ช่วงวันที่สั่ง + คำค้นใช้ก่อน แล้วค่อยแยกแท็บ → ตัวเลขบนแท็บตรงกับรายการที่เห็นจริง
+  const base = useMemo(() => {
+    const keyword = search.trim().toLowerCase()
+    return orders.filter((o) => {
+      if (!inDateRange(o.createdAt, range)) return false
+      if (keyword) {
+        const haystack = [
+          o.orderNumber,
+          o.shipName,
+          o.shipPhone,
+          o.shipTrackingNo ?? '',
+          o.returnTrackingNo ?? '',
+          ...o.lines.map((l) => `${l.productName} ${l.itemCode ?? ''}`),
+        ]
+          .join(' ')
+          .toLowerCase()
+        if (!haystack.includes(keyword)) return false
+      }
+      return true
+    })
+  }, [orders, search, range])
+
   const countByTab = useMemo(() => {
     const counts = {} as Record<TabValue, number>
     for (const t of TABS) {
       const statuses = t.statuses as readonly OrderStatus[] | null
       counts[t.value] =
         t.value === 'refund'
-          ? orders.filter((o) => o.refundStatus === 'pending' || o.refundStatus === 'failed').length
+          ? base.filter((o) => o.refundStatus === 'pending' || o.refundStatus === 'failed').length
           : statuses
-            ? orders.filter((o) => statuses.includes(o.status)).length
-            : orders.length
+            ? base.filter((o) => statuses.includes(o.status)).length
+            : base.length
     }
     return counts
-  }, [orders])
+  }, [base])
 
   const lateCount = useMemo(
     () => orders.filter((o) => keyDate(o, settings, today)?.late && (o.status === 'paid' || o.status === 'shipped' || o.status === 'active')).length,
@@ -109,19 +147,12 @@ export default function AdminOrdersPage() {
 
   const filtered = useMemo(() => {
     const statuses = (TABS.find((t) => t.value === tab)?.statuses ?? null) as readonly OrderStatus[] | null
-    const keyword = search.trim().toLowerCase()
-    return orders.filter((o) => {
+    return base.filter((o) => {
       if (tab === 'refund' && o.refundStatus !== 'pending' && o.refundStatus !== 'failed') return false
       if (statuses && !statuses.includes(o.status)) return false
-      if (keyword) {
-        const haystack = [o.orderNumber, o.shipName, o.shipPhone, ...o.lines.map((l) => `${l.productName} ${l.itemCode ?? ''}`)]
-          .join(' ')
-          .toLowerCase()
-        if (!haystack.includes(keyword)) return false
-      }
       return true
     })
-  }, [orders, tab, search])
+  }, [base, tab])
 
   // ค้นหาด้วยเลขออเดอร์ตรงตัว (มาจากหน้าภาพรวม) → กางรายละเอียดให้เลย
   useEffect(() => {
@@ -140,6 +171,22 @@ export default function AdminOrdersPage() {
       )
     )
       return
+
+    // จัดส่งแล้ว: บันทึกเลขพัสดุก่อน ฐานข้อมูลไม่ยอมให้เปลี่ยนเป็น shipped ถ้ายังไม่มีเลขพัสดุ
+    if (action.to === 'shipped') {
+      const raw = shipTracking[order.id] ?? ''
+      const problem = trackingProblem(raw)
+      if (problem) return alert(problem)
+      setUpdatingId(order.id)
+      const { error } = await supabase.rpc('admin_set_ship_tracking', {
+        p_order_id: order.id,
+        p_tracking_no: normalizeTracking(raw),
+      })
+      if (error) {
+        setUpdatingId(null)
+        return alert(translateRpcError(error.message))
+      }
+    }
 
     setUpdatingId(order.id)
     const { error } = await supabase.rpc('admin_update_order_status', { p_order_id: order.id, p_new_status: action.to })
@@ -226,10 +273,36 @@ export default function AdminOrdersPage() {
               </button>
             )}
           </div>
+          <DateRangeFilter value={range} onChange={setRange} emptyLabel="ทุกวันที่สั่ง" />
         </div>
 
-        <div className="mb-5 overflow-x-auto">
-          <FilterTabs tabs={TABS} value={tab} onChange={setTab} counts={countByTab} />
+        {/* แท็บแบ่งเป็นกลุ่ม: ทั้งหมด | ร้านต้องทำ | ติดตาม | ปิดแล้ว */}
+        {/* เลื่อนแนวนอนได้บนจอแคบ แต่ซ่อนแถบเลื่อนไว้ไม่ให้กินพื้นที่ */}
+        <div className="mb-5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div
+            role="tablist"
+            aria-label="กรองตามสถานะออเดอร์"
+            className="inline-flex items-center gap-1 rounded-full border border-[#D5D9E0] bg-white p-1"
+          >
+            <TabButton tab={TABS[0]} active={tab === 'all'} count={countByTab.all} onClick={() => setTab('all')} />
+            {TAB_GROUPS.map((g) => (
+              <div key={g.key} className="flex items-center gap-1 border-l border-[#EEEDF2] pl-2">
+                <span className="whitespace-nowrap px-1 text-[11px] font-semibold uppercase tracking-wide text-[#9AA3AF]">
+                  {g.label}
+                </span>
+                {TABS.filter((t) => t.group === g.key).map((t) => (
+                  <TabButton
+                    key={t.value}
+                    tab={t}
+                    active={tab === t.value}
+                    count={countByTab[t.value]}
+                    onClick={() => setTab(t.value)}
+                    highlight={g.key === 'todo'}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
 
         {loading && <div className="h-64 animate-pulse rounded-2xl bg-white" />}
@@ -288,6 +361,9 @@ export default function AdminOrdersPage() {
                                   {line.productName}
                                   {line.size && <span className="text-[#6B7280]"> ไซส์ {line.size}</span>}
                                 </p>
+                                {line.pieceNames && (
+                                  <p className="text-xs text-[#875200]">แยกชิ้น: {line.pieceNames.join(', ')}</p>
+                                )}
                                 {line.itemCode && (
                                   <span className="text-xs tabular-nums text-[#6B7280]" title="รหัสชุดจริงที่ต้องหยิบ">
                                     ป้าย {line.itemCode}
@@ -357,19 +433,44 @@ export default function AdminOrdersPage() {
                             ) : actions.length === 0 ? (
                               <span className="text-xs text-[#9AA3AF]">—</span>
                             ) : (
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                {actions.map((action) => (
-                                  <button
-                                    key={action.to}
-                                    type="button"
-                                    onClick={() => handleAction(order, action)}
-                                    disabled={updatingId === order.id}
-                                    className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold transition disabled:opacity-50 ${ACTION_STYLE[action.tone]}`}
-                                  >
-                                    {updatingId === order.id && action.tone === 'primary' ? 'กำลังบันทึก…' : action.label}
-                                  </button>
-                                ))}
-                              </div>
+                              <>
+                                {order.status === 'paid' && (
+                                  <input
+                                    value={shipTracking[order.id] ?? ''}
+                                    onChange={(e) => setShipTracking((prev) => ({ ...prev, [order.id]: e.target.value }))}
+                                    placeholder="เลขพัสดุ EMS"
+                                    aria-label={`เลขพัสดุของ ${order.orderNumber}`}
+                                    className="mb-2 w-full min-w-[160px] rounded-lg border border-[#D5D9E0] bg-white px-2.5 py-1.5 font-mono text-xs uppercase text-[#263544] outline-none placeholder:font-sans placeholder:normal-case placeholder:text-[#9AA3AF] focus:border-[#263544]"
+                                  />
+                                )}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {actions.map((action) => {
+                                    const blocked =
+                                      (action.to === 'shipped' && !(shipTracking[order.id] ?? '').trim()) ||
+                                      (action.to === 'returned' && !order.returnTrackingNo)
+                                    return (
+                                      <button
+                                        key={action.to}
+                                        type="button"
+                                        onClick={() => handleAction(order, action)}
+                                        disabled={updatingId === order.id || blocked}
+                                        className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold transition disabled:opacity-50 ${ACTION_STYLE[action.tone]}`}
+                                      >
+                                        {updatingId === order.id && action.tone === 'primary' ? 'กำลังบันทึก…' : action.label}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                                {order.status === 'active' &&
+                                  (order.returnTrackingNo ? (
+                                    <p className="mt-1.5 text-xs text-[#5B6472]">
+                                      ส่งคืน: {order.returnCarrier}{' '}
+                                      <span className="font-mono font-semibold text-[#263544]">{order.returnTrackingNo}</span>
+                                    </p>
+                                  ) : (
+                                    <p className="mt-1.5 text-xs text-[#875200]">รอลูกค้ากรอกเลขพัสดุส่งคืน</p>
+                                  ))}
+                              </>
                             )}
                           </td>
                         </tr>
@@ -391,6 +492,22 @@ export default function AdminOrdersPage() {
                                     <p className="mt-2 rounded-lg bg-[#FFF1D6] px-2.5 py-1.5 text-xs text-[#875200]">
                                       หมายเหตุจากลูกค้า: {order.customerNote}
                                     </p>
+                                  )}
+                                  {(order.shipTrackingNo || order.returnTrackingNo) && (
+                                    <div className="mt-3 space-y-0.5 text-xs text-[#5B6472]">
+                                      {order.shipTrackingNo && (
+                                        <p>
+                                          ส่งออก ({SHIP_CARRIER}):{' '}
+                                          <span className="font-mono font-semibold text-[#263544]">{order.shipTrackingNo}</span>
+                                        </p>
+                                      )}
+                                      {order.returnTrackingNo && (
+                                        <p>
+                                          ส่งคืน ({order.returnCarrier}):{' '}
+                                          <span className="font-mono font-semibold text-[#263544]">{order.returnTrackingNo}</span>
+                                        </p>
+                                      )}
+                                    </div>
                                   )}
                                 </DetailBlock>
                                 <DetailBlock title="ยอดเงิน">
@@ -439,6 +556,45 @@ export default function AdminOrdersPage() {
         )}
       </div>
     </AdminLayout>
+  )
+}
+
+function TabButton({
+  tab,
+  active,
+  count,
+  onClick,
+  highlight = false,
+}: {
+  tab: { value: string; label: string }
+  active: boolean
+  count: number
+  onClick: () => void
+  highlight?: boolean // กลุ่ม "ร้านต้องทำ": ตัวเลขเป็นสีส้มเมื่อมีงานค้าง
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
+        active ? 'bg-[#E5457F] text-white' : 'text-[#5B6472] hover:bg-[#F5F4F8] hover:text-[#263544]'
+      }`}
+    >
+      {tab.label}
+      <span
+        className={`min-w-[20px] rounded-full px-1.5 text-center text-xs tabular-nums ${
+          active
+            ? 'bg-white/25 text-white'
+            : highlight && count > 0
+              ? 'bg-[#FFF1D6] font-semibold text-[#875200]'
+              : 'bg-[#E9E8EF] text-[#5B6472]'
+        }`}
+      >
+        {count}
+      </span>
+    </button>
   )
 }
 

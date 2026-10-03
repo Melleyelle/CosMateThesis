@@ -179,12 +179,6 @@ export default function AdminDashboardPage() {
               {!queues ? 'กำลังโหลด…' : taskCount === 0 ? 'วันนี้ไม่มีงานค้าง' : `วันนี้มีงานรอ ${taskCount} รายการ`}
             </h1>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/admin/inventory/new" className={primaryButtonClass}>
-              <PlusIcon size={16} weight="bold" />
-              เพิ่มชุดใหม่
-            </Link>
-          </div>
         </header>
 
         {error && (

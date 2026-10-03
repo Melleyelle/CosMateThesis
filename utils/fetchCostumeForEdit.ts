@@ -17,7 +17,7 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
     .select(
       `
       id, sku_prefix, name, character_name, series_name, franchise_type, costume_category,
-      gender_tag, color_tags, theme_tags, crossplay_friendly, is_group_set, description, cover_image_url,
+      gender_tag, color_tags, theme_tags, crossplay_friendly, is_group_set, cover_image_url,
       product_images ( id, image_url, display_order ),
       product_inclusions ( id, name, image_url, display_order ),
       product_variants (
@@ -49,13 +49,23 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
     }))
 
   // ราคาแยกชิ้นดึงแยก — ถ้ายังไม่ได้รัน Step 16 คอลัมน์ยังไม่มี ฟอร์มยังเปิดได้ (ราคาว่าง)
-  const { data: priceRows } = await supabase.from('product_inclusions').select('id, rental_price').eq('product_id', productId)
+  const { data: priceRows } = await supabase
+    .from('product_inclusions')
+    .select('id, rental_price, laundry_fee')
+    .eq('product_id', productId)
   const priceById = new Map((priceRows ?? []).map((r) => [r.id, r.rental_price == null ? '' : String(Number(r.rental_price))]))
+  const laundryById = new Map((priceRows ?? []).map((r) => [r.id, r.laundry_fee == null ? '' : String(Number(r.laundry_fee))]))
 
   const inclusions = (data.product_inclusions ?? [])
     .slice()
     .sort((a, b) => a.display_order - b.display_order)
-    .map((inc) => ({ id: inc.id, name: inc.name, imageUrl: inc.image_url ?? '', price: priceById.get(inc.id) ?? '' }))
+    .map((inc) => ({
+      id: inc.id,
+      name: inc.name,
+      imageUrl: inc.image_url ?? '',
+      price: priceById.get(inc.id) ?? '',
+      laundryFee: laundryById.get(inc.id) ?? '',
+    }))
 
   const variants = (data.product_variants ?? []).map((v) => {
     const chart = Array.isArray(v.size_charts) ? v.size_charts[0] : v.size_charts
@@ -108,7 +118,6 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
       themeTags: data.theme_tags ?? [],
       crossplayFriendly: data.crossplay_friendly ?? false,
       isGroupSet: data.is_group_set ?? false,
-      description: data.description ?? '',
     },
     coverImage,
     images,

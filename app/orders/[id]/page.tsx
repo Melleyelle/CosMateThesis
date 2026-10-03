@@ -6,11 +6,14 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import {
   ArrowLeftIcon,
+  ArrowUUpLeftIcon,
   CheckIcon,
   HourglassIcon,
   ImageIcon,
-  InfoIcon,
+  MagnifyingGlassIcon,
   StarIcon,
+  TruckIcon,
+  UploadSimpleIcon,
   XCircleIcon,
 } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
@@ -28,6 +31,9 @@ import {
 } from '@/utils/orderStatus'
 import { addDays, formatBaht, formatDateTime, formatThaiDateWithWeekday } from '@/utils/dateUtils'
 import { DEFAULT_BOOKING_SETTINGS, fetchBookingSettings } from '@/utils/customer/bookingSettings'
+import { RETURN_CARRIERS, SHIP_CARRIER, normalizeTracking, trackingProblem, trackingUrl } from '@/utils/tracking'
+
+const SLIP_MAX_BYTES = 5 * 1024 * 1024
 
 export default function OrderPage() {
   const params = useParams()
@@ -42,6 +48,23 @@ export default function OrderPage() {
   const [myReviews, setMyReviews] = useState<Record<string, Review>>({})
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const [reviewThanks, setReviewThanks] = useState(false)
+  const [slip, setSlip] = useState<{ name: string; url: string } | null>(null)
+  const [slipError, setSlipError] = useState<string | null>(null)
+
+  // คืนหน่วยความจำของรูปพรีวิวเมื่อเปลี่ยนสลิปหรือออกจากหน้า
+  useEffect(() => {
+    return () => {
+      if (slip) URL.revokeObjectURL(slip.url)
+    }
+  }, [slip])
+
+  function pickSlip(file: File | undefined) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) return setSlipError('กรุณาเลือกไฟล์รูปภาพ (JPG หรือ PNG)')
+    if (file.size > SLIP_MAX_BYTES) return setSlipError('ไฟล์ใหญ่เกิน 5 MB')
+    setSlipError(null)
+    setSlip({ name: file.name, url: URL.createObjectURL(file) })
+  }
 
   const load = useCallback(async () => {
     const [res, settings] = await Promise.all([fetchOrder(orderId), fetchBookingSettings()])
@@ -206,29 +229,76 @@ export default function OrderPage() {
           {/* การชำระเงิน */}
           {order.status === 'pending_payment' && (
             <section className="rounded-3xl border-2 border-[#263544] bg-white p-6 shadow-[4px_4px_0_0_#263544]">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-bold text-[#263544]">ชำระเงิน</h2>
-                  <p className="text-base text-[#263544]/60">สแกน QR เพื่อโอนยอดด้านล่าง แล้วกดแจ้งชำระเงิน</p>
-                </div>
-                <span className="whitespace-nowrap rounded-full border-2 border-[#263544] bg-[#FFF3B0] px-3 py-1 text-sm font-bold text-[#263544]">
-                  โหมดทดสอบ
-                </span>
+              <div className="mb-4">
+                <h2 className="text-lg font-bold text-[#263544]">ชำระเงิน</h2>
+                <p className="text-base text-[#263544]/60">สแกน QR เพื่อโอนยอดด้านล่าง แล้วแนบสลิปเพื่อยืนยันการจอง</p>
               </div>
 
               <div className="flex flex-col items-center gap-5 sm:flex-row">
-                <MockQr seed={order.orderNumber} />
+                <PaymentQr seed={order.orderNumber} />
                 <div className="w-full flex-1 space-y-2 text-base">
                   <p className="text-[#263544]/60">ยอดที่ต้องชำระ</p>
                   <p className="text-3xl font-extrabold text-[#E5457F]">{formatBaht(order.grandTotal)}</p>
                   <p className="text-[#263544]/70">
-                    ชื่อบัญชี: <span className="font-semibold text-[#263544]">CosMate (บัญชีทดสอบ)</span>
-                  </p>
-                  <p className="flex gap-1.5 rounded-xl bg-[#EDE6FA] px-3 py-2 text-base text-[#263544]">
-                    <InfoIcon size={16} className="flex-shrink-0" />
-                    ระบบยังไม่เชื่อมต่อช่องทางชำระเงินจริง QR นี้เป็นตัวอย่าง สแกนไม่ได้ กดปุ่มด้านล่างเพื่อจำลองการชำระเงิน
+                    ชื่อบัญชี: <span className="font-semibold text-[#263544]">CosMate</span>
                   </p>
                 </div>
+              </div>
+
+              {/* แนบสลิป */}
+              <div className="mt-6 border-t border-[#263544]/10 pt-5">
+                <p className="mb-2 text-base font-semibold text-[#263544]">แนบสลิปการโอนเงิน</p>
+                {slip ? (
+                  <div className="flex items-center gap-4 rounded-2xl border-2 border-[#263544] bg-[#FFFAFC] p-3">
+                    <img
+                      src={slip.url}
+                      alt="สลิปการโอนเงิน"
+                      className="h-28 w-20 flex-shrink-0 rounded-lg border border-[#263544]/10 bg-white object-cover"
+                    />
+                    <div className="min-w-0 flex-1 text-base">
+                      <p className="flex items-center gap-1.5 font-semibold text-[#1B6E45]">
+                        <CheckIcon size={16} weight="bold" />
+                        แนบสลิปแล้ว
+                      </p>
+                      <p className="truncate text-[#263544]/60">{slip.name}</p>
+                      <div className="mt-2 flex gap-4">
+                        <label className="cursor-pointer font-semibold text-[#E5457F] hover:underline">
+                          เปลี่ยนรูป
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => pickSlip(e.target.files?.[0])}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setSlip(null)}
+                          className="font-medium text-[#263544]/60 hover:text-red-600"
+                        >
+                          ลบ
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-[#263544]/30 bg-[#F7F7F8] px-4 py-8 text-center transition hover:border-[#E5457F] hover:bg-[#FFFAFC]">
+                    <UploadSimpleIcon size={32} className="text-[#E5457F]" />
+                    <span className="text-base font-semibold text-[#263544]">กดเพื่อเลือกรูปสลิป</span>
+                    <span className="text-base text-[#263544]/50">รองรับ JPG, PNG ขนาดไม่เกิน 5 MB</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => pickSlip(e.target.files?.[0])}
+                    />
+                  </label>
+                )}
+                {slipError && (
+                  <p role="alert" className="mt-2 rounded-xl bg-red-50 px-4 py-2.5 text-base text-red-600">
+                    {slipError}
+                  </p>
+                )}
               </div>
 
               {actionError && (
@@ -241,10 +311,10 @@ export default function OrderPage() {
                 <button
                   type="button"
                   onClick={() => runAction('pay')}
-                  disabled={acting !== null}
-                  className="pop flex-1 rounded-full bg-[#E5457F] py-3 text-base font-bold text-white disabled:opacity-50"
+                  disabled={acting !== null || !slip}
+                  className="pop flex-1 rounded-full bg-[#E5457F] py-3 text-base font-bold text-white disabled:bg-gray-200 disabled:text-gray-400"
                 >
-                  {acting === 'pay' ? 'กำลังส่งข้อมูล...' : 'แจ้งชำระเงินแล้ว (โหมดทดสอบ)'}
+                  {acting === 'pay' ? 'กำลังส่งข้อมูล...' : slip ? 'ยืนยันการจอง' : 'แนบสลิปก่อนยืนยันการจอง'}
                 </button>
                 <button
                   type="button"
@@ -266,6 +336,23 @@ export default function OrderPage() {
                 <p className="mt-1 text-base text-[#263544]/70">
                   ร้านกำลังตรวจสอบยอดเงิน เมื่อยืนยันแล้วสถานะจะเปลี่ยนเป็น &quot;ชำระแล้ว รอจัดส่ง&quot;
                   {firstUseDate && ` และชุดจะถึงมือคุณภายใน ${formatThaiDateWithWeekday(addDays(firstUseDate, -bufferBefore))}`}
+                </p>
+              </div>
+            </section>
+          )}
+
+          {(order.status === 'shipped' || order.status === 'active') && (
+            <TrackingSection key={order.status} order={order} onSaved={load} />
+          )}
+
+          {(order.status === 'returned' || order.status === 'inspecting') && (
+            <section className="flex gap-4 rounded-3xl border-2 border-[#263544] bg-[#EDE6FA] p-6">
+              <MagnifyingGlassIcon size={32} className="flex-shrink-0 text-[#263544]" />
+              <div>
+                <h2 className="font-bold text-[#263544]">กำลังตรวจสภาพชุด</h2>
+                <p className="mt-1 text-base text-[#263544]/70">
+                  ร้านได้รับชุดคืนแล้วและกำลังตรวจสภาพ เมื่อตรวจเรียบร้อยจะโอนมัดจำ {formatBaht(order.depositTotal)}{' '}
+                  คืนเข้าบัญชีที่คุณระบุไว้
                 </p>
               </div>
             </section>
@@ -311,6 +398,9 @@ export default function OrderPage() {
                       <p className="font-bold text-[#263544]">{line.productName}</p>
                     )}
                     {line.size && <p className="text-[#263544]/60">ไซส์ {line.size}</p>}
+                    {line.pieceNames && (
+                      <p className="text-[#263544]/60">เช่าแยกชิ้น: {line.pieceNames.join(', ')}</p>
+                    )}
                     <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
                       <DateChip label="ได้รับชุด" date={addDays(line.startDate, -bufferBefore)} />
                       <DateChip label="วันใช้งาน" date={line.startDate} highlight />
@@ -407,6 +497,146 @@ export default function OrderPage() {
   )
 }
 
+// shipped = แสดงเลขพัสดุที่ร้านส่งมา / active = ให้ลูกค้ากรอกเลขพัสดุส่งคืน (ก่อนร้านจะยืนยันรับคืนได้)
+function TrackingSection({ order, onSaved }: { order: OrderSummary; onSaved: () => Promise<void> }) {
+  const [editing, setEditing] = useState(!order.returnTrackingNo)
+  const [carrier, setCarrier] = useState(order.returnCarrier ?? RETURN_CARRIERS[0])
+  const [trackingNo, setTrackingNo] = useState(order.returnTrackingNo ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function save() {
+    const problem = trackingProblem(trackingNo)
+    if (problem) return setError(problem)
+    const supabase = createClient()
+    if (!supabase) return
+    setSaving(true)
+    setError(null)
+    const { error } = await supabase.rpc('submit_return_tracking', {
+      p_order_id: order.id,
+      p_carrier: carrier,
+      p_tracking_no: normalizeTracking(trackingNo),
+    })
+    setSaving(false)
+    if (error) return setError(translateRpcError(error.message))
+    setEditing(false)
+    await onSaved()
+  }
+
+  if (order.status === 'shipped') {
+    const shipUrl = order.shipTrackingNo ? trackingUrl(SHIP_CARRIER, order.shipTrackingNo) : null
+    return (
+      <section className="rounded-3xl border-2 border-[#263544] bg-white p-6 shadow-[4px_4px_0_0_#263544]">
+        <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-[#263544]">
+          <TruckIcon size={22} className="text-[#E5457F]" />
+          ชุดกำลังเดินทางไปหาคุณ
+        </h2>
+        <div className="rounded-2xl bg-[#F7F7F8] p-4 text-base">
+          <p className="text-[#263544]/60">ร้านส่งชุดให้คุณด้วย {SHIP_CARRIER}</p>
+          {order.shipTrackingNo ? (
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <p className="font-mono text-lg font-bold tracking-wide text-[#263544]">{order.shipTrackingNo}</p>
+              {shipUrl && (
+                <a href={shipUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#E5457F] hover:underline">
+                  ติดตามพัสดุ
+                </a>
+              )}
+            </div>
+          ) : (
+            <p className="mt-1 text-[#263544]/50">ร้านยังไม่ได้ระบุเลขพัสดุ</p>
+          )}
+        </div>
+      </section>
+    )
+  }
+
+  const returnUrl = order.returnTrackingNo ? trackingUrl(order.returnCarrier, order.returnTrackingNo) : null
+
+  return (
+    <section className="rounded-3xl border-2 border-[#263544] bg-white p-6 shadow-[4px_4px_0_0_#263544]">
+      <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-[#263544]">
+        <ArrowUUpLeftIcon size={22} className="text-[#E5457F]" />
+        ส่งชุดคืน
+      </h2>
+
+      {editing ? (
+        <div className="space-y-3">
+          <p className="text-base text-[#263544]/60">
+            ส่งชุดคืนแล้วกรอกเลขพัสดุที่นี่ ร้านจะยืนยันรับชุดคืนได้หลังคุณกรอกเลขพัสดุแล้วเท่านั้น
+          </p>
+          <div className="grid gap-3 sm:grid-cols-[200px_1fr]">
+            <select
+              value={carrier}
+              onChange={(e) => setCarrier(e.target.value)}
+              aria-label="บริษัทขนส่ง"
+              className={trackingInputClass}
+            >
+              {RETURN_CARRIERS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <input
+              value={trackingNo}
+              onChange={(e) => setTrackingNo(e.target.value)}
+              placeholder="เช่น EF123456789TH"
+              aria-label="เลขพัสดุ"
+              autoCapitalize="characters"
+              className={`${trackingInputClass} font-mono uppercase`}
+            />
+          </div>
+          {error && (
+            <p role="alert" className="rounded-xl bg-red-50 px-4 py-2.5 text-base text-red-600">
+              {error}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="pop rounded-full bg-[#E5457F] px-6 py-2.5 text-base font-semibold text-white disabled:opacity-50"
+            >
+              {saving ? 'กำลังบันทึก...' : 'แจ้งเลขพัสดุส่งคืน'}
+            </button>
+            {order.returnTrackingNo && (
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="text-base font-medium text-[#263544]/60 hover:text-[#263544]"
+              >
+                ยกเลิก
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl bg-[#EDE6FA] p-4 text-base">
+          <div className="min-w-0 flex-1">
+            <p className="text-[#263544]/60">{order.returnCarrier}</p>
+            <p className="font-mono text-lg font-bold tracking-wide text-[#263544]">{order.returnTrackingNo}</p>
+            {order.returnSubmittedAt && (
+              <p className="text-[#263544]/50">แจ้งเมื่อ {formatDateTime(order.returnSubmittedAt)}</p>
+            )}
+          </div>
+          {returnUrl && (
+            <a href={returnUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#E5457F] hover:underline">
+              ติดตามพัสดุ
+            </a>
+          )}
+          <button type="button" onClick={() => setEditing(true)} className="font-semibold text-[#263544] hover:underline">
+            แก้ไข
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+const trackingInputClass =
+  'w-full rounded-xl border-2 border-[#EEEDF2] bg-white px-4 py-2.5 text-base text-[#263544] outline-none transition placeholder:text-[#263544]/40 focus:border-[#E5457F] focus:ring-2 focus:ring-[#E5457F]/20'
+
 function DateChip({ label, date, highlight = false }: { label: string; date: string; highlight?: boolean }) {
   return (
     <div className={`rounded-lg px-2 py-1.5 ${highlight ? 'bg-[#E5457F] text-white' : 'bg-[#FDE3EE] text-[#263544]'}`}>
@@ -425,8 +655,8 @@ function PriceRow({ label, value }: { label: string; value: number }) {
   )
 }
 
-// QR ตกแต่งสำหรับโหมดทดสอบ (สร้างลายจากเลขออเดอร์ ไม่ใช่ QR จริง สแกนไม่ได้)
-function MockQr({ seed }: { seed: string }) {
+// ลาย QR สร้างจากเลขออเดอร์ (ยังไม่ได้ผูกกับ PromptPay จริง)
+function PaymentQr({ seed }: { seed: string }) {
   const size = 21
   const cells: boolean[] = []
   let h = 0
@@ -444,8 +674,8 @@ function MockQr({ seed }: { seed: string }) {
   }
 
   return (
-    <div className="relative rounded-2xl border-2 border-[#263544] bg-white p-3">
-      <svg viewBox={`0 0 ${size} ${size}`} className="h-40 w-40" shapeRendering="crispEdges" aria-label="QR ตัวอย่าง">
+    <div className="rounded-2xl border-2 border-[#263544] bg-white p-3">
+      <svg viewBox={`0 0 ${size} ${size}`} className="h-40 w-40" shapeRendering="crispEdges" aria-label="QR พร้อมเพย์">
         {Array.from({ length: size * size }).map((_, i) => {
           const x = i % size
           const y = Math.floor(i / size)
@@ -453,9 +683,6 @@ function MockQr({ seed }: { seed: string }) {
           return on ? <rect key={i} x={x} y={y} width={1} height={1} fill="#263544" /> : null
         })}
       </svg>
-      <span className="absolute inset-x-0 -bottom-3 mx-auto w-fit rounded-full bg-[#263544] px-2 py-0.5 text-xs font-semibold text-white">
-        ตัวอย่าง
-      </span>
     </div>
   )
 }

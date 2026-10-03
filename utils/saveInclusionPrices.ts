@@ -15,6 +15,8 @@ export async function saveInclusionPrices(productId: string, inclusions: Product
     p_prices: inclusions.map((inc, index) => ({
       display_order: index,
       price: inc.price.trim() ? Number(inc.price) : null,
+      // ค่าซักใช้เฉพาะชิ้นที่เปิดเช่าแยก
+      laundry_fee: inc.price.trim() && inc.laundryFee.trim() ? Number(inc.laundryFee) : null,
     })),
   })
   if (!error) return null

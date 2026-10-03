@@ -1,4 +1,5 @@
 import { createClient } from '@/utils/client'
+import { colorKeysOf } from '@/utils/customer/filterOptions'
 
 export type CatalogCostume = {
   id: string
@@ -119,7 +120,7 @@ export async function fetchCatalog(limit?: number): Promise<{ data: CatalogCostu
             .filter((size): size is string => !!size),
         ),
       ),
-      colorKeys: stringArray(product.color_tags),
+      colorKeys: colorKeysOf(product.color_tags), // รองรับทั้งคีย์ (pink) และชื่อไทย (ชมพู) ที่บันทึกไว้แบบเก่า
       themeKeys: stringArray(product.theme_tags),
       minPrice: pricedVariants[0]?.price ?? null,
       minPricePackageDays: pricedVariants[0]?.days ?? null,

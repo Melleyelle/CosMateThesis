@@ -1,7 +1,7 @@
 'use client'
 
 import SectionCard from './Sectioncard'
-import { FormField, FormTextArea } from './FormFields'
+import { FormField } from './FormFields'
 import type { ProductBasicInfo } from './types'
 
 type Props = {
@@ -32,14 +32,6 @@ export default function GeneralInfoCard({ value, onChange }: Props) {
 					value={value.name}
 					onChange={(event) => set('name', event.target.value)}
 					required
-				/>
-				<FormTextArea
-					id="description"
-					label="รายละเอียด"
-					placeholder="รายละเอียดของชุดและข้อมูลเพิ่มเติม"
-					value={value.description}
-					onChange={(event) => set('description', event.target.value)}
-					rows={4}
 				/>
 			</div>
 		</SectionCard>

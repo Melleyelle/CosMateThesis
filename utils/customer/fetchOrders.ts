@@ -13,6 +13,7 @@ export type OrderLine = {
   productId: string | null
   productName: string
   coverImageUrl: string | null
+  pieceNames: string[] | null // เช่าแยกชิ้น: ชื่อชิ้นที่เช่า / null = เช่าทั้งชุด
 }
 
 export type OrderSummary = {
@@ -43,6 +44,11 @@ export type OrderSummary = {
   refundStatus: 'pending' | 'transferred' | 'failed' | null
   refundAmount: number | null
   refundedAt: string | null
+  // เลขพัสดุ: ร้านกรอกตอนส่งออก / ลูกค้ากรอกตอนส่งคืน
+  shipTrackingNo: string | null
+  returnCarrier: string | null
+  returnTrackingNo: string | null
+  returnSubmittedAt: string | null
   lines: OrderLine[]
 }
 
@@ -72,6 +78,10 @@ type OrderRow = {
   refund_status?: 'pending' | 'transferred' | 'failed' | null
   refund_amount?: number | string | null
   refunded_at?: string | null
+  ship_tracking_no?: string | null
+  return_carrier?: string | null
+  return_tracking_no?: string | null
+  return_submitted_at?: string | null
   order_items:
     | {
         id: string
@@ -80,6 +90,7 @@ type OrderRow = {
         rental_price: number | string
         deposit_amount: number | string
         laundry_fee: number | string
+        pieces?: { name: string }[] | null
         product_items?: { item_code: string } | null
         product_variants: {
           size: string
@@ -94,16 +105,17 @@ const ORDER_COLUMNS = `
   ship_name, ship_phone, ship_address, ship_subdistrict, ship_district, ship_province, ship_postal_code,
   customer_note, rental_total, deposit_total, laundry_total, shipping_fee, grand_total,
   refund_account_name, refund_bank, refund_account_number,
-  cancel_reason, refund_status, refund_amount, refunded_at
+  cancel_reason, refund_status, refund_amount, refunded_at,
+  ship_tracking_no, return_carrier, return_tracking_no, return_submitted_at
 `
 
 const LINE_COLUMNS = `
-  id, start_date, end_date, rental_price, deposit_amount, laundry_fee,
+  id, start_date, end_date, rental_price, deposit_amount, laundry_fee, pieces,
   product_variants ( size, products ( id, name, cover_image_url ) )
 `
 
 const LINE_COLUMNS_ADMIN = `
-  id, start_date, end_date, rental_price, deposit_amount, laundry_fee,
+  id, start_date, end_date, rental_price, deposit_amount, laundry_fee, pieces,
   product_items ( item_code ),
   product_variants ( size, products ( id, name, cover_image_url ) )
 `
@@ -135,6 +147,10 @@ function mapOrder(o: OrderRow): OrderSummary {
     refundStatus: o.refund_status ?? null,
     refundAmount: o.refund_amount == null ? null : Number(o.refund_amount),
     refundedAt: o.refunded_at ?? null,
+    shipTrackingNo: o.ship_tracking_no ?? null,
+    returnCarrier: o.return_carrier ?? null,
+    returnTrackingNo: o.return_tracking_no ?? null,
+    returnSubmittedAt: o.return_submitted_at ?? null,
     lines: (o.order_items ?? [])
       .map((i) => ({
         id: i.id,
@@ -148,6 +164,7 @@ function mapOrder(o: OrderRow): OrderSummary {
         productId: i.product_variants?.products?.id ?? null,
         productName: i.product_variants?.products?.name ?? 'ชุดที่ถูกลบออกจากคลัง',
         coverImageUrl: i.product_variants?.products?.cover_image_url ?? null,
+        pieceNames: i.pieces && i.pieces.length > 0 ? i.pieces.map((p) => p.name) : null,
       }))
       .sort((a, b) => a.startDate.localeCompare(b.startDate)),
   }

@@ -4,14 +4,14 @@ import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  ChatCircleTextIcon,
+  CaretRightIcon,
   ClipboardIcon,
   DressIcon,
   ListIcon,
-  ReceiptIcon,
   SignOutIcon,
   SquaresFourIcon,
   StorefrontIcon,
+  UsersThreeIcon,
   XIcon,
 } from '@phosphor-icons/react'
 import { createClient } from '@/utils/client'
@@ -25,21 +25,23 @@ type NavItem = {
   label: string
   icon: typeof SquaresFourIcon
   exact?: boolean
-  badgeKey?: 'orders' | 'reviews'
+  badgeKey?: 'orders'
 }
 
+// หน้า /admin (ภาพรวม) และ /admin/reviews ยังเปิดได้ตาม URL แต่เอาออกจากเมนูแล้ว
+// จะเอาภาพรวมกลับมา: ใส่บรรทัดนี้คืนไว้บนสุด
+// { href: '/admin', label: 'ภาพรวม', icon: SquaresFourIcon, exact: true },
 const NAV: NavItem[] = [
-  { href: '/admin', label: 'ภาพรวม', icon: SquaresFourIcon, exact: true },
   { href: '/admin/orders', label: 'ออเดอร์', icon: ClipboardIcon, badgeKey: 'orders' },
   { href: '/admin/inventory', label: 'คลังชุด', icon: DressIcon },
-  { href: '/admin/reviews', label: 'รีวิว', icon: ChatCircleTextIcon, badgeKey: 'reviews' },
+  { href: '/admin/members', label: 'สมาชิก', icon: UsersThreeIcon },
 ]
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [email, setEmail] = useState<string | null>(null)
-  const [badges, setBadges] = useState<{ orders: number; reviews: number }>({ orders: 0, reviews: 0 })
+  const [badges, setBadges] = useState<{ orders: number }>({ orders: 0 })
   const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
@@ -52,17 +54,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       .from('orders')
       .select('id', { count: 'exact', head: true })
       .or('status.in.(manual_review,paid,returned,inspecting),refund_status.eq.pending')
-      .then(({ count }) => setBadges((b) => ({ ...b, orders: count ?? 0 })))
-
-    // รีวิวที่ยังไม่ตอบ (ถ้ายังไม่ได้รัน step 11 จะ error เงียบ ๆ แล้วไม่แสดงตัวเลข)
-    supabase
-      .from('product_reviews')
-      .select('id', { count: 'exact', head: true })
-      .is('admin_reply', null)
-      .eq('is_hidden', false)
-      .then(({ count, error }) => {
-        if (!error) setBadges((b) => ({ ...b, reviews: count ?? 0 }))
-      })
+      .then(({ count }) => setBadges({ orders: count ?? 0 }))
   }, [pathname])
 
   useEffect(() => setMobileOpen(false), [pathname])
@@ -87,22 +79,22 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             key={item.href}
             href={item.href}
             aria-current={active ? 'page' : undefined}
-            className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-              active
-                ? 'border-2 border-[#263544] bg-[#FDE3EE] text-[#263544] shadow-[2px_2px_0_0_#263544]'
-                : 'border-2 border-transparent text-[#5B6472] hover:bg-[#F5F4F8] hover:text-[#263544]'
+            // หน้าตาเดียวกับเมนูหน้า "บัญชีของฉัน" ฝั่งลูกค้า
+            className={`flex items-center gap-3 rounded-xl px-4 py-3 text-base font-medium ${
+              active ? 'bg-[#FDE3EE] text-[#E5457F]' : 'nudge-x text-[#263544]'
             }`}
           >
-            <Icon size={20} weight={active ? 'fill' : 'regular'} className={active ? 'text-[#E5457F]' : ''} />
+            <Icon size={22} weight={active ? 'fill' : 'regular'} />
             <span className="flex-1">{item.label}</span>
             {count > 0 && (
               <span
                 className="min-w-[22px] rounded-full bg-[#FFF1D6] px-1.5 py-0.5 text-center text-xs font-semibold tabular-nums text-[#875200] ring-1 ring-inset ring-[#F2D49B]"
-                title={item.badgeKey === 'orders' ? 'งานที่ร้านต้องทำ' : 'รีวิวที่ยังไม่ได้ตอบ'}
+                title="งานที่ร้านต้องทำ"
               >
                 {count}
               </span>
             )}
+            {active && <CaretRightIcon size={16} weight="bold" />}
           </Link>
         )
       })}

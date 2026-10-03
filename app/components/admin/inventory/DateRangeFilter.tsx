@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { CalendarIcon } from '@phosphor-icons/react'
+import { addDays, formatThaiDate, todayISO } from '@/utils/dateUtils'
 
 export type DateRange = { from: string; to: string } // ISO 'YYYY-MM-DD', ว่าง = ไม่จำกัด
 
@@ -11,26 +12,27 @@ type Props = {
   emptyLabel?: string // ข้อความบนปุ่มตอนยังไม่เลือกช่วง
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function daysAgoISO(days: number) {
-  const d = new Date()
-  d.setDate(d.getDate() - days)
-  return d.toISOString().slice(0, 10)
-}
-
+// ใช้วันที่ตามเวลาเครื่อง (ไทย) — toISOString() เป็นเวลา UTC ทำให้ช่วงตี 0–7 ได้วันที่ของเมื่อวาน
 const PRESETS = [
-  { label: '7 วันล่าสุด', from: () => daysAgoISO(7) },
-  { label: '30 วันล่าสุด', from: () => daysAgoISO(30) },
-  { label: 'เดือนนี้', from: () => new Date().toISOString().slice(0, 8) + '01' },
+  { label: 'วันนี้', from: () => todayISO() },
+  { label: '7 วันล่าสุด', from: () => addDays(todayISO(), -6) },
+  { label: '30 วันล่าสุด', from: () => addDays(todayISO(), -29) },
+  { label: 'เดือนนี้', from: () => todayISO().slice(0, 8) + '01' },
 ]
+
+// วันที่ (YYYY-MM-DD ตามเวลาไทย) ของ timestamp — ใช้เทียบกับช่วงที่เลือก
+export function localDateOf(timestamp: string): string {
+  return new Date(timestamp).toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+}
+
+export function inDateRange(timestamp: string, range: DateRange): boolean {
+  const d = localDateOf(timestamp)
+  return (!range.from || d >= range.from) && (!range.to || d <= range.to)
+}
 
 function formatDisplay(range: DateRange, emptyLabel: string) {
   if (!range.from && !range.to) return emptyLabel
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+  const fmt = (iso: string) => formatThaiDate(iso)
   if (range.from && range.to) return `${fmt(range.from)} - ${fmt(range.to)}`
   if (range.from) return `ตั้งแต่ ${fmt(range.from)}`
   return `ถึง ${fmt(range.to)}`
@@ -83,10 +85,11 @@ export default function DateRangeFilter({ value, onChange, emptyLabel = 'ทุ�
       <button
         type="button"
         onClick={() => (open ? setOpen(false) : openPanel())}
-        className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+        aria-expanded={open}
+        className={`flex items-center gap-2 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition ${
           active
             ? 'border-[#E5457F] bg-[#FCE7EF] text-[#E5457F]'
-            : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+            : 'border-[#D5D9E0] bg-white text-[#263544] hover:border-[#9AA3AF]'
         }`}
       >
         <CalendarIcon size={18} weight={active ? 'fill' : 'regular'} />

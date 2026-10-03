@@ -386,7 +386,6 @@ function RentalTimelineExample({ settings }: { settings: BookingSettings }) {
   }
 
   const useIndex = settings.bufferDaysBefore
-  const heldDays = settings.bufferDaysBefore + EXAMPLE_PACKAGE_DAYS
 
   const style: Record<Day['kind'], string> = {
     receive: 'bg-[#E8F1FB] text-[#1F5FA8] border-[#2F7FD6]',
@@ -398,11 +397,11 @@ function RentalTimelineExample({ settings }: { settings: BookingSettings }) {
 
   return (
     <section className="mt-14">
-      <SectionTitle eyebrow="เช่า 1 ครั้งใช้กี่วัน" title={`ชุดอยู่กับคุณ ${heldDays} วัน`} />
+      <SectionTitle eyebrow="เช่า 1 ครั้งใช้กี่วัน" title={`เช่า ${EXAMPLE_PACKAGE_DAYS} วัน นับจากวันใช้งาน`} />
       <p className="mt-2 max-w-2xl text-base text-[#263544]/70">
         คุณเลือกแค่ <b>วันใช้งาน</b> ระบบจะคำนวณให้ว่าชุดถึงมือคุณวันไหน และต้องส่งคืนวันไหน
-        ตัวอย่างด้านล่างคือแพ็กเกจมาตรฐาน {EXAMPLE_PACKAGE_DAYS} วัน (วันใช้งาน + วันส่งคืน)
-        บางชุดอาจมีจำนวนวันต่างไป ดูได้ในหน้ารายละเอียดชุด
+        จำนวนวันเช่านับจากวันใช้งานถึงวันส่งคืน ส่วนวันที่ชุดเดินทางไปถึงคุณก่อนวันงานไม่นับเป็นวันเช่า
+        ตัวอย่างด้านล่างคือแพ็กเกจ {EXAMPLE_PACKAGE_DAYS} วัน บางชุดอาจมีจำนวนวันต่างไป ดูได้ในหน้ารายละเอียดชุด
       </p>
 
       <div className="mt-6 overflow-x-auto pb-2">
@@ -430,7 +429,7 @@ function RentalTimelineExample({ settings }: { settings: BookingSettings }) {
       </div>
 
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-base text-[#263544]/70">
-        <Legend className="bg-[#2F7FD6]" label="ชุดถึงมือคุณ" />
+        <Legend className="bg-[#2F7FD6]" label="ชุดถึงมือคุณ (ไม่นับวันเช่า)" />
         <Legend className="bg-[#E5457F]" label="วันใช้งาน" />
         <Legend className="bg-[#6E4FC0]" label="ส่งชุดคืน (ภายในวันนี้)" />
         <Legend className="border border-dashed border-[#263544]/40 bg-[#F5F4F8]" label="ร้านรับคืน ตรวจสภาพ และทำความสะอาด" />

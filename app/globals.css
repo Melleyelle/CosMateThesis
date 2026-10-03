@@ -100,6 +100,45 @@ body {
   transform: translateX(4px);
 }
 
+/* แถบเลื่อนช่วงราคาแบบ 2 หัว: input range 2 ตัววางซ้อนกัน ให้กดได้เฉพาะที่หัวจับ */
+.range-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+  margin: 0;
+}
+.range-thumb::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  height: 22px;
+  width: 22px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 2px solid #263544;
+  box-shadow: 2px 2px 0 0 #263544;
+  cursor: grab;
+}
+.range-thumb::-moz-range-thumb {
+  pointer-events: auto;
+  height: 18px;
+  width: 18px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 2px solid #263544;
+  box-shadow: 2px 2px 0 0 #263544;
+  cursor: grab;
+}
+.range-thumb:focus-visible::-webkit-slider-thumb {
+  outline: 3px solid rgba(229, 69, 127, 0.4);
+  outline-offset: 2px;
+}
+.range-thumb:focus-visible::-moz-range-thumb {
+  outline: 3px solid rgba(229, 69, 127, 0.4);
+  outline-offset: 2px;
+}
+
 /* จุดลายพื้นแบนเนอร์ ค่อย ๆ ไหลเฉียง */
 .dot-field {
   background-image: radial-gradient(#f0a9c3 1.6px, transparent 1.8px);
