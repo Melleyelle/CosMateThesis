@@ -10,6 +10,7 @@ interface FavoriteButtonProps {
   size?: 'sm' | 'lg'
 }
 
+// ปุ่มรอง design v2: เส้น 1px · hover ยก + เงาแข็ง (.lift) ไม่เปลี่ยนพื้นเป็นชมพู · อยู่ในรายการโปรด = พื้น brand-soft
 export default function FavoriteButton({ productId, size = 'sm' }: FavoriteButtonProps) {
   const favoriteIds = useFavorites()
   const isFavorite = favoriteIds.includes(productId)
@@ -27,9 +28,9 @@ export default function FavoriteButton({ productId, size = 'sm' }: FavoriteButto
       aria-label={isFavorite ? 'นำออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'}
       aria-pressed={isFavorite}
       onClick={handleClick}
-      className={`pop flex flex-shrink-0 items-center justify-center rounded-full bg-white text-[#E5457F] ${
-        large ? 'h-12 w-12' : 'h-10 w-10'
-      }`}
+      className={`lift focus-ring flex flex-shrink-0 items-center justify-center rounded-full border border-line text-brand-strong ${
+        isFavorite ? 'bg-brand-soft' : 'bg-surface'
+      } ${large ? 'h-12 w-12' : 'h-11 w-11'}`}
     >
       <HeartIcon size={large ? 24 : 20} weight={isFavorite ? 'fill' : 'regular'} />
     </button>

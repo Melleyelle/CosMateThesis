@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { TONE_CLASS, TONE_DOT, type Tone } from '@/utils/admin/statusTone'
 
 // ชิ้นส่วนพื้นฐานของหลังร้าน — ทุกหน้าแอดมินใช้ชุดเดียวกันเพื่อให้หน้าตาสม่ำเสมอ
-// กติกา: พื้นที่ข้อมูลเรียบ (ขาว + เส้นบาง) / กรอบหนา+เงาแข็งเฉพาะปุ่มหลักและจุดที่ต้องลงมือ
+// กติกา: พื้นที่ข้อมูลเรียบ (ขาว + เส้นบาง) / ปุ่มกดใช้ design v2 (เส้น 1px + เงาแข็งเฉพาะตอน hover)
 
 export function PageHeader({
   title,
@@ -103,13 +103,14 @@ export function Metric({
   )
 }
 
-// ปุ่มหลัก (ใช้ภาษาแบรนด์: ชมพู + กรอบกรมท่า + เงาแข็ง) — 1 ปุ่มต่อหน้า
+// ปุ่มหลัก: ชมพู + เส้น 1px · ยก + เงาแข็งเฉพาะตอน hover (.lift) — 1 ปุ่มต่อหน้า
+// หน้าแอดมินไม่ได้ห่อ .theme-v2 จึงใช้ border-ink ตรง ๆ (border-line นอก theme-v2 เป็นเทาอ่อน)
 export const primaryButtonClass =
-  'inline-flex items-center gap-2 rounded-full border-2 border-[#263544] bg-[#E5457F] px-5 py-2.5 text-sm font-semibold text-white shadow-[3px_3px_0_0_#263544] transition hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[2px_2px_0_0_#263544] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none'
+  'lift focus-ring inline-flex items-center gap-2 rounded-full border border-ink bg-brand px-5 py-2.5 text-sm font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40'
 
-// ปุ่มรอง (เรียบ)
+// ปุ่มรอง: ขาว + เส้น 1px · .lift
 export const secondaryButtonClass =
-  'inline-flex items-center gap-2 rounded-full border border-[#D5D9E0] bg-white px-4 py-2 text-sm font-medium text-[#263544] transition hover:border-[#263544]'
+  'lift focus-ring inline-flex items-center gap-2 rounded-full border border-ink bg-white px-4 py-2 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-40'
 
 // แท็บกรองแบบเรียบ: เลือกอยู่ = กรมท่าทึบ
 export function FilterTabs<T extends string>({

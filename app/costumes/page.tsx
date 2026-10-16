@@ -2,19 +2,25 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ArrowsDownUpIcon, CaretDownIcon, FunnelSimpleIcon, MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react'
+import { ArrowsDownUpIcon, CaretDownIcon, FunnelSimpleIcon, MagnifyingGlassIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
-import CostumeGridCard from '@/app/components/customer/CostumeGridCard'
+import CostumeGridCard, { CARD_MEDIA } from '@/app/components/customer/CostumeGridCard'
 import Pagination from '@/app/components/customer/Pagination'
 import ExploreFilters, {
   EMPTY_FILTERS,
+  USE_DATE_DAYS_AHEAD,
   countActiveFilters,
   priceRangeLabel,
   type ExploreFilterState,
 } from '@/app/components/customer/ExploreFilters'
-import { fetchCatalog, type CatalogCostume } from '@/utils/customer/fetchCatalog'
+import { fetchCatalog, fetchUnavailableStartDates, type CatalogCostume } from '@/utils/customer/fetchCatalog'
+import { formatThaiDate } from '@/utils/dateUtils'
 import { customerHeldDays } from '@/utils/customer/bookingSettings'
 import { COLOR_OPTIONS, THEME_OPTIONS } from '@/utils/customer/filterOptions'
+import { fetchSizeStock, type SizeStock } from '@/utils/sizeStock'
+
+// หน้านี้ทดลอง design v2 แนว Gumroad (design-v2-gumroad.md) ผ่าน .theme-v2 ที่ตัวห่อของหน้า:
+// เส้นเข้ม 1px ทุกการ์ด/ปุ่ม/ช่องกรอก · เงาแข็งโผล่เฉพาะตอน hover (.lift) · ปุ่มหลักชมพู · ไม่มีพื้นดำ
 
 const PAGE_SIZE = 12
 
@@ -32,6 +38,12 @@ const GENDER_LABEL: Record<string, string> = { male: 'ชาย', female: 'ห�
 const COLOR_LABEL = Object.fromEntries(COLOR_OPTIONS.map((c) => [c.key, `สี${c.label}`]))
 const THEME_LABEL = Object.fromEntries(THEME_OPTIONS.map((t) => [t.key, t.label]))
 
+const primaryButtonClass =
+  'lift focus-ring inline-flex items-center justify-center gap-2 rounded-full border border-line bg-brand px-5 text-body font-bold text-white active:bg-brand-strong'
+const secondaryButtonClass =
+  'lift focus-ring inline-flex items-center justify-center gap-2 rounded-full border border-line bg-surface px-4 text-body font-semibold text-ink'
+const textLinkClass = 'focus-ring rounded text-body font-semibold text-brand-strong underline-offset-2 hover:underline'
+
 function ExploreInner() {
   const searchParams = useSearchParams()
   const gridTopRef = useRef<HTMLDivElement>(null)
@@ -39,6 +51,8 @@ function ExploreInner() {
   const [costumes, setCostumes] = useState<CatalogCostume[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  // null = กำลังโหลดจำนวนต่อไซส์ (การ์ดจองพื้นที่ไว้ก่อน) · ดึงครั้งเดียวทุกชุด ไม่ยิงทีละการ์ด
+  const [sizeStock, setSizeStock] = useState<Map<string, SizeStock[]> | null>(null)
 
   const [searchInput, setSearchInput] = useState(searchParams.get('q') ?? '')
   const [search, setSearch] = useState(searchParams.get('q') ?? '')
@@ -53,7 +67,10 @@ function ExploreInner() {
   useEffect(() => {
     fetchCatalog().then((res) => {
       if (res.error) setLoadError(res.error)
-      else setCostumes(res.data)
+      else {
+        setCostumes(res.data)
+        fetchSizeStock(res.data.map((c) => c.id)).then(setSizeStock)
+      }
       setLoading(false)
     })
   }, [])
@@ -62,6 +79,37 @@ function ExploreInner() {
   useEffect(() => {
     setPage(1)
   }, [filters, search, sort])
+
+  // วันไม่ว่างของทุกไซส์ (ล่วงหน้า USE_DATE_DAYS_AHEAD วัน) — โหลดครั้งเดียวตอนเลือกวันครั้งแรก
+  // หลังจากนั้นเปลี่ยนวันกี่ครั้งก็กรองได้ทันที ไม่ต้องยิงใหม่
+  const [unavailableByVariant, setUnavailableByVariant] = useState<Map<string, Set<string>> | null>(null)
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null)
+  const [availabilityAttempt, setAvailabilityAttempt] = useState(0)
+  const availabilityRequested = useRef(-1)
+
+  useEffect(() => {
+    if (!filters.useDate || unavailableByVariant || costumes.length === 0) return
+    if (availabilityRequested.current === availabilityAttempt) return
+    availabilityRequested.current = availabilityAttempt
+    fetchUnavailableStartDates(
+      costumes.flatMap((c) => c.rentableVariants.map((v) => v.id)),
+      USE_DATE_DAYS_AHEAD,
+    ).then((res) => {
+      if (res.error) setAvailabilityError(res.error)
+      else setUnavailableByVariant(res.data)
+    })
+  }, [filters.useDate, unavailableByVariant, costumes, availabilityAttempt])
+
+  const availabilityLoading = !!filters.useDate && !unavailableByVariant && !availabilityError
+  const busy = loading || availabilityLoading
+
+  // แผ่นตัวกรองบนมือถือ: ปิดด้วย Esc ได้
+  useEffect(() => {
+    if (!mobileFiltersOpen) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMobileFiltersOpen(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mobileFiltersOpen])
 
   // ตัวเลือกที่คำนวณจากข้อมูลจริง
   const categoryCounts = useMemo(() => {
@@ -105,6 +153,17 @@ function ExploreInner() {
         const haystack = `${c.name} ${c.characterName ?? ''} ${c.seriesName ?? ''}`.toLowerCase()
         if (!haystack.includes(keyword)) return false
       }
+      // ว่างวันที่เลือก = มีอย่างน้อย 1 ไซส์ (ตรงกับไซส์ที่กรองไว้ ถ้ามี) ที่เริ่มเช่าวันนั้นได้
+      if (f.useDate && unavailableByVariant) {
+        const date = f.useDate
+        const free = c.rentableVariants.some(
+          (v) =>
+            (!f.sizes.length || f.sizes.includes(v.size)) &&
+            unavailableByVariant.has(v.id) &&
+            !unavailableByVariant.get(v.id)!.has(date),
+        )
+        if (!free) return false
+      }
       return true
     })
 
@@ -120,7 +179,7 @@ function ExploreInner() {
       if (sort === 'rating') return (b.avgRating ?? 0) - (a.avgRating ?? 0) || b.reviewCount - a.reviewCount
       return b.createdAt.localeCompare(a.createdAt)
     })
-  }, [costumes, filters, search, sort])
+  }, [costumes, filters, search, sort, unavailableByVariant])
 
   const totalPages = Math.max(1, Math.ceil(results.length / PAGE_SIZE))
   const pageItems = results.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -129,6 +188,13 @@ function ExploreInner() {
   // ชิปแสดงตัวกรองที่เลือกอยู่ กดกากบาทเพื่อเอาออกทีละอัน
   const chips = useMemo(() => {
     const list: { key: string; label: string; remove: () => void }[] = []
+    if (filters.useDate) {
+      list.push({
+        key: 'useDate',
+        label: `ว่างวันที่ ${formatThaiDate(filters.useDate)}`,
+        remove: () => setFilters((f) => ({ ...f, useDate: null })),
+      })
+    }
     const add = (field: 'categories' | 'genders' | 'sizes' | 'colors' | 'themes', labels?: Record<string, string>) =>
       filters[field].forEach((v) =>
         list.push({
@@ -176,39 +242,45 @@ function ExploreInner() {
   )
 
   return (
-    <>
-      {/* ---------------- แบนเนอร์ค้นหา ---------------- */}
+    // --pop-color: หัวจับแถบราคาเป็นสี ink
+    <div className="theme-v2 text-ink [--pop-color:var(--color-ink)]">
+      {/* ---------------- แบนเนอร์ค้นหา: พื้นชมพูลายจุด · ช่องค้นหาทรงแคปซูลเส้นเข้ม + เงาแข็ง ปุ่มแว่นขยายชมพูติดขวา ---------------- */}
       <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6">
         <section
-          className="rounded-3xl bg-[#FDE3EE] px-4 py-8 text-center sm:py-10"
+          className="rounded-hero bg-brand-subtle px-4 py-8 text-center sm:py-10"
           style={{
-            backgroundImage: 'radial-gradient(rgba(229,69,127,0.28) 1.5px, transparent 1.5px)',
+            backgroundImage: 'radial-gradient(var(--color-brand-soft) 1.5px, transparent 1.5px)',
             backgroundSize: '22px 22px',
           }}
         >
-          <h1 className="text-3xl font-extrabold text-[#263544]">สำรวจชุด</h1>
+          <h1 className="text-h1 font-bold text-ink">สำรวจชุด</h1>
           <form
+            role="search"
             onSubmit={(e) => {
               e.preventDefault()
               setSearch(searchInput)
             }}
-            className="mx-auto mt-4 flex max-w-md overflow-hidden rounded-full border-2 border-[#263544] bg-white shadow-[3px_3px_0_0_#263544]"
+            className="mx-auto mt-4 flex h-12 max-w-md overflow-hidden rounded-full border-2 border-ink bg-surface shadow-[3px_3px_0_0_var(--color-ink)] transition focus-within:ring-[3px] focus-within:ring-brand/30"
           >
-            <input
-              value={searchInput}
-              onChange={(e) => {
-                setSearchInput(e.target.value)
-                if (e.target.value === '') setSearch('')
-              }}
-              placeholder="ค้นหาชื่อชุด ตัวละคร หรือชื่อเรื่อง"
-              className="min-w-0 flex-1 px-5 py-2.5 text-base text-gray-900 outline-none placeholder:text-gray-400"
-            />
+            <label className="flex min-w-0 flex-1">
+              <span className="sr-only">ค้นหาชุด</span>
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(e) => {
+                  setSearchInput(e.target.value)
+                  if (e.target.value === '') setSearch('')
+                }}
+                placeholder="ค้นหาชื่อชุด ตัวละคร หรือชื่อเรื่อง"
+                className="w-full min-w-0 bg-transparent px-5 text-body text-ink outline-none placeholder:text-muted"
+              />
+            </label>
             <button
               type="submit"
               aria-label="ค้นหา"
-              className="group flex items-center justify-center bg-[#E5457F] px-5 text-white"
+              className="flex w-12 flex-shrink-0 items-center justify-center bg-brand text-white outline-none transition active:bg-brand-strong focus-visible:bg-brand-strong"
             >
-              <MagnifyingGlassIcon size={20} weight="bold" className="transition-transform duration-150 group-hover:scale-125" />
+              <MagnifyingGlassIcon size={20} weight="bold" />
             </button>
           </form>
         </section>
@@ -216,18 +288,17 @@ function ExploreInner() {
 
       <div className="mx-auto mt-8 flex max-w-7xl gap-8 px-4 sm:px-6">
         {/* ---------------- ตัวกรองซ้าย (จอใหญ่) ---------------- */}
-        <aside className="hidden w-72 flex-shrink-0 self-start rounded-3xl bg-[#F7F7F8] px-6 pt-6 lg:sticky lg:top-24 lg:block lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
+        <aside
+          aria-label="ตัวกรอง"
+          className="hidden w-72 flex-shrink-0 self-start rounded-card bg-sunken px-5 pt-5 lg:block"
+        >
           <div className="flex items-center justify-between">
-            <p className="flex items-center gap-2 text-lg font-bold text-[#263544]">
-              <FunnelSimpleIcon size={20} className="text-[#E5457F]" />
+            <h2 className="flex items-center gap-2 text-h2 font-bold text-ink">
+              <FunnelSimpleIcon size={20} />
               ตัวกรอง
-            </p>
+            </h2>
             {activeCount > 0 && (
-              <button
-                type="button"
-                onClick={() => setFilters(EMPTY_FILTERS)}
-                className="text-base font-semibold text-[#E5457F] hover:underline"
-              >
+              <button type="button" onClick={() => setFilters(EMPTY_FILTERS)} className={`${textLinkClass} text-body-sm`}>
                 ล้างทั้งหมด
               </button>
             )}
@@ -236,17 +307,17 @@ function ExploreInner() {
         </aside>
 
         {/* ---------------- ผลลัพธ์ ---------------- */}
-        <section className="min-w-0 flex-1" ref={gridTopRef}>
+        <section className="min-w-0 flex-1 scroll-mt-24" ref={gridTopRef} aria-label="ผลลัพธ์">
           {/* เรื่อง → ตัวละคร (ต้องเลือกเรื่องก่อน) */}
           <div className="mb-4 flex flex-wrap gap-3">
-            <SelectPill
+            <SelectField
               label="คัดกรองจากชื่อเรื่อง"
               value={filters.series ?? ''}
               onChange={(v) => setFilters((f) => ({ ...f, series: v || null, character: null }))}
               options={seriesOptions}
               placeholder="ทุกเรื่อง"
             />
-            <SelectPill
+            <SelectField
               label="คัดกรองจากชื่อตัวละคร"
               value={filters.character ?? ''}
               onChange={(v) => setFilters((f) => ({ ...f, character: v || null }))}
@@ -260,33 +331,35 @@ function ExploreInner() {
             <button
               type="button"
               onClick={() => setMobileFiltersOpen(true)}
-              className="pop flex items-center gap-2 rounded-full bg-white px-4 py-2 text-base font-semibold text-[#263544] lg:hidden"
+              className={`${secondaryButtonClass} h-11 lg:hidden`}
             >
               <FunnelSimpleIcon size={18} />
               ตัวกรอง
               {activeCount > 0 && (
-                <span className="rounded-full bg-[#E5457F] px-1.5 text-sm text-white">{activeCount}</span>
+                <span className="min-w-5 rounded-full border border-line bg-brand-soft px-1.5 text-caption font-bold text-ink">
+                  {activeCount}
+                </span>
               )}
             </button>
 
-            <p className="text-base text-[#263544]/70">
+            <p className="text-body text-secondary" aria-live="polite">
               {search ? (
                 <>
-                  ผลการค้นหา &quot;<span className="font-semibold text-[#263544]">{search}</span>&quot;:{' '}
+                  ผลการค้นหา &quot;<span className="font-semibold text-ink">{search}</span>&quot;:{' '}
                 </>
               ) : (
                 'จำนวนสินค้าที่ค้นพบ: '
               )}
-              <span className="font-semibold text-[#263544]">{loading ? '…' : results.length} ชิ้น</span>
+              <span className="font-semibold text-ink">{busy ? '…' : results.length} ชิ้น</span>
             </p>
 
             <label className="relative ml-auto flex items-center">
-              <ArrowsDownUpIcon size={16} className="pointer-events-none absolute left-4 text-[#263544]" />
+              <ArrowsDownUpIcon size={16} className="pointer-events-none absolute left-4 text-secondary" />
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortValue)}
                 aria-label="เรียงลำดับ"
-                className={`${selectPillClass} pl-10`}
+                className={`${selectClass} pl-10`}
               >
                 {SORT_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -294,7 +367,7 @@ function ExploreInner() {
                   </option>
                 ))}
               </select>
-              <CaretDownIcon size={16} weight="bold" className="pointer-events-none absolute right-4 text-[#263544]" />
+              <CaretDownIcon size={16} weight="bold" className="pointer-events-none absolute right-4 text-secondary" />
             </label>
           </div>
 
@@ -305,46 +378,90 @@ function ExploreInner() {
                   key={chip.key}
                   type="button"
                   onClick={chip.remove}
-                  className="nudge flex items-center gap-1 rounded-full bg-[#FDE3EE] px-3 py-1 text-sm font-medium text-[#E5457F]"
+                  aria-label={`เอาตัวกรอง ${chip.label} ออก`}
+                  className="lift focus-ring inline-flex min-h-8 items-center gap-1.5 rounded-full border border-line bg-brand-soft px-3 text-body-sm font-semibold text-ink"
                 >
                   {chip.label}
                   <XIcon size={12} weight="bold" />
                 </button>
               ))}
-              <button
-                type="button"
-                onClick={() => setFilters(EMPTY_FILTERS)}
-                className="text-base font-semibold text-[#263544]/60 underline hover:text-[#263544]"
-              >
+              <button type="button" onClick={() => setFilters(EMPTY_FILTERS)} className={`${textLinkClass} ml-1 text-body-sm`}>
                 ล้างทั้งหมด
               </button>
             </div>
           )}
 
-          {loading && (
-            <div className="grid grid-cols-2 gap-5 md:grid-cols-3">
+          {busy && !loadError && (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 xl:grid-cols-4" aria-busy="true" aria-label="กำลังโหลด">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="aspect-[4/5] animate-pulse rounded-2xl bg-gray-100" />
+                <div key={i} className="overflow-hidden rounded-card border border-line">
+                  <div className={`${CARD_MEDIA} animate-pulse border-b border-line bg-sunken`} />
+                  <div className="space-y-2 p-3 sm:p-4">
+                    <div className="h-4 w-1/2 animate-pulse rounded bg-sunken" />
+                    <div className="h-5 w-4/5 animate-pulse rounded bg-sunken" />
+                    <div className="h-5 w-1/3 animate-pulse rounded bg-sunken" />
+                  </div>
+                </div>
               ))}
             </div>
           )}
 
           {!loading && loadError && (
-            <p role="alert" className="rounded-xl bg-red-50 px-4 py-6 text-center text-base text-red-600">
-              {loadError}
-            </p>
+            <div
+              role="alert"
+              className="flex items-start gap-3 rounded-card border border-danger/20 bg-danger-subtle px-4 py-4 text-body text-danger"
+            >
+              <WarningCircleIcon size={22} weight="fill" className="mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-semibold">โหลดรายการชุดไม่สำเร็จ</p>
+                <p className="text-body-sm">{loadError}</p>
+              </div>
+            </div>
           )}
 
-          {!loading && !loadError && results.length === 0 && (
-            <div className="rounded-3xl bg-[#F7F7F8] px-4 py-16 text-center">
-              <p className="text-[#263544]/60">
-                {costumes.length === 0 ? 'ยังไม่มีชุดที่เปิดให้เช่า' : 'ไม่พบชุดที่ตรงกับเงื่อนไข'}
+          {filters.useDate && availabilityError && (
+            <div
+              role="alert"
+              className="mb-5 flex flex-wrap items-start gap-3 rounded-card border border-warning/20 bg-warning-subtle px-4 py-3 text-body text-warning"
+            >
+              <WarningCircleIcon size={22} weight="fill" className="mt-0.5 flex-shrink-0" />
+              <p className="min-w-0 flex-1">
+                <span className="font-semibold">ตรวจวันว่างไม่สำเร็จ</span>
+                <span className="block text-body-sm">ตอนนี้แสดงทุกชุดโดยยังไม่ได้กรองตามวันที่ใช้ชุด</span>
               </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setAvailabilityError(null)
+                  setAvailabilityAttempt((a) => a + 1)
+                }}
+                className={`${secondaryButtonClass} h-10 text-body-sm`}
+              >
+                ลองอีกครั้ง
+              </button>
+            </div>
+          )}
+
+          {!busy && !loadError && results.length === 0 && (
+            <div className="px-4 py-16 text-center">
+              <MagnifyingGlassIcon size={32} className="mx-auto text-muted" />
+              <p className="mt-3 text-h3 font-semibold text-ink">
+                {costumes.length === 0
+                  ? 'ยังไม่มีชุดที่เปิดให้เช่า'
+                  : filters.useDate
+                    ? `ไม่พบชุดที่ว่างวัน${formatThaiDate(filters.useDate)}`
+                    : 'ไม่พบชุดที่ตรงกับเงื่อนไข'}
+              </p>
+              {costumes.length > 0 && (
+                <p className="mt-1 text-body-sm text-secondary">
+                  {filters.useDate ? 'ลองเลือกวันอื่น หรือลดตัวกรองอื่นลง' : 'ลองลดตัวกรองหรือค้นด้วยคำอื่น'}
+                </p>
+              )}
               {activeCount > 0 && (
                 <button
                   type="button"
                   onClick={() => setFilters(EMPTY_FILTERS)}
-                  className="mt-3 text-base font-semibold text-[#E5457F] hover:underline"
+                  className={`${secondaryButtonClass} mt-5 h-11`}
                 >
                   ล้างตัวกรองแล้วลองใหม่
                 </button>
@@ -352,14 +469,16 @@ function ExploreInner() {
             </div>
           )}
 
-          {!loading && !loadError && pageItems.length > 0 && (
+          {!busy && !loadError && pageItems.length > 0 && (
             <>
-              <div className="grid grid-cols-2 gap-x-5 gap-y-8 md:grid-cols-3">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 xl:grid-cols-4">
                 {pageItems.map((c) => (
                   <CostumeGridCard
                     key={c.id}
+                    variant="gumroad"
                     costume={c}
                     heldDays={customerHeldDays(c.minPricePackageDays)}
+                    sizes={sizeStock ? (sizeStock.get(c.id) ?? []) : undefined}
                   />
                 ))}
               </div>
@@ -372,33 +491,41 @@ function ExploreInner() {
       {/* ---------------- ตัวกรองบนมือถือ (แผ่นเลื่อนขึ้น) ---------------- */}
       {mobileFiltersOpen && (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="ตัวกรอง">
-          <div className="absolute inset-0 bg-[#263544]/50" onClick={() => setMobileFiltersOpen(false)} />
-          <div className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-[#F7F7F8] px-6 pb-24">
-            <div className="sticky top-0 -mx-6 flex items-center justify-between bg-[#F7F7F8] px-6 pb-2 pt-4">
-              <p className="text-lg font-bold text-[#263544]">ตัวกรอง</p>
-              <button
-                type="button"
-                onClick={() => setMobileFiltersOpen(false)}
-                aria-label="ปิด"
-                className="nudge rounded-full p-2 text-[#263544]"
-              >
-                <XIcon size={20} weight="bold" />
-              </button>
+          <div className="absolute inset-0 bg-ink/50" onClick={() => setMobileFiltersOpen(false)} />
+          <div className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-hero bg-surface px-5 pb-24 shadow-overlay">
+            <div className="sticky top-0 -mx-5 flex items-center justify-between border-b border-line-subtle bg-surface px-5 pb-3 pt-4">
+              <h2 className="text-h2 font-bold text-ink">ตัวกรอง</h2>
+              <div className="flex items-center gap-2">
+                {activeCount > 0 && (
+                  <button type="button" onClick={() => setFilters(EMPTY_FILTERS)} className={`${textLinkClass} text-body-sm`}>
+                    ล้างทั้งหมด
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setMobileFiltersOpen(false)}
+                  aria-label="ปิด"
+                  autoFocus
+                  className="focus-ring flex h-11 w-11 items-center justify-center rounded-full text-ink transition hover:bg-sunken"
+                >
+                  <XIcon size={20} weight="bold" />
+                </button>
+              </div>
             </div>
             {filterPanel}
           </div>
-          <div className="absolute inset-x-0 bottom-0 bg-white p-4 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
+          <div className="absolute inset-x-0 bottom-0 border-t border-line bg-surface p-4">
             <button
               type="button"
               onClick={() => setMobileFiltersOpen(false)}
-              className="pop w-full rounded-full bg-[#E5457F] py-3 text-base font-bold text-white"
+              className={`${primaryButtonClass} h-12 w-full`}
             >
               ดูผลลัพธ์ {results.length} ชิ้น
             </button>
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }
 
@@ -413,10 +540,11 @@ function countNames(names: (string | null)[]): { name: string; count: number }[]
   )
 }
 
-const selectPillClass =
-  'appearance-none rounded-full border-2 border-[#263544] bg-white py-2 pl-4 pr-10 text-base font-medium text-[#263544] shadow-[3px_3px_0_0_#263544] outline-none transition focus-visible:ring-2 focus-visible:ring-[#E5457F]/40 disabled:cursor-not-allowed disabled:border-[#263544]/20 disabled:text-[#263544]/40 disabled:shadow-none'
+// Select ตาม design v2: มุม control 10px เส้นเข้ม 1px สูง 44px · ปิดใช้ = เส้นจาง พื้น canvas
+const selectClass =
+  'focus-ring h-11 appearance-none rounded-control border border-line bg-surface py-0 pl-4 pr-10 text-body font-medium text-ink outline-none transition disabled:cursor-not-allowed disabled:border-line-subtle disabled:bg-canvas disabled:text-muted'
 
-function SelectPill({
+function SelectField({
   label,
   value,
   onChange,
@@ -438,7 +566,7 @@ function SelectPill({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className={`${selectPillClass} w-full ${value ? 'bg-[#FDE3EE]' : ''}`}
+        className={`${selectClass} w-full ${value ? 'bg-brand-soft font-bold' : ''}`}
       >
         <option value="">{value ? placeholder : label}</option>
         {options.map((o) => (
@@ -450,7 +578,7 @@ function SelectPill({
       <CaretDownIcon
         size={16}
         weight="bold"
-        className={`pointer-events-none absolute right-4 ${disabled ? 'text-[#263544]/30' : 'text-[#263544]'}`}
+        className={`pointer-events-none absolute right-4 ${disabled ? 'text-muted' : 'text-secondary'}`}
       />
     </label>
   )
@@ -459,7 +587,7 @@ function SelectPill({
 export default function ExplorePage() {
   return (
     <CustomerLayout width="full">
-      <Suspense fallback={<div className="mx-auto mt-8 h-96 max-w-7xl animate-pulse rounded-3xl bg-gray-100" />}>
+      <Suspense fallback={<div className="mx-auto mt-8 h-96 max-w-7xl animate-pulse rounded-hero bg-sunken" />}>
         <ExploreInner />
       </Suspense>
     </CustomerLayout>

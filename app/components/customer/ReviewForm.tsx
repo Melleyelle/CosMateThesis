@@ -106,7 +106,8 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
 
       <form
         onSubmit={handleSubmit}
-        className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border-2 border-[#263544] bg-white p-6 shadow-[6px_6px_0_0_#263544] sm:rounded-3xl"
+        // modal design v2: เส้น 1px + shadow-overlay (เงานุ่มสำหรับสิ่งที่ลอยเหนือหน้า)
+        className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-line bg-white p-6 shadow-overlay sm:rounded-3xl"
       >
         <button
           type="button"
@@ -151,10 +152,8 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
                 type="button"
                 onClick={() => setSizeFit(sizeFit === key ? null : key)}
                 aria-pressed={sizeFit === key}
-                className={`pop rounded-xl py-2 text-base font-semibold ${
-                  sizeFit === key
-                    ? 'bg-[#E5457F] text-white'
-                    : 'bg-white text-[#263544]'
+                className={`focus-ring rounded-xl border border-line py-2 text-base ${
+                  sizeFit === key ? 'bg-brand-soft font-bold text-ink' : 'lift bg-white font-semibold text-ink'
                 }`}
               >
                 {SIZE_FIT_LABEL[key]}
@@ -169,7 +168,7 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
               value={height}
               onChange={(e) => setHeight(e.target.value.replace(/[^0-9]/g, ''))}
               placeholder="เช่น 165"
-              className="w-24 rounded-lg bg-[#EFEFEF] px-3 py-1.5 text-base outline-none focus:bg-white focus:ring-2 focus:ring-[#E5457F]/30"
+              className="w-24 rounded-control border border-line bg-white px-3 py-1.5 text-base outline-none placeholder:text-muted focus:border-brand-strong focus:ring-[3px] focus:ring-brand/25"
             />
             ซม. <span className="text-base text-[#263544]/50">(ไม่บังคับ ช่วยคนอื่นเลือกไซส์)</span>
           </label>
@@ -183,7 +182,7 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="สภาพชุด เนื้อผ้า ใส่ไปงานไหน ถ่ายรูปออกมาเป็นยังไง..."
-            className="w-full rounded-xl bg-[#EFEFEF] px-3 py-2.5 text-base outline-none focus:bg-white focus:ring-2 focus:ring-[#E5457F]/30"
+            className="w-full rounded-control border border-line bg-white px-3 py-2.5 text-base outline-none placeholder:text-muted focus:border-brand-strong focus:ring-[3px] focus:ring-brand/25"
           />
           <p className="text-right text-base text-[#263544]/40">
             {comment.length}/{MAX_COMMENT}
@@ -196,7 +195,7 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
           </p>
           <div className="flex flex-wrap gap-2">
             {uploads.map((u) => (
-              <div key={u.id} className="relative h-20 w-20 overflow-hidden rounded-xl border border-gray-200">
+              <div key={u.id} className="relative h-20 w-20 overflow-hidden rounded-xl border border-line-subtle">
                 <img src={u.preview} alt="" className="h-full w-full object-cover" />
                 {!u.url && !u.error && (
                   <div className="absolute inset-0 flex items-center justify-center bg-white/70">
@@ -222,7 +221,7 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="nudge flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-[#263544]/30 text-sm text-[#263544]/60"
+                className="nudge focus-ring flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-line text-sm text-[#263544]/60"
               >
                 <CameraIcon size={22} />
                 เพิ่มรูป
@@ -261,7 +260,7 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
         <button
           type="submit"
           disabled={submitting || uploading}
-          className="pop mt-5 w-full rounded-full bg-[#E5457F] py-3 text-base font-bold text-white disabled:opacity-50"
+          className="lift focus-ring mt-5 w-full rounded-full border border-line bg-brand py-3 text-base font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
         >
           {submitting ? 'กำลังส่งรีวิว...' : uploading ? 'กำลังอัปโหลดรูป...' : 'ส่งรีวิว'}
         </button>

@@ -34,7 +34,7 @@ export default function InclusionsCard({ inclusions, onChange }: Props) {
         <button
           type="button"
           onClick={addInclusion}
-          className="whitespace-nowrap rounded-full border-2 border-[#E5457F] px-4 py-1.5 text-xs font-semibold text-[#E5457F] hover:bg-[#FCE7EF]"
+          className="lift focus-ring whitespace-nowrap rounded-full border border-ink bg-white px-4 py-1.5 text-xs font-semibold text-ink"
         >
           + เพิ่มรายการ
         </button>

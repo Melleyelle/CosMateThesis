@@ -150,13 +150,14 @@ export default function CustomerNavbar() {
             </button>
 
             {menuOpen && ready && (
-              <div className="absolute right-0 top-12 w-60 overflow-hidden rounded-2xl border-2 border-[#263544] bg-white shadow-[4px_4px_0_0_#263544]">
+              // เส้นขอบ 1px ตาม design v2 · คงเงาแข็งไว้ให้เมนูดูลอยเหนือหน้า
+              <div className="absolute right-0 top-12 w-60 overflow-hidden rounded-2xl border border-[#263544] bg-white shadow-[4px_4px_0_0_#263544]">
                 {email ? (
                   <>
                     <MenuLink href="/account" icon={<UserIcon size={18} />} label="บัญชีของฉัน" />
                     <MenuLink href="/orders" icon={<ReceiptIcon size={18} />} label="ออเดอร์ของฉัน" />
                     {isAdmin && (
-                      <MenuLink href="/admin/inventory" icon={<StorefrontIcon size={18} />} label="หลังร้าน (แอดมิน)" />
+                      <MenuLink href="/admin"icon={<StorefrontIcon size={18} />} label="หลังร้าน (แอดมิน)" />
                     )}
                     <button
                       type="button"

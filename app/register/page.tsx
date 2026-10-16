@@ -145,7 +145,8 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="pop rounded-full bg-[#E5457F] px-14 py-3 text-base font-semibold text-white disabled:opacity-50"
+            // ปุ่มหลัก design v2: เส้น 1px · ยก + เงาแข็งเฉพาะตอน hover (.lift)
+            className="lift focus-ring rounded-full border border-ink bg-brand px-14 py-3 text-base font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
           >
             {loading ? 'loading...' : 'สมัครสมาชิก'}
           </button>

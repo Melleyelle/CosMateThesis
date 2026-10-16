@@ -187,7 +187,7 @@ export default function AdminReviewsPage() {
                         setReplyOpen(replyOpen === r.id ? null : r.id)
                         setReplyDraft((d) => ({ ...d, [r.id]: d[r.id] ?? r.adminReply ?? '' }))
                       }}
-                      className="flex items-center gap-1 rounded-full border border-[#D5D9E0] px-3 py-1 text-xs font-semibold text-[#263544] transition hover:border-[#263544]"
+                      className="flex items-center gap-1 lift focus-ring rounded-full border border-ink bg-white px-3 py-1 text-xs font-semibold text-ink"
                     >
                       <ChatCircleTextIcon size={14} />
                       {r.adminReply ? 'แก้คำตอบ' : 'ตอบกลับ'}
@@ -196,7 +196,7 @@ export default function AdminReviewsPage() {
                       type="button"
                       onClick={() => toggleHidden(r)}
                       disabled={busyId === r.id}
-                      className="flex items-center gap-1 rounded-full border border-[#D5D9E0] px-3 py-1 text-xs font-semibold text-[#263544] transition hover:border-[#263544] disabled:opacity-50"
+                      className="flex items-center gap-1 lift focus-ring rounded-full border border-ink bg-white px-3 py-1 text-xs font-semibold text-ink disabled:opacity-50"
                     >
                       {r.isHidden ? <EyeIcon size={14} /> : <EyeSlashIcon size={14} />}
                       {r.isHidden ? 'แสดง' : 'ซ่อน'}
@@ -237,7 +237,7 @@ export default function AdminReviewsPage() {
                         type="button"
                         onClick={() => saveReply(r)}
                         disabled={busyId === r.id}
-                        className="rounded-full border-2 border-[#263544] bg-[#E5457F] px-4 py-1.5 text-xs font-bold text-white shadow-[2px_2px_0_0_#263544] disabled:opacity-50"
+                        className="lift focus-ring rounded-full border border-ink bg-brand px-4 py-1.5 text-xs font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         บันทึกคำตอบ
                       </button>

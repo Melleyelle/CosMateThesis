@@ -155,25 +155,27 @@ export default function CartPage() {
 
   return (
     <CustomerLayout>
+      {/* design v2 (design-system.md): เส้น 1px · เงาแข็งเฉพาะตอน hover (.lift) */}
+      <div className="theme-v2">
       <h1 className="mb-6 text-3xl font-bold text-[#263544]">ตะกร้าของฉัน</h1>
 
       {showSkeleton ? (
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
           <div className="space-y-4">
-            <div className="h-44 animate-pulse rounded-2xl bg-gray-100" />
-            <div className="h-44 animate-pulse rounded-2xl bg-gray-100" />
+            <div className="h-44 animate-pulse rounded-card bg-sunken" />
+            <div className="h-44 animate-pulse rounded-card bg-sunken" />
           </div>
-          <div className="h-80 animate-pulse rounded-2xl bg-gray-100" />
+          <div className="h-80 animate-pulse rounded-card bg-sunken" />
         </div>
       ) : cart.length === 0 ? (
         <EmptyState
-          className="rounded-3xl border-2 border-dashed border-[#263544]/20"
+          className="rounded-3xl"
           title="ตะกร้ายังว่างอยู่เลย"
           description={<>ไปเลือกชุดที่ชอบ กำหนดวันใช้งาน แล้วกด &quot;เพิ่มลงตะกร้า&quot; ได้เลยนะ</>}
           action={
             <Link
               href="/costumes"
-              className="pop inline-block rounded-full bg-[#E5457F] px-6 py-2.5 text-base font-bold text-white"
+              className="lift focus-ring inline-block rounded-full border border-line bg-brand px-6 py-2.5 text-base font-bold text-white active:bg-brand-strong"
             >
               สำรวจชุด
             </Link>
@@ -204,10 +206,9 @@ export default function CartPage() {
                 return (
                   <li
                     key={keyOf(item)}
-                    className={`flex gap-4 rounded-2xl border-2 bg-white p-4 transition ${
-                      isSelected
-                        ? 'border-[#263544] shadow-[4px_4px_0_0_#263544]'
-                        : 'border-[#263544]/15'
+                    // เลือกอยู่ = เส้นเข้ม · ไม่ได้เลือก = เส้นจาง (กล่องกดไม่ได้ จึงไม่มีเงา)
+                    className={`flex gap-4 rounded-card border bg-white p-4 transition ${
+                      isSelected ? 'border-line' : 'border-line-subtle'
                     }`}
                   >
                     <input
@@ -218,7 +219,7 @@ export default function CartPage() {
                       aria-label="เลือกรายการนี้"
                       className="mt-1 h-5 w-5 flex-shrink-0 accent-[#E5457F] disabled:opacity-30"
                     />
-                    <div className="h-28 w-24 flex-shrink-0 overflow-hidden rounded-xl border-2 border-[#263544] bg-[#FDE3EE] sm:h-32 sm:w-28">
+                    <div className="h-28 w-24 flex-shrink-0 overflow-hidden rounded-xl border border-line bg-[#FDE3EE] sm:h-32 sm:w-28">
                       {v?.coverImageUrl ? (
                         <img src={v.coverImageUrl} alt="" className="h-full w-full object-cover" />
                       ) : (
@@ -234,7 +235,7 @@ export default function CartPage() {
                           {v ? (
                             <Link
                               href={`/costumes/${v.productId}`}
-                              className="line-clamp-2 text-lg font-bold text-[#263544] hover:text-[#E5457F]"
+                              className="line-clamp-2 text-lg font-bold text-[#263544] underline-offset-2 hover:underline"
                             >
                               {v.productName}
                             </Link>
@@ -270,7 +271,7 @@ export default function CartPage() {
                           </div>
                         )}
                         {v && line && (
-                          <p className="text-xl font-extrabold text-[#E5457F]">
+                          <p className="text-xl font-extrabold text-brand">
                             {formatBaht(line.rental)}
                             <span className="text-base font-semibold text-[#263544]/60"> / {customerHeldDays(v.packageDays)} วัน</span>
                           </p>
@@ -295,8 +296,8 @@ export default function CartPage() {
             </ul>
           </div>
 
-          <aside className="h-fit rounded-2xl border-2 border-[#263544] bg-white p-6 shadow-[4px_4px_0_0_#263544] lg:sticky lg:top-24">
-            <h2 className="mb-4 border-b border-[#263544]/10 pb-4 text-2xl font-bold text-[#263544]">
+          <aside className="h-fit rounded-card border border-line bg-white p-6 lg:sticky lg:top-24">
+            <h2 className="mb-4 border-b border-line-subtle pb-4 text-2xl font-bold text-[#263544]">
               สรุปยอด <span className="text-[#E5457F]">{selectedItems.length} รายการ</span>
             </h2>
             <dl className="space-y-2 text-base">
@@ -304,16 +305,16 @@ export default function CartPage() {
               <Row label="ค่ามัดจำ (ได้คืนหลังตรวจชุด)" value={formatBaht(totals.deposit)} />
               <Row label="ค่าซักรีด" value={formatBaht(totals.laundry)} />
               <Row label="ค่าจัดส่ง" value={formatBaht(shipping)} />
-              <div className="flex items-center justify-between border-t-2 border-dashed border-gray-200 pt-3">
+              <div className="flex items-center justify-between border-t border-dashed border-line-subtle pt-3">
                 <dt className="font-bold text-[#263544]">ยอดชำระทั้งหมด</dt>
-                <dd className="text-3xl font-extrabold text-[#E5457F]">{formatBaht(grandTotal)}</dd>
+                <dd className="text-3xl font-extrabold text-brand">{formatBaht(grandTotal)}</dd>
               </div>
             </dl>
             <button
               type="button"
               onClick={handleCheckout}
               disabled={selectedItems.length === 0}
-              className="pop mt-5 w-full rounded-full bg-[#E5457F] py-4 text-lg font-bold text-white disabled:bg-gray-200 disabled:text-gray-400"
+              className="lift focus-ring mt-5 w-full rounded-full border border-line bg-brand py-4 text-lg font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
             >
               {selectedItems.length === 0 ? 'เลือกรายการก่อน' : 'ไปชำระเงิน'}
             </button>
@@ -322,15 +323,21 @@ export default function CartPage() {
       )}
 
       {recommended.length > 0 && (
-        <section className="mt-12 border-t-2 border-gray-200 pt-10">
+        <section className="mt-12 border-t border-line pt-10">
           <h2 className="mb-6 text-2xl font-bold text-[#263544]">ชุดที่คุณอาจสนใจ</h2>
           <div className="grid grid-cols-2 gap-x-5 gap-y-8 lg:grid-cols-4">
             {recommended.map((c) => (
-              <CostumeGridCard key={c.id} costume={c} heldDays={customerHeldDays(c.minPricePackageDays)} />
+              <CostumeGridCard
+                key={c.id}
+                variant="gumroad"
+                costume={c}
+                heldDays={customerHeldDays(c.minPricePackageDays)}
+              />
             ))}
           </div>
         </section>
       )}
+      </div>
     </CustomerLayout>
   )
 }

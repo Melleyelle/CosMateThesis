@@ -1,9 +1,9 @@
 'use client'
 
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import { CheckIcon } from '@phosphor-icons/react'
+import { CheckIcon, XIcon } from '@phosphor-icons/react'
 import { COLOR_OPTIONS, THEME_OPTIONS } from '@/utils/customer/filterOptions'
-import { formatBaht } from '@/utils/dateUtils'
+import { addDays, formatBaht, formatThaiDateWithWeekday, todayISO } from '@/utils/dateUtils'
 
 export type ExploreFilterState = {
   categories: string[]
@@ -15,7 +15,11 @@ export type ExploreFilterState = {
   character: string | null // เลือกได้หลังเลือกเรื่องแล้วเท่านั้น
   priceMin: number | null // null = ไม่จำกัด (ต่ำกว่า PRICE_FLOOR ก็ผ่าน)
   priceMax: number | null // null = ไม่จำกัด (เกิน PRICE_CEILING ก็ผ่าน)
+  useDate: string | null // วันที่จะใส่ชุด (YYYY-MM-DD) → แสดงเฉพาะชุดที่มีไซส์ว่างวันนั้น
 }
+
+// เลือกวันใส่ชุดล่วงหน้าได้เท่ากับปฏิทินหน้ารายละเอียดชุด
+export const USE_DATE_DAYS_AHEAD = 120
 
 export const EMPTY_FILTERS: ExploreFilterState = {
   categories: [],
@@ -27,6 +31,7 @@ export const EMPTY_FILTERS: ExploreFilterState = {
   character: null,
   priceMin: null,
   priceMax: null,
+  useDate: null,
 }
 
 // แถบเลื่อนราคา: ซ้ายสุด = "ต่ำกว่า ฿250" (ไม่จำกัดขั้นต่ำ) / ขวาสุด = ฿2,500 ขึ้นไป (ไม่จำกัดเพดาน)
@@ -65,6 +70,7 @@ export function countActiveFilters(filters: ExploreFilterState): number {
     filters.themes.length +
     (filters.series ? 1 : 0) +
     (filters.character ? 1 : 0) +
+    (filters.useDate ? 1 : 0) +
     (filters.priceMin !== null || filters.priceMax !== null ? 1 : 0)
   )
 }
@@ -99,8 +105,42 @@ export default function ExploreFilters({ value, onChange, categoryCounts }: Expl
 
   const pct = (n: number) => ((n - PRICE_FLOOR) / (PRICE_CEILING - PRICE_FLOOR)) * 100
 
+  const today = todayISO()
+
   return (
     <div className="space-y-6 py-6">
+      <FilterSection title="วันที่ใช้ชุด">
+        <label htmlFor="explore-use-date" className="sr-only">
+          วันที่ใช้ชุด
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            id="explore-use-date"
+            type="date"
+            min={today}
+            max={addDays(today, USE_DATE_DAYS_AHEAD)}
+            value={value.useDate ?? ''}
+            onChange={(e) => onChange((current) => ({ ...current, useDate: e.target.value || null }))}
+            className="focus-ring h-11 min-w-0 flex-1 rounded-control border border-line-strong bg-surface px-3 text-body text-ink outline-none transition hover:border-secondary"
+          />
+          {value.useDate && (
+            <button
+              type="button"
+              onClick={() => onChange((current) => ({ ...current, useDate: null }))}
+              aria-label="ล้างวันที่ใช้ชุด"
+              className="focus-ring flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-secondary transition hover:bg-sunken hover:text-ink"
+            >
+              <XIcon size={16} weight="bold" />
+            </button>
+          )}
+        </div>
+        <p className="mt-2 text-body-sm text-muted">
+          {value.useDate
+            ? `แสดงเฉพาะชุดที่มีไซส์ว่างให้ใส่วัน${formatThaiDateWithWeekday(value.useDate)}`
+            : 'เลือกวันที่จะใส่ เพื่อดูเฉพาะชุดที่ยังว่างวันนั้น'}
+        </p>
+      </FilterSection>
+
       <FilterSection title="ประเภทชุด">
         <div className="flex flex-wrap gap-2">
           {CATEGORY_OPTIONS.map((option) => (
@@ -110,7 +150,7 @@ export default function ExploreFilters({ value, onChange, categoryCounts }: Expl
               onClick={() => toggle('categories', option.key)}
             >
               {option.label}
-              <span className="ml-1 opacity-60">{categoryCounts[option.key] ?? 0}</span>
+              <span className="ml-0.5 font-normal tabular-nums">{categoryCounts[option.key] ?? 0}</span>
             </Pill>
           ))}
         </div>
@@ -148,8 +188,8 @@ export default function ExploreFilters({ value, onChange, categoryCounts }: Expl
                 aria-pressed={active}
                 aria-label={`สี${option.label}`}
                 title={option.label}
-                className={`nudge flex h-9 w-9 items-center justify-center rounded-full border-2 transition ${
-                  active ? 'border-[#263544] ring-2 ring-[#E5457F] ring-offset-2' : 'border-black/10'
+                className={`focus-ring flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                  active ? 'border-ink ring-2 ring-ink ring-offset-2' : 'border-black/15 hover:scale-105'
                 }`}
                 style={{ backgroundColor: option.hex }}
               >
@@ -173,13 +213,13 @@ export default function ExploreFilters({ value, onChange, categoryCounts }: Expl
       </FilterSection>
 
       <FilterSection title="ราคาเช่า">
-        <p className="mb-3 text-base font-semibold text-[#E5457F]">
+        <p className="mb-3 text-body font-semibold text-ink">
           {priceRangeLabel(value.priceMin, value.priceMax)}
         </p>
         <div className="relative h-6">
-          <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-[#263544]/10" />
+          <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-sunken" />
           <div
-            className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-[#E5457F]"
+            className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-brand"
             style={{ left: `${pct(lo)}%`, right: `${100 - pct(hi)}%` }}
           />
           <input
@@ -203,7 +243,7 @@ export default function ExploreFilters({ value, onChange, categoryCounts }: Expl
             className="range-thumb absolute inset-0 w-full"
           />
         </div>
-        <div className="mt-2 flex justify-between text-sm text-[#263544]/55">
+        <div className="mt-2 flex justify-between text-body-sm text-muted">
           <span>ต่ำกว่า {formatBaht(PRICE_FLOOR)}</span>
           <span>{formatBaht(PRICE_CEILING)}</span>
         </div>
@@ -214,25 +254,28 @@ export default function ExploreFilters({ value, onChange, categoryCounts }: Expl
 
 function FilterSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="border-b border-[#263544]/10 pb-6 last:border-0 last:pb-0">
-      <h2 className="mb-3 text-base font-bold text-[#263544]">{title}</h2>
+    <section className="border-b border-line-subtle pb-6 last:border-0 last:pb-0">
+      <h2 className="mb-3 text-h3 font-bold text-ink">{title}</h2>
       {children}
     </section>
   )
 }
 
+// ตัวเลือกแบบเปิด/ปิด: เลือกแล้วมีเครื่องหมายถูกคู่กับสี (ไม่บอกด้วยสีอย่างเดียว)
+// design v2: ที่เลือก = พื้น brand-soft เส้นดำ ตัวดำหนา · ไม่ได้เลือก = เส้นบาง hover แล้วเส้นดำโผล่
 function Pill({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`rounded-full border-2 px-3.5 py-1.5 text-base font-medium transition ${
+      className={`focus-ring inline-flex min-h-10 items-center gap-1 rounded-full border px-3.5 text-body-sm transition ${
         active
-          ? 'border-[#263544] bg-[#E5457F] text-white shadow-[2px_2px_0_0_#263544]'
-          : 'border-transparent bg-white text-[#263544] hover:border-[#263544]/30'
+          ? 'border-line bg-brand-soft font-bold text-ink'
+          : 'border-line-subtle bg-surface font-medium text-ink hover:border-line'
       }`}
     >
+      {active && <CheckIcon size={14} weight="bold" />}
       {children}
     </button>
   )

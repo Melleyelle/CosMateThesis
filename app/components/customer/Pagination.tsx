@@ -17,6 +17,10 @@ function pageList(current: number, total: number): (number | 'gap')[] {
   return result
 }
 
+// design v2: ปุ่มรองเส้น 1px ยก + เงาแข็งตอน hover (.lift) · หน้าปัจจุบันพื้น brand-soft เส้นดำ (ไม่ใช้พื้นดำ)
+const stepClass =
+  'lift focus-ring flex h-11 w-11 items-center justify-center rounded-full border border-line bg-surface text-ink disabled:cursor-not-allowed disabled:opacity-40'
+
 export default function Pagination({
   page,
   totalPages,
@@ -29,19 +33,19 @@ export default function Pagination({
   if (totalPages <= 1) return null
 
   return (
-    <nav aria-label="เปลี่ยนหน้า" className="mt-10 flex items-center justify-center gap-1">
+    <nav aria-label="เปลี่ยนหน้า" className="mt-10 flex items-center justify-center gap-1.5">
       <button
         type="button"
         onClick={() => onChange(page - 1)}
         disabled={page === 1}
         aria-label="หน้าก่อนหน้า"
-        className="pop flex h-10 w-10 items-center justify-center rounded-lg bg-white text-[#263544] disabled:opacity-25"
+        className={stepClass}
       >
-        <CaretLeftIcon size={20} weight="bold" />
+        <CaretLeftIcon size={18} weight="bold" />
       </button>
       {pageList(page, totalPages).map((p, i) =>
         p === 'gap' ? (
-          <span key={`gap-${i}`} className="px-2 text-[#263544]/50">
+          <span key={`gap-${i}`} className="px-1 text-body text-muted">
             …
           </span>
         ) : (
@@ -50,8 +54,8 @@ export default function Pagination({
             type="button"
             onClick={() => onChange(p)}
             aria-current={p === page ? 'page' : undefined}
-            className={`pop h-10 min-w-[40px] rounded-lg px-2 text-base font-semibold ${
-              p === page ? 'bg-[#263544] text-white' : 'bg-white text-[#263544]'
+            className={`focus-ring h-11 min-w-11 rounded-full border px-3 text-body tabular-nums transition ${
+              p === page ? 'border-line bg-brand-soft font-bold text-ink' : 'border-transparent font-semibold text-ink hover:border-line'
             }`}
           >
             {p}
@@ -63,9 +67,9 @@ export default function Pagination({
         onClick={() => onChange(page + 1)}
         disabled={page === totalPages}
         aria-label="หน้าถัดไป"
-        className="pop flex h-10 w-10 items-center justify-center rounded-lg bg-white text-[#263544] disabled:opacity-25"
+        className={stepClass}
       >
-        <CaretRightIcon size={20} weight="bold" />
+        <CaretRightIcon size={18} weight="bold" />
       </button>
     </nav>
   )

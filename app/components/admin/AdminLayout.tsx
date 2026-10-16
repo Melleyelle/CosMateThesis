@@ -28,10 +28,9 @@ type NavItem = {
   badgeKey?: 'orders'
 }
 
-// หน้า /admin (ภาพรวม) และ /admin/reviews ยังเปิดได้ตาม URL แต่เอาออกจากเมนูแล้ว
-// จะเอาภาพรวมกลับมา: ใส่บรรทัดนี้คืนไว้บนสุด
-// { href: '/admin', label: 'ภาพรวม', icon: SquaresFourIcon, exact: true },
+// หน้า /admin/reviews ยังเปิดได้ตาม URL แต่เอาออกจากเมนูแล้ว
 const NAV: NavItem[] = [
+  { href: '/admin', label: 'ภาพรวม', icon: SquaresFourIcon, exact: true },
   { href: '/admin/orders', label: 'ออเดอร์', icon: ClipboardIcon, badgeKey: 'orders' },
   { href: '/admin/inventory', label: 'คลังชุด', icon: DressIcon },
   { href: '/admin/members', label: 'สมาชิก', icon: UsersThreeIcon },

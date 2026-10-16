@@ -1,13 +1,16 @@
 import type { ReactNode } from 'react'
 import CustomerNavbar from './CustomerNavbar'
 import CustomerFooter from './CustomerFooter'
+import LineContact from './LineContact'
 
 interface CustomerLayoutProps {
   children: ReactNode
   width?: 'default' | 'full'
+  /** ซ่อนปุ่มลอย "ติดต่อแอดมิน" — ใช้กับหน้าที่มีแถบปุ่มติดล่างจอ (เช่น หน้าชำระเงิน) จะได้ไม่ทับกัน */
+  hideContact?: boolean
 }
 
-export default function CustomerLayout({ children, width = 'default' }: CustomerLayoutProps) {
+export default function CustomerLayout({ children, width = 'default', hideContact = false }: CustomerLayoutProps) {
   return (
     <>
       <CustomerNavbar />
@@ -15,6 +18,7 @@ export default function CustomerLayout({ children, width = 'default' }: Customer
         {children}
       </main>
       <CustomerFooter />
+      {!hideContact && <LineContact />}
     </>
   )
 }

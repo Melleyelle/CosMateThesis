@@ -17,6 +17,7 @@ import {
   XCircleIcon,
 } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
+import LineContact from '@/app/components/customer/LineContact'
 import ReviewForm from '@/app/components/customer/ReviewForm'
 import { StarDisplay } from '@/app/components/customer/StarRating'
 import { fetchMyReviewsByOrderItem, type Review } from '@/utils/customer/reviews'
@@ -125,7 +126,10 @@ export default function OrderPage() {
   const closed = order.status === 'cancelled' || order.status === 'expired'
 
   return (
-    <CustomerLayout>
+    // หน้านี้มีปุ่มถามร้านพร้อมเลขออเดอร์อยู่แล้ว → ซ่อนปุ่มลอยไม่ให้ซ้ำ
+    <CustomerLayout hideContact>
+      {/* design v2 (design-system.md): เส้น 1px · เงาแข็งเฉพาะตอน hover (.lift) */}
+      <div className="theme-v2">
       <Link
         href="/orders"
         className="mb-4 inline-flex items-center gap-1 text-base font-medium text-[#263544]/60 hover:text-[#263544]"
@@ -140,9 +144,17 @@ export default function OrderPage() {
           <h1 className="font-mono text-2xl font-bold text-[#263544]">{order.orderNumber}</h1>
           <p className="text-base text-[#263544]/50">สั่งเมื่อ {formatDateTime(order.createdAt)}</p>
         </div>
-        <span className={`rounded-full px-4 py-1.5 text-base font-semibold ${ORDER_STATUS_BADGE[order.status]}`}>
-          {ORDER_STATUS_LABEL[order.status]}
-        </span>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={`rounded-full px-4 py-1.5 text-base font-semibold ${ORDER_STATUS_BADGE[order.status]}`}>
+            {ORDER_STATUS_LABEL[order.status]}
+          </span>
+          {/* เปิดแชทพร้อมเลขออเดอร์ แอดมินรู้ทันทีว่าถามเรื่องออเดอร์ไหน */}
+          <LineContact
+            variant="inline"
+            message={`สอบถามออเดอร์ ${order.orderNumber}`}
+            label="ถามร้านเรื่องออเดอร์นี้"
+          />
+        </div>
       </div>
 
       {/* ความคืบหน้า */}
@@ -164,12 +176,12 @@ export default function OrderPage() {
 
           {order.refundStatus && (
             <div
-              className={`rounded-2xl border-2 px-5 py-4 text-base ${
+              className={`rounded-card border px-5 py-4 text-base ${
                 order.refundStatus === 'transferred'
                   ? 'border-[#B8E2C8] bg-[#E3F5EA] text-[#1B6E45]'
                   : order.refundStatus === 'failed'
                     ? 'border-[#F5C2C0] bg-[#FDE8E8] text-[#B42318]'
-                    : 'border-[#263544] bg-[#FFF3B0] text-[#263544]'
+                    : 'border-line bg-[#FFF3B0] text-[#263544]'
               }`}
             >
               <p className="font-bold">
@@ -192,7 +204,7 @@ export default function OrderPage() {
           )}
         </div>
       ) : (
-        <ol className="mb-6 flex overflow-x-auto rounded-2xl border-2 border-[#263544] bg-white p-4">
+        <ol className="mb-6 flex overflow-x-auto rounded-card border border-line bg-white p-4">
           {CUSTOMER_STEPS.map((step, i) => {
             const done = i < stepIndex
             const current = i === stepIndex
@@ -201,12 +213,12 @@ export default function OrderPage() {
                 <div className="flex w-full items-center">
                   <span className={`h-0.5 flex-1 ${i === 0 ? 'invisible' : done || current ? 'bg-[#E5457F]' : 'bg-gray-200'}`} />
                   <span
-                    className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-bold ${
+                    className={`flex h-8 w-8 items-center justify-center rounded-full border text-sm font-bold ${
                       done
-                        ? 'border-[#E5457F] bg-[#E5457F] text-white'
+                        ? 'border-line bg-[#E5457F] text-white'
                         : current
-                          ? 'border-[#263544] bg-[#FFF3B0] text-[#263544]'
-                          : 'border-gray-200 bg-white text-gray-300'
+                          ? 'border-line bg-[#FFF3B0] text-[#263544]'
+                          : 'border-line-subtle bg-white text-muted'
                     }`}
                   >
                     {done ? <CheckIcon size={14} weight="bold" /> : i + 1}
@@ -228,7 +240,7 @@ export default function OrderPage() {
         <div className="space-y-6">
           {/* การชำระเงิน */}
           {order.status === 'pending_payment' && (
-            <section className="rounded-3xl border-2 border-[#263544] bg-white p-6 shadow-[4px_4px_0_0_#263544]">
+            <section className="rounded-card border border-line bg-white p-6">
               <div className="mb-4">
                 <h2 className="text-lg font-bold text-[#263544]">ชำระเงิน</h2>
                 <p className="text-base text-[#263544]/60">สแกน QR เพื่อโอนยอดด้านล่าง แล้วแนบสลิปเพื่อยืนยันการจอง</p>
@@ -238,7 +250,7 @@ export default function OrderPage() {
                 <PaymentQr seed={order.orderNumber} />
                 <div className="w-full flex-1 space-y-2 text-base">
                   <p className="text-[#263544]/60">ยอดที่ต้องชำระ</p>
-                  <p className="text-3xl font-extrabold text-[#E5457F]">{formatBaht(order.grandTotal)}</p>
+                  <p className="text-3xl font-extrabold text-brand">{formatBaht(order.grandTotal)}</p>
                   <p className="text-[#263544]/70">
                     ชื่อบัญชี: <span className="font-semibold text-[#263544]">CosMate</span>
                   </p>
@@ -246,14 +258,14 @@ export default function OrderPage() {
               </div>
 
               {/* แนบสลิป */}
-              <div className="mt-6 border-t border-[#263544]/10 pt-5">
+              <div className="mt-6 border-t border-line-subtle pt-5">
                 <p className="mb-2 text-base font-semibold text-[#263544]">แนบสลิปการโอนเงิน</p>
                 {slip ? (
-                  <div className="flex items-center gap-4 rounded-2xl border-2 border-[#263544] bg-[#FFFAFC] p-3">
+                  <div className="flex items-center gap-4 rounded-card border border-line bg-[#FFFAFC] p-3">
                     <img
                       src={slip.url}
                       alt="สลิปการโอนเงิน"
-                      className="h-28 w-20 flex-shrink-0 rounded-lg border border-[#263544]/10 bg-white object-cover"
+                      className="h-28 w-20 flex-shrink-0 rounded-lg border border-line-subtle bg-white object-cover"
                     />
                     <div className="min-w-0 flex-1 text-base">
                       <p className="flex items-center gap-1.5 font-semibold text-[#1B6E45]">
@@ -282,7 +294,8 @@ export default function OrderPage() {
                     </div>
                   </div>
                 ) : (
-                  <label className="flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-[#263544]/30 bg-[#F7F7F8] px-4 py-8 text-center transition hover:border-[#E5457F] hover:bg-[#FFFAFC]">
+                  // hover: เส้นประเข้มขึ้น + พื้นขาว (ไม่ใช้ชมพูตอน hover)
+                  <label className="flex cursor-pointer flex-col items-center gap-2 rounded-card border border-dashed border-line-subtle bg-[#F7F7F8] px-4 py-8 text-center transition hover:border-line hover:bg-white">
                     <UploadSimpleIcon size={32} className="text-[#E5457F]" />
                     <span className="text-base font-semibold text-[#263544]">กดเพื่อเลือกรูปสลิป</span>
                     <span className="text-base text-[#263544]/50">รองรับ JPG, PNG ขนาดไม่เกิน 5 MB</span>
@@ -312,7 +325,7 @@ export default function OrderPage() {
                   type="button"
                   onClick={() => runAction('pay')}
                   disabled={acting !== null || !slip}
-                  className="pop flex-1 rounded-full bg-[#E5457F] py-3 text-base font-bold text-white disabled:bg-gray-200 disabled:text-gray-400"
+                  className="lift focus-ring flex-1 rounded-full border border-line bg-brand py-3 text-base font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {acting === 'pay' ? 'กำลังส่งข้อมูล...' : slip ? 'ยืนยันการจอง' : 'แนบสลิปก่อนยืนยันการจอง'}
                 </button>
@@ -320,7 +333,7 @@ export default function OrderPage() {
                   type="button"
                   onClick={() => runAction('cancel')}
                   disabled={acting !== null}
-                  className="pop rounded-full bg-white px-5 py-3 text-base font-semibold text-[#263544] disabled:opacity-50"
+                  className="lift focus-ring rounded-full border border-line bg-white px-5 py-3 text-base font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {acting === 'cancel' ? 'กำลังยกเลิก...' : 'ยกเลิกออเดอร์'}
                 </button>
@@ -329,7 +342,7 @@ export default function OrderPage() {
           )}
 
           {order.status === 'manual_review' && (
-            <section className="flex gap-4 rounded-3xl border-2 border-[#263544] bg-[#EDE6FA] p-6">
+            <section className="flex gap-4 rounded-card border border-line bg-[#EDE6FA] p-6">
               <HourglassIcon size={32} className="flex-shrink-0 text-[#263544]" />
               <div>
                 <h2 className="font-bold text-[#263544]">ได้รับแจ้งชำระเงินแล้ว</h2>
@@ -346,7 +359,7 @@ export default function OrderPage() {
           )}
 
           {(order.status === 'returned' || order.status === 'inspecting') && (
-            <section className="flex gap-4 rounded-3xl border-2 border-[#263544] bg-[#EDE6FA] p-6">
+            <section className="flex gap-4 rounded-card border border-line bg-[#EDE6FA] p-6">
               <MagnifyingGlassIcon size={32} className="flex-shrink-0 text-[#263544]" />
               <div>
                 <h2 className="font-bold text-[#263544]">กำลังตรวจสภาพชุด</h2>
@@ -359,7 +372,7 @@ export default function OrderPage() {
           )}
 
           {order.status === 'completed' && (
-            <section className="flex gap-4 rounded-3xl border-2 border-[#263544] bg-[#FFF3B0] p-6">
+            <section className="flex gap-4 rounded-card border border-line bg-[#FFF3B0] p-6">
               <StarIcon size={32} weight="fill" className="flex-shrink-0 text-[#F5B400]" />
               <div>
                 <h2 className="font-bold text-[#263544]">
@@ -428,7 +441,7 @@ export default function OrderPage() {
                         <button
                           type="button"
                           onClick={() => setReviewingId(line.id)}
-                          className="pop mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#E5457F] px-4 py-1.5 text-base font-bold text-white"
+                          className="lift focus-ring mt-3 inline-flex items-center gap-1.5 rounded-full border border-line bg-brand px-4 py-1.5 text-base font-bold text-white active:bg-brand-strong"
                         >
                           <StarIcon size={14} weight="fill" />
                           เขียนรีวิว
@@ -449,9 +462,9 @@ export default function OrderPage() {
               <PriceRow label="ค่ามัดจำ (ได้คืน)" value={order.depositTotal} />
               {order.laundryTotal > 0 && <PriceRow label="ค่าซักรีด" value={order.laundryTotal} />}
               <PriceRow label="ค่าจัดส่ง" value={order.shippingFee} />
-              <div className="flex items-center justify-between border-t-2 border-dashed border-gray-200 pt-2">
+              <div className="flex items-center justify-between border-t border-dashed border-line-subtle pt-2">
                 <dt className="font-bold text-[#263544]">รวมทั้งหมด</dt>
-                <dd className="text-lg font-extrabold text-[#E5457F]">{formatBaht(order.grandTotal)}</dd>
+                <dd className="text-lg font-extrabold text-brand">{formatBaht(order.grandTotal)}</dd>
               </div>
             </dl>
           </section>
@@ -493,6 +506,7 @@ export default function OrderPage() {
             />
           )
         })()}
+      </div>
     </CustomerLayout>
   )
 }
@@ -526,7 +540,7 @@ function TrackingSection({ order, onSaved }: { order: OrderSummary; onSaved: () 
   if (order.status === 'shipped') {
     const shipUrl = order.shipTrackingNo ? trackingUrl(SHIP_CARRIER, order.shipTrackingNo) : null
     return (
-      <section className="rounded-3xl border-2 border-[#263544] bg-white p-6 shadow-[4px_4px_0_0_#263544]">
+      <section className="rounded-card border border-line bg-white p-6">
         <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-[#263544]">
           <TruckIcon size={22} className="text-[#E5457F]" />
           ชุดกำลังเดินทางไปหาคุณ
@@ -553,7 +567,7 @@ function TrackingSection({ order, onSaved }: { order: OrderSummary; onSaved: () 
   const returnUrl = order.returnTrackingNo ? trackingUrl(order.returnCarrier, order.returnTrackingNo) : null
 
   return (
-    <section className="rounded-3xl border-2 border-[#263544] bg-white p-6 shadow-[4px_4px_0_0_#263544]">
+    <section className="rounded-card border border-line bg-white p-6">
       <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-[#263544]">
         <ArrowUUpLeftIcon size={22} className="text-[#E5457F]" />
         ส่งชุดคืน
@@ -596,7 +610,7 @@ function TrackingSection({ order, onSaved }: { order: OrderSummary; onSaved: () 
               type="button"
               onClick={save}
               disabled={saving}
-              className="pop rounded-full bg-[#E5457F] px-6 py-2.5 text-base font-semibold text-white disabled:opacity-50"
+              className="lift focus-ring rounded-full border border-line bg-brand px-6 py-2.5 text-base font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
             >
               {saving ? 'กำลังบันทึก...' : 'แจ้งเลขพัสดุส่งคืน'}
             </button>
@@ -634,8 +648,9 @@ function TrackingSection({ order, onSaved }: { order: OrderSummary; onSaved: () 
   )
 }
 
+// ช่องกรอก design v2: เส้น 1px มุม 10px · focus เส้นชมพู + วงชมพูโปร่ง 3px (แบบเดียวกับหน้าชำระเงิน)
 const trackingInputClass =
-  'w-full rounded-xl border-2 border-[#EEEDF2] bg-white px-4 py-2.5 text-base text-[#263544] outline-none transition placeholder:text-[#263544]/40 focus:border-[#E5457F] focus:ring-2 focus:ring-[#E5457F]/20'
+  'w-full rounded-control border border-line bg-white px-4 py-2.5 text-base text-[#263544] outline-none transition placeholder:text-muted focus:border-brand-strong focus:ring-[3px] focus:ring-brand/25'
 
 function DateChip({ label, date, highlight = false }: { label: string; date: string; highlight?: boolean }) {
   return (
@@ -674,7 +689,7 @@ function PaymentQr({ seed }: { seed: string }) {
   }
 
   return (
-    <div className="rounded-2xl border-2 border-[#263544] bg-white p-3">
+    <div className="rounded-card border border-line bg-white p-3">
       <svg viewBox={`0 0 ${size} ${size}`} className="h-40 w-40" shapeRendering="crispEdges" aria-label="QR พร้อมเพย์">
         {Array.from({ length: size * size }).map((_, i) => {
           const x = i % size

@@ -56,16 +56,16 @@ export default function ProductReviews({ productId }: { productId: string }) {
     : 0
 
   return (
-    <section id="reviews" className="mt-12 scroll-mt-24 border-t border-[#263544]/10 pt-8">
+    <section id="reviews" className="mt-12 scroll-mt-24 border-t border-line pt-8">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-[#263544]">รีวิวจากผู้เช่า</h2>
-          <p className="mt-1 text-base text-[#263544]/60">
+          <h2 className="text-h2 font-bold text-ink">รีวิวจากผู้เช่า</h2>
+          <p className="mt-1 text-body-sm text-secondary">
             {reviews.length > 0 ? `${reviews.length} รีวิว` : 'ความคิดเห็นจากผู้ที่เคยเช่าชุดนี้'}
           </p>
         </div>
         {reviews.length > 0 && (
-          <div className="flex items-center gap-1.5 text-base font-semibold text-[#263544]">
+          <div className="flex items-center gap-1.5 text-body font-semibold text-ink">
             <StarIcon size={18} weight="fill" className="text-[#E5A900]" />
             {average.toFixed(1)} / 5
           </div>
@@ -73,21 +73,22 @@ export default function ProductReviews({ productId }: { productId: string }) {
       </div>
 
       {loading ? (
-        <div className="space-y-3" aria-label="กำลังโหลดรีวิว">
-          <div className="h-24 animate-pulse rounded-xl bg-gray-100" />
-          <div className="h-24 animate-pulse rounded-xl bg-gray-100" />
+        <div className="space-y-3" aria-busy="true" aria-label="กำลังโหลดรีวิว">
+          <div className="h-24 animate-pulse rounded-card bg-sunken" />
+          <div className="h-24 animate-pulse rounded-card bg-sunken" />
         </div>
       ) : loadError ? (
-        <p role="status" className="rounded-xl bg-[#F7F7F8] px-5 py-8 text-center text-base text-[#263544]/60">
+        <p role="status" className="px-5 py-8 text-center text-body text-secondary">
           ยังโหลดรีวิวไม่ได้ในขณะนี้
         </p>
       ) : reviews.length === 0 ? (
-        <div className="rounded-xl bg-[#F7F7F8] px-5 py-10 text-center">
-          <ChatCircleDotsIcon size={28} className="mx-auto text-[#E5457F]/70" />
-          <p className="mt-2 text-base text-[#263544]/60">ยังไม่มีรีวิวชุดนี้</p>
+        // empty state ตาม design v2: ไม่มีกรอบและไม่มีพื้น
+        <div className="px-5 py-10 text-center">
+          <ChatCircleDotsIcon size={28} className="mx-auto text-muted" />
+          <p className="mt-2 text-body text-secondary">ยังไม่มีรีวิวชุดนี้</p>
         </div>
       ) : (
-        <ul className="divide-y divide-[#263544]/10">
+        <ul className="divide-y divide-line-subtle">
           {reviews.map((review) => (
             <li key={review.id} className="py-5 first:pt-0">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -97,19 +98,19 @@ export default function ProductReviews({ productId }: { productId: string }) {
                       key={index}
                       size={16}
                       weight={index < review.rating ? 'fill' : 'regular'}
-                      className={index < review.rating ? 'text-[#E5A900]' : 'text-gray-300'}
+                      className={index < review.rating ? 'text-[#E5A900]' : 'text-line-subtle'}
                     />
                   ))}
                 </div>
-                <time className="text-base text-[#263544]/50" dateTime={review.created_at}>
+                <time className="text-body-sm text-muted" dateTime={review.created_at}>
                   {formatDateTime(review.created_at)}
                 </time>
               </div>
-              {review.comment && <p className="mt-3 whitespace-pre-wrap text-base text-[#263544]/80">{review.comment}</p>}
+              {review.comment && <p className="mt-3 whitespace-pre-wrap text-body text-ink">{review.comment}</p>}
               {review.admin_reply && (
-                <div className="mt-3 rounded-lg bg-[#FDE3EE]/60 px-4 py-3">
-                  <p className="text-base font-semibold text-[#263544]">คำตอบจากร้าน</p>
-                  <p className="mt-1 whitespace-pre-wrap text-base text-[#263544]/75">{review.admin_reply}</p>
+                <div className="mt-3 rounded-control border-l-4 border-brand bg-brand-subtle px-4 py-3">
+                  <p className="text-body-sm font-semibold text-ink">คำตอบจากร้าน</p>
+                  <p className="mt-1 whitespace-pre-wrap text-body text-secondary">{review.admin_reply}</p>
                 </div>
               )}
             </li>

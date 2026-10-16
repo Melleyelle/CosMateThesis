@@ -146,7 +146,7 @@ export default function DateRangeFilter({ value, onChange, emptyLabel = 'ทุ�
             <button
               type="button"
               onClick={apply}
-              className="rounded-full bg-[#E5457F] px-5 py-1.5 text-xs font-semibold text-white hover:bg-[#d13a72]"
+              className="lift focus-ring rounded-full border border-ink bg-brand px-5 py-1.5 text-xs font-bold text-white active:bg-brand-strong"
             >
               ใช้ตัวกรอง
             </button>

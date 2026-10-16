@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { CaretLeftIcon, CaretRightIcon, MapPinIcon } from '@phosphor-icons/react'
-import { addDays, formatThaiDateWithWeekday, todayISO, toISODate } from '@/utils/dateUtils'
-import { EVENT_TONE, eventsByDate, type CalendarEvent } from '@/utils/customer/events'
+import { addDays, formatThaiDateWithWeekday, parseISODate, todayISO, toISODate } from '@/utils/dateUtils'
+import { eventsByDate, type CalendarEvent } from '@/utils/customer/events'
 
 type Timeline = { receiveDate: string; returnBy: string }
 
@@ -16,6 +16,44 @@ interface BookingCalendarProps {
   // คำนวณวันรับ/วันคืนจากวันใช้งาน
   getTimeline: (useDate: string) => Timeline
   events?: CalendarEvent[]
+  /** จองล่วงหน้าอย่างน้อยกี่วัน — วันก่อนหน้านั้นปิดรับจอง ไม่ใช่ "จองแล้ว" */
+  minLeadDays?: number
+  /** วันกันไว้หลังวันคืน (ขนส่งกลับ/ตรวจ/ซัก) ตาม booking_settings — ใช้ถอดว่าวันไหนชุดถูกใช้อยู่จริง */
+  bufferDaysAfter?: number
+}
+
+function daysBetween(fromISO: string, toISO: string) {
+  return Math.round((parseISODate(toISO).getTime() - parseISODate(fromISO).getTime()) / 86_400_000)
+}
+
+/**
+ * แปลง "วันที่เริ่มเช่าไม่ได้" (จาก RPC) เป็น "วันที่ชุดถูกใช้อยู่จริง"
+ * RPC บอกว่าเริ่มวัน D ไม่ได้เมื่อช่วงล็อกของเรา [D - before, D + span + after] ชนกับการจองเดิม
+ * ดังนั้นช่วงเริ่มไม่ได้ที่ต่อกัน [s, e] เกิดจากการจองที่ล็อกชุดไว้ [s + span + after, e - before]
+ * (ไม่หดฝั่งที่ชนขอบช่วงเปิดจอง เพราะไม่รู้ว่าช่วงจริงเริ่ม/จบตรงไหน)
+ */
+function occupiedDays(
+  unavailable: Set<string>,
+  firstBookable: string,
+  lastDate: string,
+  before: number,
+  span: number,
+  after: number,
+): Set<string> {
+  const out = new Set<string>()
+  let runStart: string | null = null
+  for (let d = firstBookable; d <= addDays(lastDate, 1); d = addDays(d, 1)) {
+    const blocked = d <= lastDate && unavailable.has(d)
+    if (blocked && !runStart) runStart = d
+    if (!blocked && runStart) {
+      const runEnd = addDays(d, -1)
+      const from = runStart === firstBookable ? runStart : addDays(runStart, span + after)
+      const to = runEnd === lastDate ? runEnd : addDays(runEnd, -before)
+      for (let x = from; x <= to; x = addDays(x, 1)) out.add(x)
+      runStart = null
+    }
+  }
+  return out
 }
 
 const WEEKDAYS = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.']
@@ -26,6 +64,10 @@ function shiftMonth(month: string, amount: number): string {
   return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, '0')}`
 }
 
+const navButtonClass =
+  'focus-ring flex h-11 w-11 items-center justify-center rounded-full text-ink transition hover:bg-sunken disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent'
+
+// ปฏิทินเลือกวันใส่ชุด — สีตาม design system: ชมพู = ช่วงเช่าที่เลือก · ฟ้า (info) = งานอีเวนต์
 export default function BookingCalendar({
   unavailable,
   selected,
@@ -34,9 +76,27 @@ export default function BookingCalendar({
   loading,
   getTimeline,
   events = [],
+  minLeadDays = 0,
+  bufferDaysAfter = 0,
 }: BookingCalendarProps) {
   const today = todayISO()
+  const firstBookable = addDays(today, minLeadDays)
   const lastDate = addDays(today, Math.max(0, daysAhead))
+
+  // "จองแล้ว" = วันที่ชุดอยู่กับลูกค้าคนอื่นจริง ไม่ใช่ทุกวันที่เริ่มเช่าไม่ได้
+  // (วันก่อนหน้าการจองเดิมเริ่มเช่าไม่ได้เพราะช่วงเช่าของเราจะยาวไปชน แต่ชุดยังว่างอยู่)
+  const booked = useMemo(() => {
+    if (loading || unavailable.size === 0) return new Set<string>()
+    const ref = getTimeline(today)
+    return occupiedDays(
+      unavailable,
+      firstBookable,
+      lastDate,
+      daysBetween(ref.receiveDate, today),
+      daysBetween(today, ref.returnBy),
+      bufferDaysAfter,
+    )
+  }, [loading, unavailable, getTimeline, today, firstBookable, lastDate, bufferDaysAfter])
   const firstMonth = today.slice(0, 7)
   const lastMonth = lastDate.slice(0, 7)
   const [visibleMonth, setVisibleMonth] = useState(firstMonth)
@@ -64,24 +124,26 @@ export default function BookingCalendar({
   )
 
   return (
-    <div className="rounded-2xl border border-[#263544]/15 bg-white p-4 sm:p-5">
+    <div className="rounded-card border border-line bg-surface p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between">
         <button
           type="button"
           aria-label="เดือนก่อนหน้า"
           disabled={visibleMonth <= firstMonth}
           onClick={() => setVisibleMonth((month) => shiftMonth(month, -1))}
-          className="nudge flex h-9 w-9 items-center justify-center rounded-full text-[#263544] disabled:cursor-not-allowed disabled:opacity-30"
+          className={navButtonClass}
         >
           <CaretLeftIcon size={20} weight="bold" />
         </button>
-        <h3 className="font-bold text-[#263544]">{monthLabel}</h3>
+        <h3 className="text-h3 font-bold text-ink" aria-live="polite">
+          {monthLabel}
+        </h3>
         <button
           type="button"
           aria-label="เดือนถัดไป"
           disabled={visibleMonth >= lastMonth}
           onClick={() => setVisibleMonth((month) => shiftMonth(month, 1))}
-          className="nudge flex h-9 w-9 items-center justify-center rounded-full text-[#263544] disabled:cursor-not-allowed disabled:opacity-30"
+          className={navButtonClass}
         >
           <CaretRightIcon size={20} weight="bold" />
         </button>
@@ -89,13 +151,14 @@ export default function BookingCalendar({
 
       <div className="grid grid-cols-7 gap-1 text-center">
         {WEEKDAYS.map((weekday) => (
-          <div key={weekday} className="py-1.5 text-sm font-medium text-[#263544]/55">
+          <div key={weekday} className="py-1.5 text-body-sm font-medium text-muted">
             {weekday}
           </div>
         ))}
         {days.map((date, index) => {
           if (!date) return <span key={`blank-${index}`} />
           const disabled = isDisabled(date)
+          const isBooked = booked.has(date)
           const dayEvents = eventMap.get(date)
 
           const isUse = range?.useDate === date
@@ -106,34 +169,39 @@ export default function BookingCalendar({
           const labels = [isReceive && 'รับชุด', isUse && 'ใส่', isReturn && 'คืน'].filter(Boolean).join('·')
 
           const tone = isUse
-            ? 'bg-[#E5457F] text-white font-bold'
+            ? 'bg-brand text-white font-bold'
             : isReceive || isReturn
-              ? 'bg-[#FBD3E1] text-[#B8285D] font-semibold'
+              ? 'bg-brand-soft text-brand-strong font-semibold'
               : inRange
-                ? 'bg-[#FEF1F5] text-[#263544]'
+                ? 'bg-brand-subtle text-ink'
+                : isBooked
+                  ? 'cursor-not-allowed bg-sunken text-muted'
                   : disabled
-                    ? 'cursor-not-allowed text-gray-300 line-through'
-                    : 'nudge text-[#263544]'
+                    ? 'cursor-not-allowed text-muted/50 line-through'
+                    : 'text-ink hover:bg-sunken'
 
           return (
             <button
               key={date}
               type="button"
               disabled={disabled}
-              aria-label={`${formatThaiDateWithWeekday(date)}${dayEvents ? ` มีงาน ${dayEvents.map((e) => e.name).join(', ')}` : ''}`}
+              aria-label={`${formatThaiDateWithWeekday(date)}${isBooked ? ' ถูกจองแล้ว' : disabled ? ' เลือกเป็นวันใส่ไม่ได้' : ''}${dayEvents ? ` มีงาน ${dayEvents.map((e) => e.name).join(', ')}` : ''}`}
               aria-pressed={selected === date}
               title={dayEvents?.map((e) => e.name).join('\n')}
               onClick={() => onSelect(date)}
-              className={`relative flex h-14 flex-col items-center justify-center rounded-xl text-base transition sm:h-16 ${tone} ${
-                selected === date ? 'ring-2 ring-[#263544] ring-offset-1' : ''
+              className={`focus-ring relative flex h-12 flex-col items-center justify-center rounded-control text-body tabular-nums transition sm:h-14 ${tone} ${
+                selected === date ? 'ring-2 ring-ink ring-offset-1' : ''
               }`}
             >
               <span>{Number(date.slice(-2))}</span>
-              {labels && <span className="mt-0.5 text-xs font-medium leading-none">{labels}</span>}
+              {labels && <span className="mt-0.5 text-caption font-medium leading-none">{labels}</span>}
+              {isBooked && !labels && (
+                <span className="mt-0.5 whitespace-nowrap text-caption font-medium leading-none">จองแล้ว</span>
+              )}
               {dayEvents && (
                 <span className="absolute right-1.5 top-1.5 flex gap-0.5" aria-hidden="true">
                   {dayEvents.slice(0, 2).map((ev) => (
-                    <span key={ev.id} className={`h-1.5 w-1.5 rounded-full ${EVENT_TONE.yellow.dot} ring-1 ring-white`} />
+                    <span key={ev.id} className="h-1.5 w-1.5 rounded-full bg-info ring-1 ring-white" />
                   ))}
                 </span>
               )}
@@ -143,14 +211,17 @@ export default function BookingCalendar({
       </div>
 
       {/* บรรทัดอธิบายช่วงเช่าของวันที่เลือก */}
-      <p className="mt-3 min-h-10 rounded-xl bg-[#F7F7F8] px-3 py-2.5 text-center text-base text-[#263544]/75" aria-live="polite">
+      <p
+        className="mt-3 min-h-10 rounded-control bg-canvas px-3 py-2.5 text-center text-body-sm text-secondary"
+        aria-live="polite"
+      >
         {loading ? (
           'กำลังตรวจสอบวันที่ว่าง…'
         ) : range ? (
           <>
-            ใส่วัน <b className="text-[#E5457F]">{formatThaiDateWithWeekday(range.useDate)}</b>
-            {' → '}ได้รับชุด <b className="text-[#B8285D]">{formatThaiDateWithWeekday(range.receiveDate)}</b>
-            {' · '}ส่งคืนภายใน <b className="text-[#B8285D]">{formatThaiDateWithWeekday(range.returnBy)}</b>
+            ใส่วัน <b className="text-brand-strong">{formatThaiDateWithWeekday(range.useDate)}</b>
+            {' → '}ได้รับชุด <b className="text-ink">{formatThaiDateWithWeekday(range.receiveDate)}</b>
+            {' · '}ส่งคืนภายใน <b className="text-ink">{formatThaiDateWithWeekday(range.returnBy)}</b>
           </>
         ) : (
           'เลือกวันที่จะใส่ชุด เพื่อดูว่าจะได้รับชุดวันไหนและต้องส่งคืนวันไหน'
@@ -158,35 +229,36 @@ export default function BookingCalendar({
       </p>
 
       {/* คำอธิบายสี */}
-      <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-sm text-[#263544]/70">
-        <Legend swatch="bg-[#FBD3E1]" label="วันรับชุด / ส่งคืน" />
-        <Legend swatch="bg-[#E5457F]" label="วันใส่ชุด" />
-        {events.length > 0 && <Legend swatch="bg-[#E5A900]" label="มีงานอีเวนต์" dot />}
+      <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-body-sm text-secondary">
+        <Legend swatch="bg-brand-soft" label="วันรับชุด / ส่งคืน" />
+        <Legend swatch="bg-brand" label="วันใส่ชุด" />
+        {events.length > 0 && <Legend swatch="bg-info" label="มีงานอีเวนต์" dot />}
+        <Legend swatch="bg-sunken ring-1 ring-inset ring-line-subtle" label="ถูกจองแล้ว" />
         <span className="flex items-center gap-1.5">
-          <span className="text-gray-300 line-through">12</span>
-          ไม่ว่าง
+          <span className="text-muted/50 line-through">12</span>
+          เลือกเป็นวันใส่ไม่ได้
         </span>
       </div>
 
       {/* งานอีเวนต์ของเดือนที่แสดง */}
       {events.length > 0 && (
-        <div className="mt-4 border-t border-[#263544]/10 pt-4">
-          <p className="mb-2 text-base font-bold text-[#263544]">งานอีเวนต์เดือนนี้</p>
+        <div className="mt-4 border-t border-line-subtle pt-4">
+          <p className="mb-2 text-body font-bold text-ink">งานอีเวนต์เดือนนี้</p>
           {monthEvents.length === 0 ? (
-            <p className="text-base text-[#263544]/50">ยังไม่มีงานอีเวนต์ในเดือนนี้</p>
+            <p className="text-body-sm text-muted">ยังไม่มีงานอีเวนต์ในเดือนนี้</p>
           ) : (
             <ul className="space-y-2">
               {monthEvents.map((ev) => (
-                <li key={ev.id} className="flex items-center gap-3 rounded-xl border border-[#263544]/10 p-2.5">
-                  <span className={`shrink-0 rounded-lg px-2 py-1 text-center text-sm font-bold leading-tight ${EVENT_TONE.yellow.chip}`}>
+                <li key={ev.id} className="flex items-center gap-3 rounded-control border border-line-subtle p-2.5">
+                  <span className="shrink-0 rounded-control bg-info-subtle px-2 py-1 text-center text-body-sm font-bold leading-tight text-info">
                     {formatThaiDateWithWeekday(ev.startDate)}
                     {ev.endDate !== ev.startDate && (
                       <span className="block font-medium">ถึง {formatThaiDateWithWeekday(ev.endDate)}</span>
                     )}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-base font-semibold text-[#263544]">{ev.name}</p>
-                    <p className="flex items-center gap-1 truncate text-base text-[#263544]/55">
+                    <p className="truncate text-body font-semibold text-ink">{ev.name}</p>
+                    <p className="flex items-center gap-1 truncate text-body-sm text-muted">
                       <MapPinIcon size={12} className="shrink-0" />
                       {ev.location}
                     </p>

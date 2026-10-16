@@ -130,7 +130,7 @@ export default function CostumeCard({ costume, onToggleStatus, onDelete, statusU
           </button>
           <Link
             href={`/admin/inventory/${costume.id}/edit`}
-            className="inline-flex items-center gap-1 rounded-full border border-[#D5D9E0] px-3 py-1.5 text-xs font-semibold text-[#263544] transition hover:border-[#263544]"
+            className="inline-flex items-center gap-1 lift focus-ring rounded-full border border-ink bg-white px-3 py-1.5 text-xs font-semibold text-ink"
           >
             <PencilSimpleIcon size={12} weight="bold" />
             แก้ไข

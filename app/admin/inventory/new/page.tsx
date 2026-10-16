@@ -12,6 +12,7 @@ import InclusionsCard from '@/app/components/admin/costume-form/Inclusionscard'
 import SizesStockCard from '@/app/components/admin/costume-form/Sizesstockcard'
 import { EMPTY_FORM_DATA, type CostumeFormData } from '@/app/components/admin/costume-form/types'
 import { findProductIdBySku, saveInclusionPrices } from '@/utils/saveInclusionPrices'
+import { validateSkuPrefix } from '@/utils/skuPrefix'
 
 // หน้าเดียวจบ ไม่ใช้สเตปแล้ว — จัดเป็น 2 คอลัมน์แบบฟอร์มเพิ่มสินค้าทั่วไป:
 // ซ้าย = เนื้อหาหลัก (ชื่อ/คำอธิบาย, ไซส์-ราคา-สต็อก, สิ่งที่รวมในชุด)
@@ -20,6 +21,9 @@ function translateSaveError(message: string) {
   if (message.includes('NOT_ADMIN')) return 'บัญชีนี้ไม่มีสิทธิ์แอดมิน'
   if (message.includes('NAME_REQUIRED')) return 'กรุณากรอกชื่อชุด'
   if (message.includes('SKU_PREFIX_REQUIRED')) return 'กรุณากรอกรหัสอ้างอิงชุด'
+  if (message.includes('products_sku_prefix_format')) {
+    return 'รหัสอ้างอิงชุดต้องเป็นตัวอักษรอังกฤษ A–Z หรือตัวเลข 0–9 ยาว 2–12 ตัว'
+  }
   if (message.includes('AT_LEAST_ONE_VARIANT')) return 'กรุณาเลือกอย่างน้อย 1 ไซส์'
   if (message.includes('duplicate key') && message.includes('item_code')) {
     return 'มีรหัสชุดจริงซ้ำกับที่มีอยู่แล้วในระบบ กรุณาแก้รหัสในส่วนไซส์และสต็อก'
@@ -42,6 +46,8 @@ export default function NewCostumePage() {
     if (!formData.basicInfo.name.trim() || !formData.basicInfo.skuPrefix.trim()) {
       return 'กรุณากรอกชื่อชุดและรหัสอ้างอิงชุดก่อน'
     }
+    const skuError = validateSkuPrefix(formData.basicInfo.skuPrefix)
+    if (skuError) return skuError
     if (!formData.coverImage?.uploadedUrl) {
       return 'กรุณาอัปโหลดรูปหน้าปกให้เสร็จก่อน'
     }
@@ -206,7 +212,7 @@ export default function NewCostumePage() {
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="rounded-full border-2 border-[#263544] bg-[#E5457F] px-8 py-2.5 text-sm font-semibold text-white shadow-[3px_3px_0_0_#263544] transition hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[2px_2px_0_0_#263544] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none disabled:pointer-events-none disabled:opacity-60"
+            className="lift focus-ring rounded-full border border-ink bg-brand px-8 py-2.5 text-sm font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
           >
             {saving ? 'กำลังบันทึก...' : 'บันทึกชุดนี้'}
           </button>

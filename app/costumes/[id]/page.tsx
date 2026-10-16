@@ -20,6 +20,7 @@ import {
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
 import BookingCalendar from '@/app/components/customer/BookingCalendar'
 import FavoriteButton from '@/app/components/customer/FavoriteButton'
+import MeasureGuideButton from '@/app/components/customer/MeasureGuide'
 import ProductReviews from '@/app/components/customer/ProductReviews'
 import { StarDisplay } from '@/app/components/customer/StarRating'
 import { fetchRatingSummaries, type RatingSummary } from '@/utils/customer/reviews'
@@ -142,6 +143,12 @@ export default function CostumeDetailPage() {
 
   const hasSizeChart = detail?.variants.some((v) => v.chart) ?? false
 
+  // ราคาต่างกันตามไซส์ไหม → ถ้าต่าง แสดงราคาใต้ปุ่มไซส์และในตารางไซส์ ถ้าเท่ากันไม่ต้องแสดงซ้ำ
+  const variantPrices = detail?.variants.map((v) => v.packagePrice) ?? []
+  const minPrice = variantPrices.length ? Math.min(...variantPrices) : 0
+  const maxPrice = variantPrices.length ? Math.max(...variantPrices) : 0
+  const pricesVary = minPrice !== maxPrice
+
   // โหมดแยกชิ้น → ส่ง id ชิ้นที่เลือกไปด้วย (ราคาจริงคำนวณใหม่ในฐานข้อมูลตอนจอง)
   const chosenPieces = (): string[] | undefined =>
     rentMode === 'pieces' && selectedPieces.size > 0 ? Array.from(selectedPieces) : undefined
@@ -213,6 +220,8 @@ export default function CostumeDetailPage() {
 
   return (
     <CustomerLayout>
+      {/* design v2 (design-system.md): เส้น 1px · เงาแข็งเฉพาะตอน hover (.lift) · สถานะที่เลือกพื้น brand-soft */}
+      <div className="theme-v2">
       <Link
         href="/costumes"
         className="mb-4 inline-flex items-center gap-1 text-base font-medium text-[#263544]/60 hover:text-[#263544]"
@@ -233,8 +242,8 @@ export default function CostumeDetailPage() {
                     type="button"
                     onClick={() => setActiveImage(i)}
                     aria-label={`รูปที่ ${i + 1}`}
-                    className={`h-20 w-16 flex-shrink-0 overflow-hidden rounded-xl border-2 transition ${
-                      i === activeImage ? 'border-[#E5457F]' : 'border-transparent opacity-70 hover:opacity-100'
+                    className={`focus-ring h-20 w-16 flex-shrink-0 overflow-hidden rounded-xl border transition ${
+                      i === activeImage ? 'border-line ring-2 ring-brand-soft' : 'border-line-subtle opacity-70 hover:opacity-100'
                     }`}
                   >
                     <img src={url} alt="" className="h-full w-full object-cover" />
@@ -243,7 +252,7 @@ export default function CostumeDetailPage() {
               </div>
             )}
             {/* สูงไม่เกินหน้าจอ เพื่อให้เห็นรูปทั้งรูปตอนติดอยู่ (ถ้าจอเตี้ยจะครอปบน-ล่างเล็กน้อย) */}
-            <div className="aspect-[3/4] w-full overflow-hidden rounded-3xl border-2 border-[#263544] bg-[#FDE3EE] lg:max-h-[calc(100vh-9rem)]">
+            <div className="aspect-[3/4] w-full overflow-hidden rounded-3xl border border-line bg-[#FDE3EE] lg:max-h-[calc(100vh-9rem)]">
               {detail.images.length > 0 ? (
                 <img
                   src={detail.images[activeImage]}
@@ -296,7 +305,7 @@ export default function CostumeDetailPage() {
           </div>
           {detail.characterName && <p className="mt-1 text-[#263544]/60">ตัวละคร: {detail.characterName}</p>}
           {rating && rating.reviewCount > 0 && (
-            <a href="#reviews" className="mt-2 inline-flex items-center gap-2 text-base text-[#263544] hover:text-[#E5457F]">
+            <a href="#reviews" className="mt-2 inline-flex items-center gap-2 text-base text-[#263544]">
               <StarDisplay value={rating.avgRating} size={16} />
               <span className="font-semibold">{rating.avgRating.toFixed(1)}</span>
               <span className="text-[#263544]/60 underline">{rating.reviewCount} รีวิว</span>
@@ -313,12 +322,25 @@ export default function CostumeDetailPage() {
               ))}
             </div>
           )}
-          {detail.variants.length > 0 && (
-            <p className="mt-3 text-2xl font-bold text-[#E5457F]">
-              {formatBaht((variant ?? detail.variants[0]).packagePrice)} /{' '}
-              {customerHeldDays((variant ?? detail.variants[0]).packageDays)} วัน
-            </p>
-          )}
+          {detail.variants.length > 0 &&
+            (variant ? (
+              <div className="mt-3">
+                <p className="text-2xl font-bold text-brand">
+                  {formatBaht(variant.packagePrice)} / {customerHeldDays(variant.packageDays)} วัน
+                </p>
+                {/* บอกชัดว่าราคานี้เป็นของไซส์ไหน — ลูกค้าจะไม่เข้าใจผิดว่าทุกไซส์ราคาเดียวกัน */}
+                {pricesVary && (
+                  <p className="mt-0.5 text-base text-[#263544]/60">
+                    ราคาไซส์ {variant.size} · ไซส์อื่นราคา {formatBaht(minPrice)}–{formatBaht(maxPrice)}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="mt-3 text-2xl font-bold text-brand">
+                {pricesVary ? `เริ่มต้น ${formatBaht(minPrice)}` : formatBaht(minPrice)} /{' '}
+                {customerHeldDays(detail.variants[0].packageDays)} วัน
+              </p>
+            ))}
 
           {/* สิ่งที่ได้รับ — ให้รู้ก่อนเลือกไซส์/วันว่าชุดนี้ครบแค่ไหน (กดรูปเพื่อดูขนาดใหญ่) */}
           {detail.inclusions.length > 0 && (
@@ -332,9 +354,10 @@ export default function CostumeDetailPage() {
                         type="button"
                         onClick={() => setPreviewInclusion({ url: inc.imageUrl!, name: inc.name })}
                         aria-label={`ดูรูป ${inc.name}`}
-                        className="group block w-full text-left"
+                        className="focus-ring group block w-full rounded-xl text-left"
                       >
-                        <span className="relative block aspect-square overflow-hidden rounded-xl bg-white ring-1 ring-[#263544]/10 transition group-hover:-translate-y-1 group-hover:ring-2 group-hover:ring-[#263544]">
+                        {/* hover แบบเดียวกับ .lift: ยกซ้ายบน + เงาแข็ง (ยกจากปุ่มแม่ด้วย group) */}
+                        <span className="relative block aspect-square overflow-hidden rounded-xl bg-white ring-1 ring-line-subtle transition group-hover:-translate-x-1 group-hover:-translate-y-1 group-hover:shadow-[4px_4px_0_0_var(--color-ink)] group-hover:ring-line motion-reduce:group-hover:translate-x-0 motion-reduce:group-hover:translate-y-0">
                           <img
                             src={inc.imageUrl}
                             alt=""
@@ -348,7 +371,7 @@ export default function CostumeDetailPage() {
                       </button>
                     ) : (
                       <div>
-                        <span className="flex aspect-square items-center justify-center rounded-xl bg-white text-[#E5457F] ring-1 ring-[#263544]/10">
+                        <span className="flex aspect-square items-center justify-center rounded-xl bg-white text-[#E5457F] ring-1 ring-line-subtle">
                           <CheckCircleIcon size={32} weight="fill" />
                         </span>
                         <span className="mt-1.5 block text-sm font-medium leading-snug text-[#263544]">{inc.name}</span>
@@ -362,7 +385,11 @@ export default function CostumeDetailPage() {
 
           {/* ขั้นที่ 1: ไซส์ */}
           <section className="mt-6">
-            <p className="mb-2 text-base font-semibold text-[#263544]">1. เลือกไซส์</p>
+            {/* ปุ่มวิธีวัดตัวอยู่บรรทัดเดียวกับหัวข้อ — เห็นได้แม้ชุดยังไม่มีตารางไซส์ */}
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+              <p className="text-base font-semibold text-[#263544]">1. เลือกไซส์</p>
+              {detail.variants.length > 0 && <MeasureGuideButton />}
+            </div>
             {detail.variants.length === 0 ? (
               <p className="text-base text-[#263544]/50">ชุดนี้ยังไม่ได้ตั้งไซส์และราคา</p>
             ) : (
@@ -376,15 +403,23 @@ export default function CostumeDetailPage() {
                       type="button"
                       disabled={soldOut}
                       onClick={() => setVariantId(v.id)}
-                      className={`min-w-[64px] rounded-xl px-4 py-2 text-base font-bold disabled:cursor-not-allowed ${
+                      aria-pressed={active}
+                      aria-label={`ไซส์ ${v.size} ค่าเช่า ${formatBaht(v.packagePrice)}${soldOut ? ' (หมด)' : ''}`}
+                      // ไซส์ที่เลือก = สถานะที่เลือก (พื้น brand-soft เส้นดำ) · ยังไม่เลือก = ปุ่มรอง .lift · หมด = เส้นจาง
+                      className={`focus-ring flex min-w-[64px] flex-col items-center rounded-xl border px-4 py-2 disabled:cursor-not-allowed ${
                         active
-                          ? 'pop bg-[#E5457F] text-white'
+                          ? 'border-line bg-brand-soft text-ink'
                           : soldOut
-                            ? 'border-2 border-gray-200 bg-gray-50 text-gray-300 line-through'
-                            : 'pop bg-white text-[#263544]'
+                            ? 'border-line-subtle bg-canvas text-muted'
+                            : 'lift border-line bg-white text-ink'
                       }`}
                     >
-                      {v.size}
+                      <span className={`text-base font-bold ${soldOut ? 'line-through' : ''}`}>{v.size}</span>
+                      {pricesVary && (
+                        <span className={`text-sm tabular-nums ${soldOut ? '' : 'text-secondary'}`}>
+                          {soldOut ? 'หมด' : formatBaht(v.packagePrice)}
+                        </span>
+                      )}
                     </button>
                   )
                 })}
@@ -392,14 +427,14 @@ export default function CostumeDetailPage() {
             )}
             {variant && (
               <p className="mt-2 text-base text-[#263544]/60">
-                ค่าเช่า {formatBaht(variant.packagePrice)} · เช่า {customerHeldDays(variant.packageDays)} วัน
-                นับจากวันใช้งานถึงวันส่งคืน
+                ไซส์ {variant.size}: ค่าเช่า {formatBaht(variant.packagePrice)} · มัดจำ {formatBaht(variant.depositAmount)}{' '}
+                (ได้คืน) · เช่า {customerHeldDays(variant.packageDays)} วัน นับจากวันใช้งานถึงวันส่งคืน
               </p>
             )}
 
             {/* ตารางไซส์อยู่ติดกับปุ่มไซส์ ดูประกอบตอนเลือกได้ทันที */}
             {hasSizeChart && (
-              <details className="group mt-3 rounded-2xl border border-[#263544]/15 bg-white" open>
+              <details className="group mt-3 rounded-card border border-line bg-white" open>
                 <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-base font-semibold text-[#263544]">
                   <RulerIcon size={18} />
                   ตารางไซส์ (นิ้ว)
@@ -414,10 +449,11 @@ export default function CostumeDetailPage() {
                         <th className="px-2 py-2">รอบเอว</th>
                         <th className="px-2 py-2">รอบสะโพก</th>
                         <th className="px-2 py-2">ความยาว</th>
-                        <th className="rounded-r-lg px-2 py-2">ส่วนสูง (ซม.)</th>
+                        <th className={`px-2 py-2 ${pricesVary ? '' : 'rounded-r-lg'}`}>ส่วนสูง (ซม.)</th>
+                        {pricesVary && <th className="rounded-r-lg px-2 py-2">ค่าเช่า</th>}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 text-[#263544]/80">
+                    <tbody className="divide-y divide-line-subtle text-[#263544]/80">
                       {detail.variants
                         .filter((v) => v.chart)
                         .map((v) => (
@@ -432,6 +468,9 @@ export default function CostumeDetailPage() {
                                 ? `${v.chart?.heightMin ?? '?'}–${v.chart?.heightMax ?? '?'}`
                                 : '—'}
                             </td>
+                            {pricesVary && (
+                              <td className="px-2 py-2 tabular-nums">{formatBaht(v.packagePrice)}</td>
+                            )}
                           </tr>
                         ))}
                     </tbody>
@@ -466,7 +505,7 @@ export default function CostumeDetailPage() {
 
           {/* สรุปช่วงเช่า + ราคา */}
           {variant && (
-            <section className="mt-6 rounded-2xl border-2 border-[#263544] bg-white p-5 shadow-[4px_4px_0_0_#263544]">
+            <section className="mt-6 rounded-card border border-line bg-white p-5">
               {timeline ? (
                 <div className="mb-4 grid grid-cols-3 gap-2 text-center">
                   <TimelineStep
@@ -496,9 +535,9 @@ export default function CostumeDetailPage() {
               )}
 
               {canSplit && (
-                <div className="mb-4 border-b border-[#263544]/10 pb-4">
+                <div className="mb-4 border-b border-line-subtle pb-4">
                   <p className="mb-2 text-base font-semibold text-[#263544]">รูปแบบการเช่า</p>
-                  <div role="radiogroup" aria-label="รูปแบบการเช่า" className="grid grid-cols-2 gap-1 rounded-xl border-2 border-[#263544] bg-white p-1">
+                  <div role="radiogroup" aria-label="รูปแบบการเช่า" className="grid grid-cols-2 gap-1 rounded-xl border border-line bg-white p-1">
                     {(
                       [
                         ['set', 'เช่าทั้งชุด'],
@@ -511,8 +550,8 @@ export default function CostumeDetailPage() {
                         role="radio"
                         aria-checked={rentMode === mode}
                         onClick={() => setRentMode(mode)}
-                        className={`rounded-lg py-2.5 text-base font-semibold transition ${
-                          rentMode === mode ? 'bg-[#E5457F] text-white' : 'text-[#263544]'
+                        className={`focus-ring rounded-lg py-2.5 text-base transition ${
+                          rentMode === mode ? 'bg-brand-soft font-bold text-ink' : 'font-semibold text-ink hover:bg-sunken'
                         }`}
                       >
                         {label}
@@ -565,9 +604,9 @@ export default function CostumeDetailPage() {
                   </>
                 )}
                 <PriceRow label="ค่าจัดส่ง" value={settings.shippingFlatRate} />
-                <div className="flex items-center justify-between border-t-2 border-dashed border-gray-200 pt-2">
+                <div className="flex items-center justify-between border-t border-dashed border-line-subtle pt-2">
                   <dt className="font-bold text-[#263544]">ยอดชำระทั้งหมด</dt>
-                  <dd className="text-xl font-extrabold text-[#E5457F]">{formatBaht(grandTotal)}</dd>
+                  <dd className="text-xl font-extrabold text-brand">{formatBaht(grandTotal)}</dd>
                 </div>
               </dl>
 
@@ -576,7 +615,7 @@ export default function CostumeDetailPage() {
                   type="button"
                   onClick={handleAddToCart}
                   disabled={bookingBlocked}
-                  className="pop flex items-center justify-center gap-2 rounded-full bg-white py-3 text-base font-bold text-[#263544] disabled:opacity-40"
+                  className="lift focus-ring flex items-center justify-center gap-2 rounded-full border border-line bg-white py-3 text-base font-bold text-ink disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ShoppingCartSimpleIcon size={18} weight="bold" />
                   เพิ่มลงตะกร้า
@@ -585,7 +624,7 @@ export default function CostumeDetailPage() {
                   type="button"
                   onClick={handleRent}
                   disabled={bookingBlocked}
-                  className="pop rounded-full bg-[#E5457F] py-3 text-base font-bold text-white disabled:bg-gray-200 disabled:text-gray-400"
+                  className="lift focus-ring rounded-full border border-line bg-brand py-3 text-base font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {!selectedDate ? 'เลือกวันใช้งานก่อน' : pieceMode && selectedPieces.size === 0 ? 'เลือกชิ้นก่อน' : 'เช่าเลย'}
                 </button>
@@ -616,7 +655,7 @@ export default function CostumeDetailPage() {
               onClick={() => setPreviewInclusion(null)}
               aria-label="ปิด"
               autoFocus
-              className="pop absolute -right-3 -top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#263544]"
+              className="lift focus-ring absolute -right-3 -top-3 flex h-10 w-10 items-center justify-center rounded-full border border-line bg-white text-ink"
             >
               <XIcon size={20} weight="bold" />
             </button>
@@ -629,6 +668,7 @@ export default function CostumeDetailPage() {
           </figure>
         </div>
       )}
+      </div>
     </CustomerLayout>
   )
 }

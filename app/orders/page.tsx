@@ -36,17 +36,19 @@ export default function MyOrdersPage() {
 
   return (
     <CustomerLayout>
+      {/* design v2 (design-system.md): เส้น 1px · เงาแข็งเฉพาะตอน hover (.lift) */}
+      <div className="theme-v2">
       <h1 className="text-2xl font-bold text-[#263544]">ออเดอร์ของฉัน</h1>
       <p className="mb-6 text-base text-[#263544]/60">ติดตามสถานะการเช่า การจัดส่ง และการคืนชุด</p>
 
       {pendingCount > 0 && (
-        <p className="mb-4 rounded-2xl border-2 border-[#263544] bg-[#FFF3B0] px-4 py-3 text-base text-[#263544]">
+        <p className="mb-4 rounded-card border border-line bg-[#FFF3B0] px-4 py-3 text-base text-[#263544]">
           มี {pendingCount} ออเดอร์ที่ยังไม่ได้ชำระเงิน กดเข้าไปเพื่อชำระหรือยกเลิกได้เลย
         </p>
       )}
 
       {toReviewCount > 0 && (
-        <p className="mb-4 flex items-center gap-2 rounded-2xl border-2 border-[#263544] bg-[#FDE3EE] px-4 py-3 text-base text-[#263544]">
+        <p className="mb-4 flex items-center gap-2 rounded-card border border-line bg-[#FDE3EE] px-4 py-3 text-base text-[#263544]">
           <StarIcon size={18} weight="fill" className="flex-shrink-0 text-[#F5B400]" />
           มี {toReviewCount} ออเดอร์ที่จบการเช่าแล้ว รอคุณรีวิวอยู่
         </p>
@@ -67,7 +69,8 @@ export default function MyOrdersPage() {
       )}
 
       {!loading && !loadError && orders.length === 0 && (
-        <div className="rounded-3xl bg-[#F7F7F8] px-6 py-16 text-center">
+        // empty state ตาม design v2: ไม่มีกรอบและไม่มีพื้น
+        <div className="px-6 py-16 text-center">
           <p className="text-[#263544]/60">ยังไม่มีออเดอร์</p>
           <Link href="/costumes" className="mt-3 inline-block font-semibold text-[#E5457F] hover:underline">
             เริ่มเลือกชุดกันเลย
@@ -83,7 +86,7 @@ export default function MyOrdersPage() {
               <li key={order.id}>
                 <Link
                   href={`/orders/${order.id}`}
-                  className="flex items-center gap-4 rounded-2xl border-2 border-[#263544] bg-white p-4 transition hover:bg-[#FFFAFC]"
+                  className="lift focus-ring flex items-center gap-4 rounded-card border border-line bg-white p-4"
                 >
                   <div className="h-20 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-[#FDE3EE]">
                     {first?.coverImageUrl ? (
@@ -101,7 +104,7 @@ export default function MyOrdersPage() {
                         {ORDER_STATUS_LABEL[order.status]}
                       </span>
                       {needsReview(order) && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[#263544] bg-[#FFF3B0] px-2.5 py-0.5 text-sm font-semibold text-[#263544]">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-line bg-[#FFF3B0] px-2.5 py-0.5 text-sm font-semibold text-[#263544]">
                           <StarIcon size={12} weight="fill" className="text-[#F5B400]" />
                           รอรีวิว
                         </span>
@@ -116,7 +119,7 @@ export default function MyOrdersPage() {
                     )}
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-[#E5457F]">{formatBaht(order.grandTotal)}</p>
+                    <p className="font-bold text-brand">{formatBaht(order.grandTotal)}</p>
                     <CaretRightIcon size={18} className="ml-auto mt-1 text-[#263544]/40" />
                   </div>
                 </Link>
@@ -125,6 +128,7 @@ export default function MyOrdersPage() {
           })}
         </ul>
       )}
+      </div>
     </CustomerLayout>
   )
 }

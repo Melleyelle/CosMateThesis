@@ -47,11 +47,15 @@ type RefundAccount = BankAccount
 const EMPTY_REFUND = EMPTY_BANK
 const refundProblem = bankProblem
 
+// design v2: ช่องกรอกเส้น 1px มุม 10px · focus เส้นชมพู + วงชมพูโปร่ง 3px
 const inputClass =
-  'w-full rounded-xl border-2 border-[#EEEDF2] bg-white px-4 py-2.5 text-base text-[#263544] outline-none transition placeholder:text-[#263544]/40 focus:border-[#E5457F] focus:ring-2 focus:ring-[#E5457F]/20'
+  'w-full rounded-control border border-line bg-white px-4 py-2.5 text-base text-[#263544] outline-none transition placeholder:text-muted focus:border-brand-strong focus:ring-[3px] focus:ring-brand/25'
 
-// กล่องหลักแบบเดียวกับหน้ารายละเอียดชุด/บัญชีของฉัน
-const cardClass = 'rounded-2xl border-2 border-[#263544] bg-white p-5 shadow-[4px_4px_0_0_#263544]'
+// กล่องหลัก design v2: เส้น 1px มุม 12px ไม่มีเงา (กล่องกดไม่ได้)
+const cardClass = 'rounded-card border border-line bg-white p-5'
+
+const primaryButtonClass =
+  'lift focus-ring rounded-full border border-line bg-brand px-6 py-2.5 text-base font-bold text-white active:bg-brand-strong'
 
 // ---------------------------------------------------------------------------
 // หน้า
@@ -436,7 +440,7 @@ function CheckoutInner() {
                       <button
                         type="button"
                         onClick={confirmAddress}
-                        className="pop rounded-full bg-[#E5457F] px-6 py-2.5 text-base font-semibold text-white"
+                        className={primaryButtonClass}
                       >
                         ใช้ที่อยู่นี้
                       </button>
@@ -525,7 +529,7 @@ function CheckoutInner() {
                         <button
                           type="button"
                           onClick={confirmRefund}
-                          className="pop rounded-full bg-[#E5457F] px-6 py-2.5 text-base font-semibold text-white"
+                          className={primaryButtonClass}
                         >
                           ใช้บัญชีนี้
                         </button>
@@ -556,14 +560,14 @@ function CheckoutInner() {
 
         {/* ---------------- สรุปการเช่า ---------------- */}
         <aside className={`${cardClass} h-fit p-6 lg:sticky lg:top-24`}>
-          <h2 className="mb-5 border-b border-[#263544]/10 pb-4 text-2xl font-bold text-[#263544]">
+          <h2 className="mb-5 border-b border-line-subtle pb-4 text-2xl font-bold text-[#263544]">
             สรุปการเช่า <span className="text-[#E5457F]">{lines.length} รายการ</span>
           </h2>
 
           <ul className="space-y-5">
             {lines.map((l) => (
               <li key={l.key} className="flex gap-4">
-                <div className="h-28 w-24 flex-shrink-0 overflow-hidden rounded-xl border-2 border-[#263544] bg-[#FDE3EE]">
+                <div className="h-28 w-24 flex-shrink-0 overflow-hidden rounded-xl border border-line bg-[#FDE3EE]">
                   {l.variant?.coverImageUrl ? (
                     <img src={l.variant.coverImageUrl} alt="" className="h-full w-full object-cover" />
                   ) : (
@@ -602,15 +606,15 @@ function CheckoutInner() {
             ))}
           </ul>
 
-          <div className="my-5 border-t border-[#263544]/10" />
+          <div className="my-5 border-t border-line-subtle" />
           <dl className="space-y-2 text-base">
             <PriceRow label="ค่าเช่าชุด" value={totals.rental} />
             <PriceRow label="ค่ามัดจำ (ได้คืนหลังตรวจชุด)" value={totals.deposit} />
             <PriceRow label="ค่าซักรีด" value={totals.laundry} />
             <PriceRow label="ค่าจัดส่ง" value={settings.shippingFlatRate} />
-            <div className="flex items-center justify-between border-t-2 border-dashed border-gray-200 pt-3">
+            <div className="flex items-center justify-between border-t border-dashed border-line-subtle pt-3">
               <dt className="font-bold text-[#263544]">ยอดชำระทั้งหมด</dt>
-              <dd className="text-3xl font-extrabold text-[#E5457F]">{formatBaht(grandTotal)}</dd>
+              <dd className="text-3xl font-extrabold text-brand">{formatBaht(grandTotal)}</dd>
             </div>
           </dl>
 
@@ -647,7 +651,7 @@ function CheckoutInner() {
           <button
             type="submit"
             disabled={submitting || !accepted || hasProblem}
-            className="pop mt-5 w-full rounded-full bg-[#E5457F] py-4 text-lg font-bold text-white disabled:bg-gray-200 disabled:text-gray-400"
+            className="lift focus-ring mt-5 w-full rounded-full border border-line bg-brand py-4 text-lg font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
           >
             {submitting ? 'กำลังจองชุด...' : 'ยืนยันการเช่า'}
           </button>
@@ -663,9 +667,12 @@ function CheckoutInner() {
 export default function CheckoutPage() {
   return (
     <CustomerLayout>
-      <Suspense fallback={<div className="h-96 animate-pulse rounded-2xl bg-gray-100" />}>
-        <CheckoutInner />
-      </Suspense>
+      {/* design v2 (design-system.md): เส้น 1px · เงาแข็งเฉพาะตอน hover (.lift) */}
+      <div className="theme-v2">
+        <Suspense fallback={<div className="h-96 animate-pulse rounded-2xl bg-gray-100" />}>
+          <CheckoutInner />
+        </Suspense>
+      </div>
     </CustomerLayout>
   )
 }
@@ -680,7 +687,7 @@ function EditButton({ onClick, label }: { onClick: () => void; label: string }) 
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="nudge rounded-lg p-1.5 text-[#263544] hover:text-[#E5457F]"
+      className="nudge focus-ring rounded-lg p-1.5 text-[#263544]"
     >
       <NotePencilIcon size={26} />
     </button>
@@ -689,7 +696,8 @@ function EditButton({ onClick, label }: { onClick: () => void; label: string }) 
 
 function FixedChoice({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-4 rounded-2xl border-2 border-[#263544] bg-white px-5 py-4 shadow-[4px_4px_0_0_#263544]">
+    // ตัวเลือกที่ถูกเลือกไว้แล้ว (มีทางเดียว) → แสดงเป็นสถานะที่เลือก: พื้น brand-soft เส้น 1px
+    <div className="flex items-center gap-4 rounded-card border border-line bg-brand-soft px-5 py-4">
       <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#E5457F] text-white">
         <CheckIcon size={16} weight="bold" />
       </span>

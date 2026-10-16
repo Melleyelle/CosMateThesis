@@ -16,6 +16,7 @@ import { PageHeader, primaryButtonClass, secondaryButtonClass } from '@/app/comp
 import { EMPTY_FORM_DATA, type CostumeFormData } from '@/app/components/admin/costume-form/types'
 import { fetchCostumeForEdit } from '@/utils/fetchCostumeForEdit'
 import { saveInclusionPrices } from '@/utils/saveInclusionPrices'
+import { validateSkuPrefix } from '@/utils/skuPrefix'
 
 // แก้ไขชุดเดิม — ใช้การ์ดฟอร์มชุดเดียวกับหน้า "เพิ่มชุดใหม่" ทั้งหมด ต่างกันแค่:
 // 1) โหลดข้อมูลเดิมมาใส่ฟอร์มก่อน (id ของไซส์/ตัวชุดเป็น id จริงจาก DB)
@@ -27,6 +28,9 @@ function translateSaveError(message: string) {
   if (message.includes('PRODUCT_NOT_FOUND')) return 'ไม่พบชุดนี้ในระบบแล้ว อาจถูกลบไปก่อนหน้านี้'
   if (message.includes('NAME_REQUIRED')) return 'กรุณากรอกชื่อชุด'
   if (message.includes('SKU_PREFIX_REQUIRED')) return 'กรุณากรอกรหัสอ้างอิงชุด'
+  if (message.includes('products_sku_prefix_format')) {
+    return 'รหัสอ้างอิงชุดต้องเป็นตัวอักษรอังกฤษ A–Z หรือตัวเลข 0–9 ยาว 2–12 ตัว'
+  }
   if (message.includes('AT_LEAST_ONE_VARIANT')) return 'กรุณาเลือกอย่างน้อย 1 ไซส์'
   if (message.includes('foreign key') || message.includes('23503')) {
     return 'ไม่สามารถลบไซส์/ตัวชุดนี้ได้ เพราะมีประวัติการเช่าผูกอยู่ ถ้าไม่ใช้ตัวนั้นแล้ว ให้ตั้งสภาพเป็น "ปลดระวาง" แทนการลบ'
@@ -81,6 +85,9 @@ export default function EditCostumePage() {
     if (!formData.basicInfo.name.trim() || !formData.basicInfo.skuPrefix.trim()) {
       return 'กรุณากรอกชื่อชุดและรหัสอ้างอิงชุดก่อน'
     }
+    // ชุดเก่าที่รหัสไม่ผ่านกติกาใหม่ (เช่น มีขีด) ต้องแก้รหัสก่อนจึงบันทึกได้ — ฐานข้อมูลก็บังคับเหมือนกัน
+    const skuError = validateSkuPrefix(formData.basicInfo.skuPrefix)
+    if (skuError) return skuError
     if (!formData.coverImage?.uploadedUrl) {
       return 'กรุณาอัปโหลดรูปหน้าปกให้เสร็จก่อน'
     }
@@ -296,7 +303,7 @@ export default function EditCostumePage() {
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className={`${primaryButtonClass} disabled:pointer-events-none disabled:opacity-60`}
+            className={primaryButtonClass}
           >
             {saving ? 'กำลังบันทึก…' : 'บันทึกการแก้ไข'}
           </button>

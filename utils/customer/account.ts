@@ -19,7 +19,46 @@ export const BANKS = [
 ]
 
 export type BankAccount = { accountName: string; bank: string; accountNumber: string }
-export type Profile = { email: string; firstName: string; lastName: string; phone: string; avatarUrl: string | null }
+export type Profile = {
+  email: string
+  firstName: string
+  lastName: string
+  phone: string
+  avatarUrl: string | null
+  measurements: Measurements
+}
+
+// สัดส่วนลูกค้า — หน่วยเดียวกับ size_charts (รอบอก/เอว/สะโพกเป็นนิ้ว ส่วนสูงเป็นซม.) เทียบกับตารางไซส์ได้ตรง ๆ
+// เก็บเป็น string ในฟอร์ม ('' = ยังไม่กรอก)
+export type Measurements = { heightCm: string; chestIn: string; waistIn: string; hipIn: string }
+export const EMPTY_MEASUREMENTS: Measurements = { heightCm: '', chestIn: '', waistIn: '', hipIn: '' }
+
+const MEASUREMENT_RANGES: Record<keyof Measurements, { label: string; min: number; max: number; unit: string }> = {
+  heightCm: { label: 'ส่วนสูง', min: 100, max: 220, unit: 'ซม.' },
+  chestIn: { label: 'รอบอก', min: 20, max: 70, unit: 'นิ้ว' },
+  waistIn: { label: 'รอบเอว', min: 15, max: 70, unit: 'นิ้ว' },
+  hipIn: { label: 'รอบสะโพก', min: 20, max: 70, unit: 'นิ้ว' },
+}
+
+// ตัวเลขทศนิยมได้ 1 ตำแหน่ง (ให้ตรงกับ numeric(4,1) ในฐานข้อมูล)
+export const onlyDecimal = (s: string) => s.replace(/[^0-9.]/g, '').replace(/^(\d*\.?\d?).*$/, '$1')
+
+export function measurementsProblem(m: Measurements): string | null {
+  for (const key of Object.keys(MEASUREMENT_RANGES) as (keyof Measurements)[]) {
+    if (!m[key]) continue // ไม่บังคับกรอก
+    const { label, min, max, unit } = MEASUREMENT_RANGES[key]
+    const n = Number(m[key])
+    if (!Number.isFinite(n) || n < min || n > max) return `${label}ต้องอยู่ระหว่าง ${min}–${max} ${unit}`
+  }
+  return null
+}
+
+const MEASUREMENT_COLUMNS = 'height_cm, chest_in, waist_in, hip_in'
+
+function measurementsPayload(m: Measurements) {
+  const num = (s: string) => (s ? Number(s) : null)
+  return { height_cm: num(m.heightCm), chest_in: num(m.chestIn), waist_in: num(m.waistIn), hip_in: num(m.hipIn) }
+}
 export type Address = {
   name: string
   phone: string
@@ -77,10 +116,12 @@ export async function fetchMyAccount(): Promise<{
   const { supabase, userId, email } = await currentUserId()
   if (!supabase || !userId) return { profile: null, addresses: [], banks: [], error: 'กรุณาเข้าสู่ระบบ' }
 
-  const [p, av, a, b] = await Promise.all([
+  const [p, av, ms, a, b] = await Promise.all([
     supabase.from('profiles').select('email, first_name, last_name, phone').eq('id', userId).maybeSingle(),
     // แยก query เพราะถ้ายังไม่ได้รัน Step 14 คอลัมน์ avatar_url ยังไม่มี → ถือว่ายังไม่มีรูป หน้าไม่พัง
     supabase.from('profiles').select('avatar_url').eq('id', userId).maybeSingle(),
+    // แยก query เหมือนกัน — ถ้ายังไม่ได้รัน Step 17 ถือว่ายังไม่ได้กรอกสัดส่วน
+    supabase.from('profiles').select(MEASUREMENT_COLUMNS).eq('id', userId).maybeSingle(),
     supabase
       .from('user_addresses')
       .select(ADDRESS_COLUMNS)
@@ -104,6 +145,12 @@ export async function fetchMyAccount(): Promise<{
           lastName: p.data.last_name ?? '',
           phone: p.data.phone ?? '',
           avatarUrl: (!av.error && av.data?.avatar_url) || null,
+          measurements: ms.error || !ms.data ? EMPTY_MEASUREMENTS : {
+            heightCm: ms.data.height_cm?.toString() ?? '',
+            chestIn: ms.data.chest_in?.toString() ?? '',
+            waistIn: ms.data.waist_in?.toString() ?? '',
+            hipIn: ms.data.hip_in?.toString() ?? '',
+          },
         }
       : null,
     addresses: (a.data ?? []).map((r) => ({
@@ -129,14 +176,25 @@ export async function fetchMyAccount(): Promise<{
     error: p.error?.message ?? null,
   }
 }
-export async function saveMyProfile(p: Pick<Profile, 'firstName' | 'lastName' | 'phone'>): Promise<string | null> {
+export async function saveMyProfile(
+  p: Pick<Profile, 'firstName' | 'lastName' | 'phone' | 'measurements'>,
+): Promise<string | null> {
   const { supabase, userId } = await currentUserId()
   if (!supabase || !userId) return 'กรุณาเข้าสู่ระบบ'
   const { error } = await supabase
     .from('profiles')
     .update({ first_name: p.firstName.trim(), last_name: p.lastName.trim(), phone: onlyDigits(p.phone) })
     .eq('id', userId)
-  return error?.message ?? null
+  if (error) return error.message
+
+  // บันทึกสัดส่วนแยก ชื่อ/เบอร์ยังบันทึกได้แม้ยังไม่ได้รัน Step 17
+  const m = await supabase.from('profiles').update(measurementsPayload(p.measurements)).eq('id', userId)
+  if (m.error) {
+    return /height_cm|chest_in|waist_in|hip_in/.test(m.error.message)
+      ? 'บันทึกชื่อและเบอร์แล้ว แต่ระบบยังไม่พร้อมบันทึกสัดส่วน (ยังไม่ได้รัน SQL Step 17)'
+      : m.error.message
+  }
+  return null
 }
 
 export const AVATAR_MAX_SIZE = 2 * 1024 * 1024 // ต้องตรงกับ file_size_limit ของ bucket avatars

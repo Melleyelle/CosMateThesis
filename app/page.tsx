@@ -17,12 +17,13 @@ import {
 } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
 import EmptyState from '@/app/components/EmptyState'
-import CostumeGridCard from '@/app/components/customer/CostumeGridCard'
+import CostumeGridCard, { CARD_MEDIA } from '@/app/components/customer/CostumeGridCard'
 import Reveal from '@/app/components/Reveal'
 import { fetchCatalog, type CatalogCostume } from '@/utils/customer/fetchCatalog'
 import { customerHeldDays } from '@/utils/customer/bookingSettings'
 import { fetchEvents, type CalendarEvent } from '@/utils/customer/events'
 import { todayISO } from '@/utils/dateUtils'
+import { fetchSizeStock, type SizeStock } from '@/utils/sizeStock'
 
 const delay = (ms: number) => ({ '--d': `${ms}ms` }) as CSSProperties
 
@@ -36,6 +37,8 @@ const isNearTop = () => window.scrollY < 16
 export default function HomePage() {
   const [latest, setLatest] = useState<CatalogCostume[]>([])
   const [loading, setLoading] = useState(true)
+  // null = กำลังโหลดจำนวนต่อไซส์ (การ์ดจองพื้นที่ไว้ก่อน)
+  const [sizeStock, setSizeStock] = useState<Map<string, SizeStock[]> | null>(null)
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const nearTop = useSyncExternalStore(subscribeScroll, isNearTop, () => true)
 
@@ -43,6 +46,7 @@ export default function HomePage() {
     fetchCatalog(4).then(({ data }) => {
       setLatest(data)
       setLoading(false)
+      fetchSizeStock(data.map((c) => c.id)).then(setSizeStock)
     })
     // แสดงเฉพาะงานที่ยังไม่จบ เรียงตามวันเริ่ม 4 งาน
     fetchEvents().then(({ events }) => {
@@ -69,6 +73,8 @@ export default function HomePage() {
 
   return (
     <CustomerLayout>
+      {/* design v2 (design-system.md): เส้น 1px · เงาแข็งเฉพาะตอน hover (.lift) · ตัวห่อนี้ไม่มี position จึงไม่กระทบ layout หรือ z-index ของตัวละครบนแบนเนอร์ */}
+      <div className="theme-v2">
       {/* ===== Banner ===== */}
       {/* จอใหญ่: ปีกตัวละครล้นขอบการ์ดขึ้นไปทับขอบล่าง navbar เป็นลูกเล่น (เฉพาะตอนอยู่บนสุดของหน้า) */}
       <section className="relative">
@@ -95,13 +101,13 @@ export default function HomePage() {
             <div className="rise mt-8 flex flex-wrap justify-center gap-4 lg:justify-start" style={delay(500)}>
               <Link
                 href="/costumes"
-                className="pop inline-flex h-14 items-center rounded-full bg-[#E5457F] px-9 text-base font-semibold text-white"
+                className="lift focus-ring inline-flex h-14 items-center rounded-full border border-line bg-brand px-9 text-base font-bold text-white active:bg-brand-strong"
               >
                 ไปสำรวจชุด
               </Link>
               <a
                 href="#pick-for-you"
-                className="pop inline-flex h-14 items-center rounded-full bg-white px-8 text-base font-semibold text-[#263544]"
+                className="lift focus-ring inline-flex h-14 items-center rounded-full border border-line bg-surface px-8 text-base font-semibold text-ink"
               >
                 ช่วยเลือกชุดให้คุณ
               </a>
@@ -197,7 +203,7 @@ export default function HomePage() {
               <li key={step.title} className={i % 2 === 1 ? 'lg:mt-16' : ''}>
                 <Reveal delay={i * 140}>
                   <div className="group flex flex-col items-center text-center">
-                    <span className="flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-[#263544] bg-white text-[#E5457F] shadow-[3px_3px_0_0_#263544] transition duration-300 group-hover:-rotate-12 group-hover:bg-[#FDE3EE]">
+                    <span className="flex h-16 w-16 items-center justify-center rounded-2xl border border-line bg-white text-[#E5457F] transition duration-300 group-hover:-rotate-12">
                       <step.icon size={30} weight="duotone" />
                     </span>
                     <span className="mt-4 text-4xl font-extrabold leading-none text-[#E5457F] transition duration-300 group-hover:scale-110">
@@ -235,7 +241,7 @@ export default function HomePage() {
                 </div>
                 <button
                   type="button"
-                  className="pop inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-base font-semibold text-[#263544]"
+                  className="lift focus-ring inline-flex items-center gap-2 rounded-full border border-line bg-surface px-5 py-2.5 text-base font-semibold text-ink"
                 >
                   <FacebookLogoIcon size={22} weight="fill" className="text-[#1877F2]" />
                   ติดตามอีเวนต์บน Facebook
@@ -278,9 +284,16 @@ export default function HomePage() {
           </div>
         </Reveal>
         {loading ? (
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-6 lg:grid-cols-4" aria-busy="true" aria-label="กำลังโหลด">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="aspect-[3/4] animate-pulse rounded-2xl bg-gray-100" />
+              <div key={i} className="overflow-hidden rounded-card border border-line">
+                <div className={`${CARD_MEDIA} animate-pulse border-b border-line bg-sunken`} />
+                <div className="space-y-2 p-3">
+                  <div className="h-4 w-1/2 animate-pulse rounded bg-sunken" />
+                  <div className="h-5 w-4/5 animate-pulse rounded bg-sunken" />
+                  <div className="h-5 w-1/3 animate-pulse rounded bg-sunken" />
+                </div>
+              </div>
             ))}
           </div>
         ) : latest.length === 0 ? (
@@ -290,15 +303,21 @@ export default function HomePage() {
             description="ร้านกำลังเตรียมชุดใหม่ให้เลือกอยู่ แวะกลับมาดูอีกทีเร็ว ๆ นี้นะ"
           />
         ) : (
-          <div className="grid grid-cols-2 gap-x-5 gap-y-8 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-6 lg:grid-cols-4">
             {latest.map((c, i) => (
-              <Reveal key={c.id} delay={i * 100}>
-                <CostumeGridCard costume={c} heldDays={customerHeldDays(c.minPricePackageDays)} />
+              <Reveal key={c.id} delay={i * 100} className="h-full">
+                <CostumeGridCard
+                  variant="gumroad"
+                  costume={c}
+                  heldDays={customerHeldDays(c.minPricePackageDays)}
+                  sizes={sizeStock ? (sizeStock.get(c.id) ?? []) : undefined}
+                />
               </Reveal>
             ))}
           </div>
         )}
       </section>
+      </div>
     </CustomerLayout>
   )
 }
@@ -343,10 +362,10 @@ function CategoryCard({
   return (
     <Link
       href={href}
-      className="group flex h-full flex-col items-center rounded-[20px] border-2 border-[#263544] bg-white px-5 py-6 text-center shadow-[4px_4px_0_0_#263544] transition duration-200 hover:-translate-y-1 hover:shadow-[6px_6px_0_0_#263544]"
+      className="lift focus-ring group flex h-full flex-col items-center rounded-card border border-line bg-white px-5 py-6 text-center"
     >
       <span
-        className={`flex h-16 w-16 items-center justify-center rounded-full border-2 border-[#263544] ${bg} text-[#263544] shadow-[2px_2px_0_0_#263544] transition duration-300 group-hover:-rotate-12`}
+        className={`flex h-16 w-16 items-center justify-center rounded-full border border-line ${bg} text-[#263544] transition duration-300 group-hover:-rotate-12`}
       >
         <Icon size={30} />
       </span>
@@ -370,7 +389,7 @@ function PickCard({ image, title, cta }: { image: string; title: [string, string
         </p>
         <button
           type="button"
-          className="pop mt-3 inline-flex items-center rounded-full bg-[#E5457F] px-5 py-2 text-sm font-semibold text-white sm:mt-4 sm:px-6 sm:py-2.5 sm:text-base"
+          className="lift focus-ring mt-3 inline-flex items-center rounded-full border border-line bg-brand px-5 py-2 text-sm font-bold text-white active:bg-brand-strong sm:mt-4 sm:px-6 sm:py-2.5 sm:text-base"
         >
           {cta}
         </button>
@@ -390,9 +409,9 @@ function EventCard({ event }: { event: CalendarEvent }) {
   const end = new Date(`${event.endDate}T00:00:00`)
   const sameDay = event.startDate === event.endDate
   return (
-    <article className="flex h-full items-center gap-4 rounded-2xl border-2 border-[#263544] bg-white p-4 shadow-[4px_4px_0_0_#263544]">
+    <article className="flex h-full items-center gap-4 rounded-card border border-line bg-white p-4">
       <span
-        className={`flex h-20 w-20 flex-shrink-0 flex-col items-center justify-center rounded-xl border-2 border-[#263544] ${EVENT_BG[event.tone]}`}
+        className={`flex h-20 w-20 flex-shrink-0 flex-col items-center justify-center rounded-xl border border-line ${EVENT_BG[event.tone]}`}
       >
         <span
           className={`${sameDay ? 'text-2xl' : 'text-xl'} font-extrabold leading-none text-[#263544]`}

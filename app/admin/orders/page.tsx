@@ -50,8 +50,8 @@ const TAB_GROUPS = [
 // ปุ่มหลักของแต่ละแถวใช้ภาษาแบรนด์ (มีกรอบ+เงา) เพราะคือ "สิ่งที่ต้องกด" — ที่เหลือเรียบ
 const ACTION_STYLE: Record<AdminAction['tone'], string> = {
   primary:
-    'border-2 border-[#263544] bg-[#E5457F] text-white shadow-[2px_2px_0_0_#263544] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0_0_#263544]',
-  secondary: 'border border-[#D5D9E0] bg-white text-[#263544] hover:border-[#263544]',
+    'lift border border-ink bg-brand font-bold text-white active:bg-brand-strong',
+  secondary: 'lift border border-ink bg-white text-ink',
   danger: 'text-[#B42318] hover:bg-[#FDE8E8]',
 }
 

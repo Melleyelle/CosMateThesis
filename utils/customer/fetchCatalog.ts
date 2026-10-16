@@ -12,6 +12,8 @@ export type CatalogCostume = {
   coverImageUrl: string | null
   createdAt: string
   sizes: string[]
+  /** ไซส์ที่มีชุดพร้อมเช่าอย่างน้อย 1 ตัว — ใช้เช็กวันว่างรายไซส์ */
+  rentableVariants: { id: string; size: string }[]
   colorKeys: string[]
   themeKeys: string[]
   minPrice: number | null
@@ -21,6 +23,7 @@ export type CatalogCostume = {
 }
 
 type ProductVariantRow = {
+  id: string
   size: string | null
   package_price: number | string | null
   package_days: number | string | null
@@ -58,7 +61,7 @@ export async function fetchCatalog(limit?: number): Promise<{ data: CatalogCostu
       `
       id, name, character_name, series_name, franchise_type, costume_category, gender_tag,
       color_tags, theme_tags, cover_image_url, created_at,
-      product_variants ( size, package_price, package_days, product_items ( condition_status ) )
+      product_variants ( id, size, package_price, package_days, product_items ( condition_status ) )
     `,
     )
     .eq('status', 'active')
@@ -101,6 +104,10 @@ export async function fetchCatalog(limit?: number): Promise<{ data: CatalogCostu
       .filter((variant) => Number.isFinite(variant.price))
       .sort((a, b) => a.price - b.price)
     const rating = ratings.get(product.id)
+    const rentableVariants = variants
+      .filter((variant) => (variant.product_items ?? []).some((item) => item.condition_status === 'available'))
+      .filter((variant): variant is ProductVariantRow & { size: string } => !!variant.size)
+      .map((variant) => ({ id: variant.id, size: variant.size }))
 
     return {
       id: product.id,
@@ -112,14 +119,8 @@ export async function fetchCatalog(limit?: number): Promise<{ data: CatalogCostu
       genderTag: product.gender_tag,
       coverImageUrl: product.cover_image_url,
       createdAt: product.created_at,
-      sizes: Array.from(
-        new Set(
-          variants
-            .filter((variant) => (variant.product_items ?? []).some((item) => item.condition_status === 'available'))
-            .map((variant) => variant.size)
-            .filter((size): size is string => !!size),
-        ),
-      ),
+      sizes: Array.from(new Set(rentableVariants.map((variant) => variant.size))),
+      rentableVariants,
       colorKeys: colorKeysOf(product.color_tags), // รองรับทั้งคีย์ (pink) และชื่อไทย (ชมพู) ที่บันทึกไว้แบบเก่า
       themeKeys: stringArray(product.theme_tags),
       minPrice: pricedVariants[0]?.price ?? null,
@@ -130,4 +131,32 @@ export async function fetchCatalog(limit?: number): Promise<{ data: CatalogCostu
   })
 
   return { data: mapped, error: null }
+}
+
+/**
+ * วันเริ่มใช้งาน (วันใส่ชุด) ที่จองไม่ได้ของหลายไซส์ — RPC เดียวกับปฏิทินหน้ารายละเอียดชุด
+ * จึงคิด buffer ขนส่ง/ซัก และจำนวนชุดจริงเหมือนกันทุกจุด
+ * ยิงทีละกลุ่มเพื่อไม่ให้ส่งคำขอพร้อมกันมากเกินไปเมื่อแคตตาล็อกใหญ่
+ */
+export async function fetchUnavailableStartDates(
+  variantIds: string[],
+  daysAhead: number,
+): Promise<{ data: Map<string, Set<string>>; error: string | null }> {
+  const result = new Map<string, Set<string>>()
+  const supabase = createClient()
+  if (!supabase) return { data: result, error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
+
+  const ids = Array.from(new Set(variantIds))
+  const BATCH = 8
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const batch = ids.slice(i, i + BATCH)
+    const responses = await Promise.all(
+      batch.map((id) => supabase.rpc('get_unavailable_start_dates', { p_variant_id: id, p_days_ahead: daysAhead })),
+    )
+    for (const [j, { data, error }] of responses.entries()) {
+      if (error) return { data: new Map(), error: error.message }
+      result.set(batch[j], new Set(((data ?? []) as string[]).map((d) => String(d).slice(0, 10))))
+    }
+  }
+  return { data: result, error: null }
 }

@@ -24,12 +24,15 @@ import {
   BANKS,
   EMPTY_ADDRESS,
   EMPTY_BANK,
+  EMPTY_MEASUREMENTS,
   addressProblem,
   bankProblem,
   deleteAddress,
   deleteBankAccount,
   fetchMyAccount,
   maskAccount,
+  measurementsProblem,
+  onlyDecimal,
   onlyDigits,
   removeMyAvatar,
   saveAddress,
@@ -40,13 +43,20 @@ import {
   uploadMyAvatar,
   type Address,
   type BankAccount,
+  type Measurements,
   type Profile,
   type SavedAddress,
   type SavedBankAccount,
 } from '@/utils/customer/account'
 
+// design v2: ช่องกรอกเส้น 1px มุม 10px · focus เส้นชมพู + วงชมพูโปร่ง 3px
 const inputClass =
-  'w-full rounded-xl border-2 border-[#EEEDF2] bg-white px-4 py-2.5 text-base text-[#263544] outline-none transition placeholder:text-[#263544]/40 focus:border-[#E5457F] focus:ring-2 focus:ring-[#E5457F]/20'
+  'w-full rounded-control border border-line bg-white px-4 py-2.5 text-base text-[#263544] outline-none transition placeholder:text-muted focus:border-brand-strong focus:ring-[3px] focus:ring-brand/25'
+
+const primaryButtonClass =
+  'lift focus-ring rounded-full border border-line bg-brand text-base font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40'
+const secondaryButtonClass =
+  'lift focus-ring rounded-full border border-line bg-white text-base font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40'
 
 type Section = 'profile' | 'address' | 'bank'
 
@@ -74,6 +84,20 @@ const SECTIONS: { key: Section; label: string; title: string; subtitle: string; 
   },
 ]
 
+const MEASUREMENT_FIELDS: { key: keyof Measurements; label: string; unit: string; placeholder: string }[] = [
+  { key: 'heightCm', label: 'ส่วนสูง', unit: 'ซม.', placeholder: '160' },
+  { key: 'chestIn', label: 'รอบอก', unit: 'นิ้ว', placeholder: '34' },
+  { key: 'waistIn', label: 'รอบเอว', unit: 'นิ้ว', placeholder: '26' },
+  { key: 'hipIn', label: 'รอบสะโพก', unit: 'นิ้ว', placeholder: '36' },
+]
+
+const profileDraftOf = (p: Profile | null) => ({
+  firstName: p?.firstName ?? '',
+  lastName: p?.lastName ?? '',
+  phone: p?.phone ?? '',
+  measurements: p?.measurements ?? EMPTY_MEASUREMENTS,
+})
+
 // id = null คือกำลังเพิ่มรายการใหม่
 type Editing = { kind: 'address' | 'bank'; id: string | null } | null
 
@@ -87,7 +111,7 @@ export default function AccountPage() {
 
   const [section, setSection] = useState<Section>('profile')
   const [editing, setEditing] = useState<Editing>(null)
-  const [draftProfile, setDraftProfile] = useState({ firstName: '', lastName: '', phone: '' })
+  const [draftProfile, setDraftProfile] = useState(profileDraftOf(null))
   const [draftAddress, setDraftAddress] = useState<Address>(EMPTY_ADDRESS)
   const [draftBank, setDraftBank] = useState<BankAccount>(EMPTY_BANK)
   const [saving, setSaving] = useState(false)
@@ -104,11 +128,7 @@ export default function AccountPage() {
     setProfile(res.profile)
     setAddresses(res.addresses)
     setBanks(res.banks)
-    setDraftProfile({
-      firstName: res.profile?.firstName ?? '',
-      lastName: res.profile?.lastName ?? '',
-      phone: res.profile?.phone ?? '',
-    })
+    setDraftProfile(profileDraftOf(res.profile))
     setLoading(false)
   }
 
@@ -125,7 +145,7 @@ export default function AccountPage() {
     setSection(next)
     setEditing(null)
     clearMessages()
-    setDraftProfile({ firstName: profile?.firstName ?? '', lastName: profile?.lastName ?? '', phone: profile?.phone ?? '' })
+    setDraftProfile(profileDraftOf(profile))
   }
 
   const fullName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ')
@@ -148,6 +168,8 @@ export default function AccountPage() {
       setError('เบอร์โทรต้องเป็นตัวเลข 9–10 หลัก ขึ้นต้นด้วย 0')
       return
     }
+    const problem = measurementsProblem(draftProfile.measurements)
+    if (problem) return setError(problem)
     setSaving(true)
     const err = await saveMyProfile(draftProfile)
     setSaving(false)
@@ -249,7 +271,7 @@ export default function AccountPage() {
         type="button"
         onClick={onSave}
         disabled={saving}
-        className="pop rounded-full bg-[#E5457F] px-10 py-2.5 text-base font-semibold text-white disabled:opacity-50"
+        className={`${primaryButtonClass} px-10 py-2.5`}
       >
         {saving ? 'กำลังบันทึก…' : 'บันทึก'}
       </button>
@@ -269,6 +291,8 @@ export default function AccountPage() {
 
   return (
     <CustomerLayout>
+      {/* design v2 (design-system.md): เส้น 1px · เงาแข็งเฉพาะตอน hover (.lift) · เมนูที่เลือกพื้น brand-soft */}
+      <div className="theme-v2">
       <h1 className="text-3xl font-bold text-[#263544]">บัญชีของฉัน</h1>
       <p className="mb-8 mt-1 text-base text-[#263544]/60">จัดการข้อมูลส่วนตัว ที่อยู่ และบัญชีรับเงินคืนของคุณ</p>
 
@@ -284,8 +308,8 @@ export default function AccountPage() {
       ) : (
         <div className="grid items-start gap-6 lg:grid-cols-[280px_1fr]">
           {/* ---------------- เมนูซ้าย ---------------- */}
-          <aside className="overflow-hidden rounded-2xl border-2 border-[#263544] bg-white shadow-[4px_4px_0_0_#263544] lg:sticky lg:top-24">
-            <div className="flex items-center gap-3 bg-[#FBDCE7] px-5 py-5">
+          <aside className="overflow-hidden rounded-card border border-line bg-white lg:sticky lg:top-24">
+            <div className="flex items-center gap-3 border-b border-line-subtle bg-[#FBDCE7] px-5 py-5">
               <Avatar profile={profile} className="h-14 w-14 text-xl" />
               <div className="min-w-0">
                 <p className="truncate text-base font-bold text-[#263544]">{fullName || 'สมาชิก CosMate'}</p>
@@ -303,8 +327,11 @@ export default function AccountPage() {
                         type="button"
                         onClick={() => selectSection(key)}
                         aria-current={active ? 'page' : undefined}
-                        className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-base font-medium ${
-                          active ? 'bg-[#FDE3EE] text-[#E5457F]' : 'nudge-x text-[#263544]'
+                        // เมนูที่เลือก = สถานะที่เลือก: พื้น brand-soft เส้น 1px ตัวดำหนา (ไม่ใช้ตัวชมพู)
+                        className={`focus-ring flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-base ${
+                          active
+                            ? 'border-line bg-brand-soft font-bold text-ink'
+                            : 'nudge-x border-transparent font-medium text-[#263544]'
                         }`}
                       >
                         <ItemIcon size={22} weight={active ? 'fill' : 'regular'} />
@@ -316,7 +343,7 @@ export default function AccountPage() {
                 })}
               </ul>
 
-              <ul className="mt-2 space-y-1 border-t border-[#263544]/10 pt-2">
+              <ul className="mt-2 space-y-1 border-t border-line-subtle pt-2">
                 <li>
                   <MenuLink href="/orders" icon={<ReceiptIcon size={22} />} label="ออเดอร์ของฉัน" />
                 </li>
@@ -327,7 +354,7 @@ export default function AccountPage() {
                   <button
                     type="button"
                     onClick={logout}
-                    className="nudge-x flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-base font-medium text-red-600"
+                    className="nudge-x focus-ring flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-base font-medium text-red-600"
                   >
                     <SignOutIcon size={22} />
                     ออกจากระบบ
@@ -338,8 +365,8 @@ export default function AccountPage() {
           </aside>
 
           {/* ---------------- เนื้อหาขวา ---------------- */}
-          <section className="rounded-2xl border-2 border-[#263544] bg-white p-6 shadow-[4px_4px_0_0_#263544] sm:p-8">
-            <header className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-[#263544]/10 pb-5">
+          <section className="rounded-card border border-line bg-white p-6 sm:p-8">
+            <header className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-line-subtle pb-5">
               <div>
                 <h2 className="text-2xl font-bold text-[#263544]">{headerTitle}</h2>
                 {!editing && <p className="mt-1 text-base text-[#263544]/60">{current.subtitle}</p>}
@@ -348,7 +375,7 @@ export default function AccountPage() {
                 <button
                   type="button"
                   onClick={() => (section === 'address' ? openAddress(null) : openBank(null))}
-                  className="pop inline-flex items-center gap-2 rounded-full bg-[#E5457F] px-5 py-2.5 text-base font-semibold text-white"
+                  className={`${primaryButtonClass} inline-flex items-center gap-2 px-5 py-2.5`}
                 >
                   <PlusIcon size={18} weight="bold" />
                   {section === 'address' ? 'เพิ่มที่อยู่ใหม่' : 'เพิ่มบัญชีธนาคาร'}
@@ -392,11 +419,38 @@ export default function AccountPage() {
                       className={inputClass}
                     />
                   </Row>
+
+                  {/* สัดส่วน — ใช้แนะนำไซส์ชุดที่พอดีตัว */}
+                  <div className="space-y-4 border-t border-line-subtle pt-5">
+                    <h3 className="text-lg font-bold text-[#263544]">สัดส่วนของฉัน</h3>
+                    <p className="-mt-2 text-base text-[#263544]/60">
+                      ไม่บังคับกรอก ใช้แนะนำไซส์ชุดที่พอดีกับตัวคุณ วัดรอบตัวด้วยสายวัดแนบเนื้อ
+                    </p>
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      {MEASUREMENT_FIELDS.map(({ key, label, unit, placeholder }) => (
+                        <Row key={key} label={`${label} (${unit})`}>
+                          <input
+                            inputMode="decimal"
+                            value={draftProfile.measurements[key]}
+                            onChange={(e) =>
+                              setDraftProfile({
+                                ...draftProfile,
+                                measurements: { ...draftProfile.measurements, [key]: onlyDecimal(e.target.value) },
+                              })
+                            }
+                            placeholder={`เช่น ${placeholder}`}
+                            className={`${inputClass} tabular-nums`}
+                          />
+                        </Row>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="pt-2">{formActions(saveProfileForm)}</div>
                 </div>
 
                 {/* รูปโปรไฟล์ */}
-                <div className="flex flex-col items-center border-[#263544]/10 text-center md:w-60 md:border-l md:pl-8">
+                <div className="flex flex-col items-center border-line-subtle text-center md:w-60 md:border-l md:pl-8">
                   <Avatar profile={profile} className="h-32 w-32 text-5xl" />
                   <input
                     ref={fileInput}
@@ -409,7 +463,7 @@ export default function AccountPage() {
                     type="button"
                     onClick={() => fileInput.current?.click()}
                     disabled={avatarBusy}
-                    className="pop mt-5 rounded-full bg-white px-6 py-2 text-base font-semibold text-[#263544] disabled:opacity-50"
+                    className={`${secondaryButtonClass} mt-5 px-6 py-2`}
                   >
                     {avatarBusy ? 'กำลังอัปโหลด…' : 'เลือกรูป'}
                   </button>
@@ -491,13 +545,13 @@ export default function AccountPage() {
                   {addresses.length === 0 ? (
                     <EmptyList text="ยังไม่มีที่อยู่ เพิ่มไว้แล้วตอนจองไม่ต้องกรอกใหม่" />
                   ) : (
-                    <ul className="divide-y divide-[#263544]/10">
+                    <ul className="divide-y divide-line-subtle">
                       {addresses.map((a) => (
                         <li key={a.id} className="flex flex-wrap items-start justify-between gap-4 py-5 first:pt-2">
                           <div className="min-w-0 text-base">
                             <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
                               <span className="font-semibold text-[#263544]">{a.name}</span>
-                              <span className="border-l border-[#263544]/20 pl-3 text-[#263544]/60">{a.phone}</span>
+                              <span className="border-l border-line-subtle pl-3 text-[#263544]/60">{a.phone}</span>
                             </p>
                             <p className="mt-1 text-[#263544]/70">{a.line}</p>
                             <p className="text-[#263544]/70">
@@ -562,11 +616,11 @@ export default function AccountPage() {
                   {banks.length === 0 ? (
                     <EmptyList text="ยังไม่มีบัญชีรับเงินคืน เพิ่มไว้แล้วตอนจองไม่ต้องกรอกใหม่" />
                   ) : (
-                    <ul className="divide-y divide-[#263544]/10">
+                    <ul className="divide-y divide-line-subtle">
                       {banks.map((b) => (
                         <li key={b.id} className="flex flex-wrap items-center justify-between gap-4 py-5 first:pt-2">
                           <div className="flex min-w-0 items-center gap-4">
-                            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border-2 border-[#263544] bg-[#FFFAFC] text-[#E5457F]">
+                            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-line bg-[#FFFAFC] text-[#E5457F]">
                               <BankIcon size={28} weight="fill" />
                             </span>
                             <div className="min-w-0 text-base">
@@ -595,6 +649,7 @@ export default function AccountPage() {
           </section>
         </div>
       )}
+      </div>
     </CustomerLayout>
   )
 }
@@ -625,7 +680,7 @@ function ItemActions({
           disabled={busy}
           aria-label="แก้ไข"
           title="แก้ไข"
-          className="nudge flex h-9 w-9 items-center justify-center rounded-full text-[#263544] disabled:opacity-40"
+          className="nudge focus-ring flex h-9 w-9 items-center justify-center rounded-full text-[#263544] disabled:opacity-40"
         >
           <PencilSimpleIcon size={20} />
         </button>
@@ -636,7 +691,7 @@ function ItemActions({
             disabled={busy}
             aria-label="ลบ"
             title="ลบ"
-            className="nudge flex h-9 w-9 items-center justify-center rounded-full text-red-600 disabled:opacity-40"
+            className="nudge focus-ring flex h-9 w-9 items-center justify-center rounded-full text-red-600 disabled:opacity-40"
           >
             <TrashIcon size={20} />
           </button>
@@ -646,7 +701,7 @@ function ItemActions({
         type="button"
         onClick={onSetDefault}
         disabled={busy || isDefault}
-        className="pop rounded-full bg-white px-4 py-1.5 text-base font-semibold text-[#263544] disabled:opacity-40"
+        className={`${secondaryButtonClass} px-4 py-1.5`}
       >
         {busy ? 'กำลังบันทึก…' : 'ตั้งเป็นค่าเริ่มต้น'}
       </button>
@@ -657,7 +712,8 @@ function ItemActions({
 function DefaultBadge({ inline = false }: { inline?: boolean }) {
   return (
     <span
-      className={`inline-block rounded-full border border-[#E5457F] bg-[#FDE3EE] px-2.5 py-0.5 text-sm font-semibold text-[#E5457F] ${inline ? '' : 'mt-2'}`}
+      // ป้ายแบรนด์ design v2: พื้น brand-soft ตัวเข้ม (ตัวชมพูบนชมพูอ่อนคอนทราสต์ไม่ถึง 4.5:1)
+      className={`inline-block rounded-full border border-line bg-brand-soft px-2.5 py-0.5 text-sm font-semibold text-ink ${inline ? '' : 'mt-2'}`}
     >
       ค่าเริ่มต้น
     </span>
@@ -665,7 +721,8 @@ function DefaultBadge({ inline = false }: { inline?: boolean }) {
 }
 
 function EmptyList({ text }: { text: string }) {
-  return <p className="rounded-xl bg-[#FFFAFC] px-4 py-6 text-center text-base text-[#263544]/70">{text}</p>
+  // empty state design v2: ไม่มีกรอบและไม่มีพื้น
+  return <p className="px-4 py-6 text-center text-base text-[#263544]/70">{text}</p>
 }
 
 // ช่องฟอร์ม: ชื่อช่องอยู่บน ช่องกรอกอยู่ล่าง
@@ -683,7 +740,7 @@ function Row({ label, children }: { label?: string; children: ReactNode }) {
 function Avatar({ profile, className }: { profile: Profile | null; className: string }) {
   return (
     <span
-      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-[#263544] bg-white font-bold uppercase text-[#E5457F] ${className}`}
+      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-white font-bold uppercase text-[#E5457F] ${className}`}
     >
       {profile?.avatarUrl ? (
         <img src={profile.avatarUrl} alt="รูปโปรไฟล์" className="h-full w-full object-cover" />
@@ -699,7 +756,7 @@ function MenuLink({ href, icon, label }: { href: string; icon: ReactNode; label:
   return (
     <Link
       href={href}
-      className="nudge-x flex items-center gap-3 rounded-xl px-4 py-3 text-base font-medium text-[#263544]"
+      className="nudge-x focus-ring flex items-center gap-3 rounded-xl border border-transparent px-4 py-3 text-base font-medium text-[#263544]"
     >
       {icon}
       {label}
