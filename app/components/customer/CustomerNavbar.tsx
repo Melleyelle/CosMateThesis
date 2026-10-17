@@ -22,7 +22,7 @@ import CosMateLogo from './CosMateLogo'
 const NAV_LINKS = [
   { href: '/', label: 'หน้าหลัก' },
   { href: '/costumes', label: 'สำรวจชุด' },
-  // ซ่อนไว้ก่อนระหว่างออกแบบหน้าใหม่: { href: '/how-it-works', label: 'วิธีการเช่า' },
+  { href: '/how-it-works', label: 'วิธีการเช่า' },
 ]
 
 export default function CustomerNavbar() {
@@ -121,11 +121,19 @@ export default function CustomerNavbar() {
 
         <div className="ml-auto flex items-center gap-1 md:ml-0">
           <Link href="/favorites" aria-label="รายการโปรด" className={iconButton}>
-            <HeartIcon size={24} weight={isActive('/favorites') ? 'fill' : 'regular'} />
+            <HeartIcon
+              size={24}
+              weight={isActive('/favorites') ? 'fill' : 'regular'}
+              className={isActive('/favorites') ? 'text-brand' : undefined}
+            />
             {favorites.length > 0 && <Badge count={favorites.length} />}
           </Link>
           <Link href="/cart" aria-label="ตะกร้า" className={iconButton}>
-            <ShoppingBagIcon size={24} weight={isActive('/cart') ? 'fill' : 'regular'} />
+            <ShoppingBagIcon
+              size={24}
+              weight={isActive('/cart') ? 'fill' : 'regular'}
+              className={isActive('/cart') ? 'text-brand' : undefined}
+            />
             {cartItems.length > 0 && <Badge count={cartItems.length} />}
           </Link>
 

@@ -33,6 +33,7 @@ import {
 import { addDays, formatBaht, formatDateTime, formatThaiDateWithWeekday } from '@/utils/dateUtils'
 import { DEFAULT_BOOKING_SETTINGS, fetchBookingSettings } from '@/utils/customer/bookingSettings'
 import { RETURN_CARRIERS, SHIP_CARRIER, normalizeTracking, trackingProblem, trackingUrl } from '@/utils/tracking'
+import { submitSlip } from '@/utils/submitSlip'
 
 const SLIP_MAX_BYTES = 5 * 1024 * 1024
 
@@ -49,7 +50,7 @@ export default function OrderPage() {
   const [myReviews, setMyReviews] = useState<Record<string, Review>>({})
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const [reviewThanks, setReviewThanks] = useState(false)
-  const [slip, setSlip] = useState<{ name: string; url: string } | null>(null)
+  const [slip, setSlip] = useState<{ name: string; url: string; file: File } | null>(null)
   const [slipError, setSlipError] = useState<string | null>(null)
 
   // คืนหน่วยความจำของรูปพรีวิวเมื่อเปลี่ยนสลิปหรือออกจากหน้า
@@ -64,7 +65,7 @@ export default function OrderPage() {
     if (!file.type.startsWith('image/')) return setSlipError('กรุณาเลือกไฟล์รูปภาพ (JPG หรือ PNG)')
     if (file.size > SLIP_MAX_BYTES) return setSlipError('ไฟล์ใหญ่เกิน 5 MB')
     setSlipError(null)
-    setSlip({ name: file.name, url: URL.createObjectURL(file) })
+    setSlip({ name: file.name, url: URL.createObjectURL(file), file })
   }
 
   const load = useCallback(async () => {
@@ -91,10 +92,21 @@ export default function OrderPage() {
 
     setActing(kind)
     setActionError(null)
-    const { error } = await supabase.rpc(kind === 'pay' ? 'submit_payment_mock' : 'cancel_my_order', {
-      p_order_id: order.id,
-    })
-    if (error) setActionError(translateRpcError(error.message))
+
+    if (kind === 'pay') {
+      if (!slip) return setActing(null)
+      // อัปโหลดสลิป → เซิร์ฟเวอร์ตรวจตามโหมดใน app_settings (manual / mock / slip2go)
+      // ผลลัพธ์: PAID / MANUAL_REVIEW / EXPIRED_REFUND = ไปต่อ · REJECTED_* = ให้แนบสลิปใหม่
+      const res = await submitSlip(supabase, order.id, slip.file)
+      if (!res.ok) {
+        setActionError(res.message)
+        setSlip(null)
+      }
+    } else {
+      const { error } = await supabase.rpc('cancel_my_order', { p_order_id: order.id })
+      if (error) setActionError(translateRpcError(error.message))
+    }
+
     await load()
     setActing(null)
   }
@@ -241,9 +253,12 @@ export default function OrderPage() {
           {/* การชำระเงิน */}
           {order.status === 'pending_payment' && (
             <section className="rounded-card border border-line bg-white p-6">
-              <div className="mb-4">
-                <h2 className="text-lg font-bold text-[#263544]">ชำระเงิน</h2>
-                <p className="text-base text-[#263544]/60">สแกน QR เพื่อโอนยอดด้านล่าง แล้วแนบสลิปเพื่อยืนยันการจอง</p>
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-[#263544]">ชำระเงิน</h2>
+                  <p className="text-base text-[#263544]/60">สแกน QR เพื่อโอนยอดด้านล่าง แล้วแนบสลิปเพื่อยืนยันการจอง</p>
+                </div>
+                <PaymentCountdown orderId={order.id} onExpire={load} />
               </div>
 
               <div className="flex flex-col items-center gap-5 sm:flex-row">
@@ -362,10 +377,10 @@ export default function OrderPage() {
             <section className="flex gap-4 rounded-card border border-line bg-[#EDE6FA] p-6">
               <MagnifyingGlassIcon size={32} className="flex-shrink-0 text-[#263544]" />
               <div>
-                <h2 className="font-bold text-[#263544]">กำลังตรวจสภาพชุด</h2>
+                <h2 className="font-bold text-[#263544]">ส่งคืนแล้ว รอร้านตรวจสภาพ</h2>
                 <p className="mt-1 text-base text-[#263544]/70">
-                  ร้านได้รับชุดคืนแล้วและกำลังตรวจสภาพ เมื่อตรวจเรียบร้อยจะโอนมัดจำ {formatBaht(order.depositTotal)}{' '}
-                  คืนเข้าบัญชีที่คุณระบุไว้
+                  หยุดนับค่าปรับตั้งแต่ที่คุณแจ้งเลขพัสดุ{order.returnTrackingNo && ` (${order.returnTrackingNo})`} เมื่อร้านได้รับและตรวจเรียบร้อยจะโอนมัดจำ{' '}
+                  {formatBaht(order.depositTotal)} หักรายการ (ถ้ามี) คืนเข้าบัญชีที่คุณระบุไว้
                 </p>
               </div>
             </section>
@@ -560,6 +575,7 @@ function TrackingSection({ order, onSaved }: { order: OrderSummary; onSaved: () 
             <p className="mt-1 text-[#263544]/50">ร้านยังไม่ได้ระบุเลขพัสดุ</p>
           )}
         </div>
+        <ConfirmReceived orderId={order.id} onSaved={onSaved} />
       </section>
     )
   }
@@ -648,6 +664,42 @@ function TrackingSection({ order, onSaved }: { order: OrderSummary; onSaved: () 
   )
 }
 
+// ลูกค้ากดยืนยันว่าได้รับชุด (ถ้าไม่กด ระบบเปลี่ยนให้เองเมื่อถึงวันใช้งาน)
+function ConfirmReceived({ orderId, onSaved }: { orderId: string; onSaved: () => Promise<void> }) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function confirmIt() {
+    const supabase = createClient()
+    if (!supabase) return
+    setSaving(true)
+    setError(null)
+    const { error } = await supabase.rpc('confirm_received', { p_order_id: orderId })
+    setSaving(false)
+    if (error) return setError(translateRpcError(error.message))
+    await onSaved()
+  }
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        onClick={confirmIt}
+        disabled={saving}
+        className="lift focus-ring rounded-full border border-line bg-brand px-6 py-2.5 text-base font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {saving ? 'กำลังบันทึก...' : 'ได้รับชุดแล้ว'}
+      </button>
+      <p className="text-base text-[#263544]/60">เปิดกล่องเช็กของให้ครบ ถ้าไม่ครบหรือเสียหายให้ทักร้านภายใน 24 ชม.</p>
+      {error && (
+        <p role="alert" className="w-full rounded-xl bg-red-50 px-4 py-2.5 text-base text-red-600">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ช่องกรอก design v2: เส้น 1px มุม 10px · focus เส้นชมพู + วงชมพูโปร่ง 3px (แบบเดียวกับหน้าชำระเงิน)
 const trackingInputClass =
   'w-full rounded-control border border-line bg-white px-4 py-2.5 text-base text-[#263544] outline-none transition placeholder:text-muted focus:border-brand-strong focus:ring-[3px] focus:ring-brand/25'
@@ -666,6 +718,65 @@ function PriceRow({ label, value }: { label: string; value: number }) {
     <div className="flex items-center justify-between">
       <dt className="text-[#263544]/70">{label}</dt>
       <dd className="font-medium text-[#263544]">{formatBaht(value)}</dd>
+    </div>
+  )
+}
+
+// นับถอยหลังเวลาชำระ อ่าน payment_expires_at (Step 16) แยกเอง ไม่ต้องแก้ fetchOrder
+// ชุดถูกกันไว้ให้ระหว่างนี้ เลยเวลาแล้ว pg_cron จะเปลี่ยนเป็น expired และปลดล็อกชุด
+function PaymentCountdown({ orderId, onExpire }: { orderId: string; onExpire: () => void }) {
+  const [deadline, setDeadline] = useState<number | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const supabase = createClient()
+    if (!supabase) return
+    supabase
+      .from('orders')
+      .select('payment_expires_at')
+      .eq('id', orderId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.payment_expires_at) setDeadline(new Date(data.payment_expires_at).getTime())
+      })
+  }, [orderId])
+
+  useEffect(() => {
+    if (deadline === null) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [deadline])
+
+  const left = deadline === null ? null : Math.max(0, deadline - now)
+  const expired = left === 0
+
+  useEffect(() => {
+    if (expired) onExpire()
+  }, [expired, onExpire])
+
+  if (left === null) return null
+
+  const mm = String(Math.floor(left / 60000)).padStart(2, '0')
+  const ss = String(Math.floor((left % 60000) / 1000)).padStart(2, '0')
+
+  return (
+    <div
+      role="timer"
+      aria-live="off"
+      className={`flex items-center gap-2 rounded-full border px-4 py-1.5 text-base font-semibold ${
+        expired
+          ? 'border-[#F5C2C0] bg-[#FDE8E8] text-[#B42318]'
+          : left < 5 * 60000
+            ? 'border-line bg-[#FFF3B0] text-[#263544]'
+            : 'border-line-subtle bg-[#F7F7F8] text-[#263544]'
+      }`}
+    >
+      <HourglassIcon size={18} />
+      {expired ? 'หมดเวลาชำระแล้ว' : (
+        <span>
+          ชำระภายใน <span className="font-mono tabular-nums">{mm}:{ss}</span>
+        </span>
+      )}
     </div>
   )
 }

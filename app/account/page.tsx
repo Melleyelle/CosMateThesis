@@ -334,7 +334,7 @@ export default function AccountPage() {
                             : 'nudge-x border-transparent font-medium text-[#263544]'
                         }`}
                       >
-                        <ItemIcon size={22} weight={active ? 'fill' : 'regular'} />
+                        <ItemIcon size={22} weight={active ? 'fill' : 'regular'} className={active ? 'text-brand' : undefined} />
                         {label}
                         {active && <CaretRightIcon size={16} weight="bold" className="ml-auto" />}
                       </button>

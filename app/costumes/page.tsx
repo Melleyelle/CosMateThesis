@@ -1,8 +1,21 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ArrowsDownUpIcon, CaretDownIcon, FunnelSimpleIcon, MagnifyingGlassIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
+import {
+  ArrowsDownUpIcon,
+  CaretDownIcon,
+  CheckIcon,
+  CoatHangerIcon,
+  CrownSimpleIcon,
+  FunnelSimpleIcon,
+  MagnifyingGlassIcon,
+  MaskHappyIcon,
+  SparkleIcon,
+  WarningCircleIcon,
+  XIcon,
+  type Icon,
+} from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
 import CostumeGridCard, { CARD_MEDIA } from '@/app/components/customer/CostumeGridCard'
 import Pagination from '@/app/components/customer/Pagination'
@@ -121,6 +134,7 @@ function ExploreInner() {
   }, [costumes])
 
   const seriesOptions = useMemo(() => countNames(costumes.map((c) => c.seriesName)), [costumes])
+  const popularSeries = seriesOptions.slice(0, 4)
 
   // ตัวละครแสดงเฉพาะของเรื่องที่เลือกไว้
   const characterOptions = useMemo(
@@ -247,20 +261,44 @@ function ExploreInner() {
       {/* ---------------- แบนเนอร์ค้นหา: พื้นชมพูลายจุด · ช่องค้นหาทรงแคปซูลเส้นเข้ม + เงาแข็ง ปุ่มแว่นขยายชมพูติดขวา ---------------- */}
       <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6">
         <section
-          className="rounded-hero bg-brand-subtle px-4 py-8 text-center sm:py-10"
+          className="relative overflow-hidden rounded-hero bg-brand-subtle px-4 py-9 text-center sm:py-12"
           style={{
             backgroundImage: 'radial-gradient(var(--color-brand-soft) 1.5px, transparent 1.5px)',
             backgroundSize: '22px 22px',
           }}
         >
-          <h1 className="text-h1 font-bold text-ink">สำรวจชุด</h1>
+          {/* สติกเกอร์ตกแต่ง (จอ ≥ 768px) — โยกช้า ๆ คนละจังหวะ ปิดเองเมื่อผู้ใช้ตั้ง reduced motion */}
+          <div aria-hidden="true" className="pointer-events-none hidden md:block">
+            <BannerSticker icon={MaskHappyIcon} className="left-[7%] top-7 -rotate-12" tone="bg-deco-yellow" delay="0s" />
+            <BannerSticker icon={CoatHangerIcon} className="bottom-7 left-[14%] rotate-6" tone="bg-surface" delay="-1.1s" small />
+            <BannerSticker icon={CrownSimpleIcon} className="right-[8%] top-8 rotate-12" tone="bg-deco-lavender" delay="-2s" />
+            <BannerSticker icon={SparkleIcon} className="bottom-8 right-[15%] -rotate-6" tone="bg-brand-soft" delay="-0.6s" small />
+          </div>
+
+          <h1 className="rise relative text-h1 font-bold text-ink sm:text-display">
+            สำรวจ
+            <span className="relative inline-block">
+              {/* แถบไฮไลต์เหลืองเอียงหลังคำ — ให้หัวข้อมีจุดโฟกัส ไม่ใช้ตัวอักษรไล่สี */}
+              <span aria-hidden="true" className="absolute inset-x-[-4px] bottom-[0.08em] h-[0.6em] -rotate-2 rounded-md bg-deco-yellow" />
+              <span className="relative">ชุด</span>
+            </span>
+          </h1>
+          <p className="rise relative mt-2 text-body text-secondary" style={riseDelay(80)}>
+            ค้นจากชื่อชุด ตัวละคร หรือเรื่องที่ชอบ
+            {!loading && costumes.length > 0 && (
+              <>
+                {' · '}มีให้เลือก <span className="font-semibold text-ink">{costumes.length} ชุด</span>
+              </>
+            )}
+          </p>
           <form
             role="search"
             onSubmit={(e) => {
               e.preventDefault()
               setSearch(searchInput)
             }}
-            className="mx-auto mt-4 flex h-12 max-w-md overflow-hidden rounded-full border-2 border-ink bg-surface shadow-[3px_3px_0_0_var(--color-ink)] transition focus-within:ring-[3px] focus-within:ring-brand/30"
+            className="rise relative mx-auto mt-5 flex h-[52px] max-w-xl overflow-hidden rounded-full border-2 border-ink bg-surface shadow-[3px_3px_0_0_var(--color-ink)] transition focus-within:ring-[3px] focus-within:ring-brand/30"
+            style={riseDelay(160)}
           >
             <label className="flex min-w-0 flex-1">
               <span className="sr-only">ค้นหาชุด</span>
@@ -278,11 +316,41 @@ function ExploreInner() {
             <button
               type="submit"
               aria-label="ค้นหา"
-              className="flex w-12 flex-shrink-0 items-center justify-center bg-brand text-white outline-none transition active:bg-brand-strong focus-visible:bg-brand-strong"
+              className="flex w-14 flex-shrink-0 items-center justify-center bg-brand text-white outline-none transition hover:bg-brand-strong active:bg-brand-strong focus-visible:bg-brand-strong"
             >
-              <MagnifyingGlassIcon size={20} weight="bold" />
+              <MagnifyingGlassIcon size={22} weight="bold" />
             </button>
           </form>
+
+          {/* ทางลัด: เรื่องที่มีชุดมากที่สุด 4 เรื่อง (จากข้อมูลจริง) กดแล้วกรองตามเรื่องทันที กดซ้ำเพื่อเอาออก */}
+          {popularSeries.length > 0 && (
+            <div
+              className="rise relative mx-auto mt-5 flex max-w-2xl flex-wrap items-center justify-center gap-2"
+              style={riseDelay(240)}
+            >
+              <span className="text-body-sm font-semibold text-secondary">เรื่องยอดฮิต:</span>
+              {popularSeries.map((s) => {
+                const selected = filters.series === s.name
+                return (
+                  <button
+                    key={s.name}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() =>
+                      setFilters((f) => ({ ...f, series: f.series === s.name ? null : s.name, character: null }))
+                    }
+                    className={`lift focus-ring inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line px-3.5 text-body-sm font-semibold text-ink ${
+                      selected ? 'bg-brand-soft' : 'bg-surface'
+                    }`}
+                  >
+                    {selected && <CheckIcon size={12} weight="bold" />}
+                    {s.name}
+                    <span className="font-medium text-secondary">{s.count}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </section>
       </div>
 
@@ -526,6 +594,37 @@ function ExploreInner() {
         </div>
       )}
     </div>
+  )
+}
+
+// หน่วงจังหวะ .rise ทีละบรรทัดในแบนเนอร์
+const riseDelay = (ms: number) => ({ '--d': `${ms}ms` }) as CSSProperties
+
+// สติกเกอร์วงกลมบนแบนเนอร์: เส้น 1px ink · หมุนเอียงจาก className · .wobble โยกรอบมุมที่เอียงไว้
+function BannerSticker({
+  icon: StickerIcon,
+  className,
+  tone,
+  delay,
+  small = false,
+}: {
+  icon: Icon
+  className: string
+  tone: string
+  delay: string
+  small?: boolean
+}) {
+  return (
+    <span className={`absolute block ${className}`}>
+      <span
+        className={`wobble flex items-center justify-center rounded-full border border-line text-ink ${tone} ${
+          small ? 'h-11 w-11' : 'h-14 w-14'
+        }`}
+        style={{ animationDelay: delay }}
+      >
+        <StickerIcon size={small ? 20 : 26} weight="duotone" />
+      </span>
+    </span>
   )
 }
 
