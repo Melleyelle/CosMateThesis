@@ -17,7 +17,6 @@ import {
   XCircleIcon,
 } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
-import LineContact from '@/app/components/customer/LineContact'
 import ReviewForm from '@/app/components/customer/ReviewForm'
 import { StarDisplay } from '@/app/components/customer/StarRating'
 import { fetchMyReviewsByOrderItem, type Review } from '@/utils/customer/reviews'
@@ -138,8 +137,7 @@ export default function OrderPage() {
   const closed = order.status === 'cancelled' || order.status === 'expired'
 
   return (
-    // หน้านี้มีปุ่มถามร้านพร้อมเลขออเดอร์อยู่แล้ว → ซ่อนปุ่มลอยไม่ให้ซ้ำ
-    <CustomerLayout hideContact>
+    <CustomerLayout>
       {/* design v2 (design-system.md): เส้น 1px · เงาแข็งเฉพาะตอน hover (.lift) */}
       <div className="theme-v2">
       <Link
@@ -160,12 +158,6 @@ export default function OrderPage() {
           <span className={`rounded-full px-4 py-1.5 text-base font-semibold ${ORDER_STATUS_BADGE[order.status]}`}>
             {ORDER_STATUS_LABEL[order.status]}
           </span>
-          {/* เปิดแชทพร้อมเลขออเดอร์ แอดมินรู้ทันทีว่าถามเรื่องออเดอร์ไหน */}
-          <LineContact
-            variant="inline"
-            message={`สอบถามออเดอร์ ${order.orderNumber}`}
-            label="ถามร้านเรื่องออเดอร์นี้"
-          />
         </div>
       </div>
 

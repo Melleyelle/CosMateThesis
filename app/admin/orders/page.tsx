@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircleIcon, MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react'
 import AdminLayout from '../../components/admin/AdminLayout'
-import { EmptyState, PageHeader, StatusBadge } from '../../components/admin/ui'
+import { EmptyState, Metric, MetricStrip, PageHeader, Segmented, StatusBadge } from '../../components/admin/ui'
 import DateRangeFilter, { inDateRange, type DateRange } from '../../components/admin/inventory/DateRangeFilter'
 import OrderPanel from '../../components/admin/orders/OrderPanel'
 import { fetchAllOrdersForAdmin, type OrderSummary } from '@/utils/customer/fetchOrders'
@@ -21,14 +21,15 @@ type TabDef = {
   value: string
   label: string
   group: 'todo' | 'tracking' | 'closed' | 'all'
+  note?: string // คำอธิบายใต้ตัวเลข (เฉพาะคิวงานของร้าน)
   match: (o: OrderSummary, task: OrderTask) => boolean
 }
 
 const TABS: TabDef[] = [
-  { value: 'review', label: 'ตรวจยอดชำระ', group: 'todo', match: (_, t) => t === 'slip' },
-  { value: 'to_ship', label: 'รอแพ็กส่ง', group: 'todo', match: (_, t) => t === 'pack' },
-  { value: 'returning', label: 'รับคืนและตรวจ', group: 'todo', match: (_, t) => t === 'inspect' || t === 'lost' },
-  { value: 'refund', label: 'รอโอนเงินคืน', group: 'todo', match: (_, t) => t === 'refund' },
+  { value: 'review', label: 'ตรวจยอดชำระ', group: 'todo', note: 'สลิปที่รอร้านยืนยัน', match: (_, t) => t === 'slip' },
+  { value: 'to_ship', label: 'รอแพ็กส่ง', group: 'todo', note: 'ชำระแล้ว ต้องแพ็กและส่ง', match: (_, t) => t === 'pack' },
+  { value: 'returning', label: 'รับคืนและตรวจ', group: 'todo', note: 'ชุดกลับมาแล้ว / เลยกำหนดคืน', match: (_, t) => t === 'inspect' || t === 'lost' },
+  { value: 'refund', label: 'รอโอนเงินคืน', group: 'todo', note: 'ต้องโอนเงินคืนลูกค้า', match: (_, t) => t === 'refund' },
   { value: 'unpaid', label: 'รอลูกค้าชำระ', group: 'tracking', match: (o) => o.status === 'pending_payment' },
   { value: 'renting', label: 'อยู่กับลูกค้า', group: 'tracking', match: (o, t) => (o.status === 'shipped' || o.status === 'active') && t === 'view' },
   { value: 'done', label: 'เสร็จสิ้น', group: 'closed', match: (o, t) => o.status === 'completed' && t === 'view' },
@@ -36,7 +37,9 @@ const TABS: TabDef[] = [
   { value: 'all', label: 'ทั้งหมด', group: 'all', match: () => true },
 ]
 
-const GROUP_LABEL = { todo: 'ร้านต้องทำ', tracking: 'ติดตาม', closed: 'ปิดแล้ว', all: '' } as const
+// คิวงานของร้าน = ช่องตัวเลขด้านบน · สถานะอื่น (ติดตาม/ปิดแล้ว/ทั้งหมด) = segmented ในแถวตัวกรอง
+const TODO_TABS = TABS.filter((t) => t.group === 'todo')
+const OTHER_TABS = [...TABS.filter((t) => t.group !== 'todo' && t.group !== 'all'), ...TABS.filter((t) => t.group === 'all')]
 
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<OrderSummary[]>([])
@@ -137,6 +140,13 @@ export default function AdminOrdersPage() {
     setToast(message)
   }
 
+  const hasFilter = search.trim() !== '' || !!range.from || !!range.to
+
+  function clearFilters() {
+    setSearch('')
+    setRange({ from: '', to: '' })
+  }
+
   function changeTab(value: string) {
     setTab(value)
     setSelectedId(null)
@@ -146,63 +156,85 @@ export default function AdminOrdersPage() {
   return (
     <AdminLayout>
       <div className="theme-v2 px-5 py-7 sm:px-8">
-        <PageHeader title="ออเดอร์" description="เลือกคิวงาน กดออเดอร์ทางซ้าย แล้วทำงานในแผงขวา ทำเสร็จระบบไปออเดอร์ถัดไปให้เอง" />
+        <PageHeader title="ออเดอร์" description="กดคิวงานด้านล่าง เลือกออเดอร์ทางซ้าย แล้วทำงานในแผงขวา ทำเสร็จระบบไปออเดอร์ถัดไปให้เอง" />
 
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[240px] flex-1">
-            <MagnifyingGlassIcon size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="ค้นหาเลขออเดอร์ ชื่อลูกค้า เบอร์โทร ชื่อชุด รหัสชุด หรือเลขพัสดุ"
-              aria-label="ค้นหาออเดอร์"
-              className="w-full rounded-full border border-line bg-white py-2.5 pl-11 pr-10 text-sm text-ink outline-none placeholder:text-muted focus:ring-[3px] focus:ring-brand/25"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                aria-label="ล้างคำค้นหา"
-                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted hover:text-ink"
-              >
-                <XIcon size={14} weight="bold" />
-              </button>
-            )}
-          </div>
-          <DateRangeFilter value={range} onChange={setRange} emptyLabel="ทุกวันที่สั่ง" />
+        {/* คิวงานที่ร้านต้องทำ — แบบเดียวกับตัวเลขสรุปหน้าคลังชุด กดช่องเพื่อเปิดคิว · มีงานค้าง = ตัวเลขสีส้ม */}
+        <div className="mb-6">
+          <MetricStrip>
+            {TODO_TABS.map((t) => {
+              const count = counts[t.value] ?? 0
+              return (
+                <Metric
+                  key={t.value}
+                  label={t.label}
+                  value={<span className={count > 0 ? 'text-[#875200]' : ''}>{count}</span>}
+                  note={t.note}
+                  active={t.value === tab}
+                  onClick={() => changeTab(t.value)}
+                />
+              )
+            })}
+          </MetricStrip>
         </div>
 
-        <div role="tablist" aria-label="คิวงาน" className="mb-5 flex flex-wrap items-center gap-x-2 gap-y-2">
-          {TABS.map((t, i) => {
-            const active = t.value === tab
-            const showGroup = t.group !== 'all' && TABS[i - 1]?.group !== t.group
-            const count = counts[t.value] ?? 0
-            return (
-              <span key={t.value} className="contents">
-                {showGroup && <span className={`text-xs text-muted ${i > 0 ? 'ml-2' : ''}`}>{GROUP_LABEL[t.group]}</span>}
-                {t.group === 'all' && <span className="mx-1 h-5 w-px bg-line-subtle" aria-hidden />}
+        {/* แถบเครื่องมือ: แถวบน = ค้นหา + ช่วงวันที่ / แถวล่าง = ดูออเดอร์สถานะอื่น + จำนวนที่แสดง */}
+        <div className="mb-5 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative min-w-[240px] flex-1">
+              <MagnifyingGlassIcon
+                size={18}
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#9AA3AF]"
+              />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="ค้นหาเลขออเดอร์ ชื่อลูกค้า เบอร์โทร ชื่อชุด รหัสชุด หรือเลขพัสดุ"
+                aria-label="ค้นหาออเดอร์"
+                className="w-full rounded-full border border-[#D5D9E0] bg-white py-2.5 pl-11 pr-10 text-sm text-[#263544] outline-none placeholder:text-[#9AA3AF] focus:border-[#263544] focus:ring-2 focus:ring-[#263544]/10"
+              />
+              {search && (
                 <button
                   type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => changeTab(t.value)}
-                  className={`inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-sm transition ${
-                    active ? 'border-line bg-brand-soft font-bold text-ink' : 'border-line-subtle bg-white text-ink hover:border-line'
-                  }`}
+                  onClick={() => setSearch('')}
+                  aria-label="ล้างคำค้นหา"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#9AA3AF] hover:text-[#263544]"
                 >
-                  {t.label}
-                  <span
-                    className={`min-w-[20px] rounded-full px-1.5 text-center text-xs tabular-nums ${
-                      active ? 'bg-white' : t.group === 'todo' && count > 0 ? 'bg-warning-subtle font-semibold text-warning' : 'bg-sunken text-secondary'
-                    }`}
-                  >
-                    {count}
-                  </span>
+                  <XIcon size={14} weight="bold" />
                 </button>
+              )}
+            </div>
+            <DateRangeFilter value={range} onChange={setRange} emptyLabel="ทุกวันที่สั่ง" />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-[#6B7280]">สถานะอื่น</span>
+            <div className="max-w-full overflow-x-auto">
+              <Segmented
+                label="ดูออเดอร์ตามสถานะ"
+                options={OTHER_TABS.map((t) => ({ value: t.value, label: t.label, count: counts[t.value] ?? 0 }))}
+                value={tab}
+                onChange={changeTab}
+              />
+            </div>
+
+            <div className="ml-auto flex items-center gap-3 text-sm">
+              <span className="text-[#6B7280]">
+                {current.label} <span className="font-semibold tabular-nums text-[#263544]">{list.length}</span> จาก{' '}
+                <span className="tabular-nums">{orders.length}</span> ออเดอร์
               </span>
-            )
-          })}
+              {hasFilter && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-[#C92D67] transition hover:bg-[#FDE3EE]"
+                >
+                  <XIcon size={12} weight="bold" />
+                  ล้างตัวกรอง
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {loading && <div className="h-72 animate-pulse rounded-card bg-sunken" />}

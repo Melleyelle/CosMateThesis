@@ -81,22 +81,32 @@ export function Metric({
   value,
   note,
   onClick,
+  active,
 }: {
   label: string
   value: ReactNode
   note?: ReactNode
   onClick?: () => void
+  // ใช้ช่องตัวเลขเป็นตัวเลือก (เช่น คิวงาน) → ส่ง active มาเพื่อบอกว่าช่องไหนถูกเลือก
+  active?: boolean
 }) {
   const body = (
     <>
-      <p className="text-xs font-medium text-[#6B7280]">{label}</p>
+      <p className={`text-xs ${active ? 'font-bold text-[#263544]' : 'font-medium text-[#6B7280]'}`}>{label}</p>
       <p className="mt-1.5 text-2xl font-bold tabular-nums tracking-tight text-[#263544]">{value}</p>
       {note && <p className="mt-1 text-xs text-[#6B7280]">{note}</p>}
     </>
   )
   return onClick ? (
-    <button type="button" onClick={onClick} className="px-5 py-4 text-left transition hover:bg-[#FAFAFC]">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`relative px-5 py-4 text-left transition ${active ? '!bg-[#FDEEF3]' : 'hover:!bg-[#FAFAFC]'}`}
+    >
       {body}
+      {/* แถบชมพูล่างช่องที่เลือก — ไม่บอกด้วยสีพื้นอย่างเดียว */}
+      {active && <span aria-hidden className="absolute inset-x-0 bottom-0 h-[3px] bg-[#E5457F]" />}
     </button>
   ) : (
     <div className="px-5 py-4">{body}</div>
