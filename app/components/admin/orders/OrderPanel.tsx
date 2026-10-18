@@ -5,11 +5,31 @@
 // ทำเสร็จแล้วเรียก onDone → หน้ารายการเลื่อนไปออเดอร์ถัดไปในคิวเดียวกันเอง
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { CameraIcon, CheckIcon, CopyIcon, WarningIcon, XIcon } from '@phosphor-icons/react'
+import {
+  BankIcon,
+  CalendarBlankIcon,
+  CalendarCheckIcon,
+  CameraIcon,
+  CaretRightIcon,
+  CheckCircleIcon,
+  CheckIcon,
+  ClockCounterClockwiseIcon,
+  ClockIcon,
+  CopyIcon,
+  MapPinIcon,
+  MinusCircleIcon,
+  PhoneIcon,
+  ProhibitIcon,
+  ReceiptIcon,
+  TShirtIcon,
+  WarningCircleIcon,
+  WarningIcon,
+  XIcon,
+} from '@phosphor-icons/react'
 import { StatusBadge, primaryButtonClass, secondaryButtonClass } from '@/app/components/admin/ui'
 import type { OrderSummary } from '@/utils/customer/fetchOrders'
 import type { BookingSettings } from '@/utils/customer/bookingSettings'
-import { ADMIN_STATUS_LABEL, ORDER_STATUS_TONE } from '@/utils/admin/statusTone'
+import { ADMIN_STATUS_LABEL, orderBadge } from '@/utils/admin/statusTone'
 import { ORDER_STATUS_LABEL } from '@/utils/orderStatus'
 import { translateRpcError } from '@/utils/bookingErrors'
 import { formatBaht, formatDateTime, formatThaiDateWithWeekday } from '@/utils/dateUtils'
@@ -41,17 +61,20 @@ type PanelProps = {
 }
 
 export default function OrderPanel({ order, settings, today, position, onDone }: PanelProps) {
-  const [detail, setDetail] = useState<OrderDetail | null>(null)
+  // เก็บรายละเอียดคู่กับออเดอร์ที่โหลดมา: เปลี่ยนออเดอร์หรือออเดอร์ถูกอัปเดต → key ไม่ตรง = ยังไม่มีข้อมูล (แสดงกำลังโหลด)
+  const detailKey = `${order.id}:${order.updatedAt}`
+  const [loaded, setLoaded] = useState<{ key: string; detail: OrderDetail } | null>(null)
+  const detail = loaded?.key === detailKey ? loaded.detail : null
   const task = taskOf(order, today)
+  const badge = orderBadge(order)
 
   useEffect(() => {
     let alive = true
-    setDetail(null)
-    fetchOrderDetail(order.id).then((d) => alive && setDetail(d))
+    fetchOrderDetail(order.id).then((d) => alive && setLoaded({ key: detailKey, detail: d }))
     return () => {
       alive = false
     }
-  }, [order.id, order.updatedAt])
+  }, [order.id, detailKey])
 
   return (
     <section aria-label={`จัดการออเดอร์ ${order.orderNumber}`} className="overflow-hidden rounded-card border border-line bg-white">
@@ -59,7 +82,7 @@ export default function OrderPanel({ order, settings, today, position, onDone }:
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="font-mono text-lg font-bold text-ink">{order.orderNumber}</h2>
-            <StatusBadge tone={ORDER_STATUS_TONE[order.status]}>{ADMIN_STATUS_LABEL[order.status]}</StatusBadge>
+            <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
           </div>
           <p className="mt-0.5 text-sm text-secondary">
             {order.shipName} · {order.shipPhone} · สั่งเมื่อ {formatDateTime(order.createdAt)}
@@ -401,7 +424,7 @@ function SlipReview({ order, detail, onDone }: { order: OrderSummary; detail: Or
           ตีกลับ ให้ส่งสลิปใหม่
         </button>
         <button type="button" onClick={() => decide('paid')} disabled={saving} className={primaryButtonClass}>
-          ยืนยันยอด · ไปถัดไป
+          ยืนยันยอด
         </button>
       </Footer>
     </>
@@ -781,7 +804,7 @@ function RefundForm({ order, detail, onDone }: { order: OrderSummary; detail: Or
           </button>
         )}
         <button type="button" onClick={() => mark('transferred')} disabled={saving || !order.refundAccountNumber} className={primaryButtonClass}>
-          {saving ? 'กำลังบันทึก…' : 'โอนแล้ว · ไปถัดไป'}
+          {saving ? 'กำลังบันทึก…' : 'โอนสำเร็จ'}
         </button>
       </Footer>
     </>
@@ -819,81 +842,226 @@ function WaitingNote({ order, today }: { order: OrderSummary; today: string }) {
 
 function OrderDetails({ order, detail, openByDefault }: { order: OrderSummary; detail: OrderDetail | null; openByDefault: boolean }) {
   return (
-    <details open={openByDefault} className="border-t border-line-subtle">
-      <summary className="cursor-pointer px-5 py-3 text-sm font-semibold text-ink hover:bg-sunken">ไทม์ไลน์ ที่อยู่ ยอดเงิน และหลักฐาน</summary>
-      <div className="grid gap-5 px-5 pb-5 pt-1 text-sm md:grid-cols-2">
-        <div className="flex flex-col gap-4">
-          <div>
-            <p className="mb-1 text-xs text-muted">จัดส่งถึง</p>
-            <p className="font-medium text-ink">
-              {order.shipName} · {order.shipPhone}
-            </p>
-            <p className="text-secondary">{fullAddress(order)}</p>
-          </div>
-          <div>
-            <p className="mb-1 text-xs text-muted">ชุด</p>
-            {order.lines.map((l) => (
-              <p key={l.id} className="text-ink">
-                {l.productName}
-                {l.size && ` · ${l.size}`}
-                {l.itemCode && <span className="text-muted"> · {l.itemCode}</span>}
-                <span className="block text-xs text-muted">
-                  ใช้ {formatThaiDateWithWeekday(l.startDate)} · คืนภายใน {formatThaiDateWithWeekday(l.endDate)}
-                </span>
-              </p>
-            ))}
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <p className="mb-1 text-xs text-muted">ยอดเงิน</p>
-            <Row label="ค่าเช่า" value={formatBaht(order.rentalTotal)} />
-            <Row label="มัดจำ" value={formatBaht(order.depositTotal)} />
-            {order.laundryTotal > 0 && <Row label="ค่าซักรีด" value={formatBaht(order.laundryTotal)} />}
-            <Row label="ค่าส่ง" value={formatBaht(order.shippingFee)} />
-            <Row label="รวม" value={formatBaht(order.grandTotal)} strong />
-          </div>
-          {detail?.evidence.map((ev) => (
-            <div key={ev.stage}>
-              <p className="mb-1 text-xs text-muted">{ev.stage === 'packing' ? 'รูปตอนแพ็ก' : 'รูปตอนรับคืน'}</p>
-              <div className="flex flex-wrap gap-2">
-                {ev.urls.map((u, i) => (
-                  <a key={u} href={u} target="_blank" rel="noreferrer">
-                    <img src={u} alt={`${ev.stage === 'packing' ? 'รูปตอนแพ็ก' : 'รูปตอนรับคืน'} ${i + 1}`} className="h-16 w-16 rounded-lg border border-line-subtle object-cover" />
-                  </a>
-                ))}
-              </div>
-            </div>
-          ))}
-          {detail?.extras?.receiptIssueNote && (
-            <p className="rounded-control bg-warning-subtle px-3 py-2 text-warning">ลูกค้าแจ้งปัญหาตอนรับของ: {detail.extras.receiptIssueNote}</p>
-          )}
-        </div>
-        <div>
-          <p className="mb-2 text-xs text-muted">ไทม์ไลน์</p>
-          {!detail ? (
-            <p className="text-muted">กำลังโหลด…</p>
-          ) : detail.history.length === 0 ? (
-            <p className="text-muted">ยังไม่มีประวัติ (ออเดอร์ก่อนเปิดระบบบันทึกประวัติ)</p>
-          ) : (
-            <ol className="flex flex-col gap-3">
-              {detail.history.map((h, i) => (
-                <li key={i} className="flex gap-2.5">
-                  <span className={`mt-1.5 h-2.5 w-2.5 flex-none rounded-full ${h.actor === 'system' ? 'bg-[#2E9E62]' : h.actor === 'admin' ? 'bg-brand' : 'bg-[#2F7FD6]'}`} />
-                  <div>
-                    <p className="font-semibold text-ink">{ADMIN_STATUS_LABEL[h.to]}</p>
-                    <p className="text-xs text-muted">
-                      {formatDateTime(h.at)} · {ACTOR_LABEL[h.actor]}
-                      {h.reason && ` · ${h.reason}`}
-                    </p>
-                  </div>
+    <details open={openByDefault} className="group border-t border-line-subtle">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-0.5 px-5 py-3 text-sm font-semibold text-ink hover:bg-sunken [&::-webkit-details-marker]:hidden">
+        <CaretRightIcon size={14} weight="bold" className="text-muted transition-transform group-open:rotate-90" />
+        รายละเอียดออเดอร์
+      </summary>
+
+      <div className="grid gap-x-8 gap-y-7 px-5 pb-6 pt-2 text-sm md:grid-cols-2">
+        {/* ซ้าย: ของและเงิน (เรื่องที่แอดมินถูกถามบ่อยสุด) */}
+        <div className="flex min-w-0 flex-col gap-7">
+          <DetailGroup icon={<TShirtIcon size={16} />} title={`ชุด (${order.lines.length})`}>
+            <ul className="flex flex-col gap-3">
+              {order.lines.map((l) => (
+                <li key={l.id}>
+                  <p className="font-semibold text-ink">
+                    {l.productName}
+                    {l.size && <span className="font-normal text-secondary"> · {l.size}</span>}
+                  </p>
+                  {l.itemCode && <p className="font-mono text-xs text-muted">{l.itemCode}</p>}
+                  <p className="mt-1 flex items-center gap-1.5 text-secondary">
+                    <CalendarBlankIcon size={14} className="flex-none text-muted" />
+                    ใช้ {formatThaiDateWithWeekday(l.startDate)} → คืน {formatThaiDateWithWeekday(l.endDate)}
+                  </p>
                 </li>
               ))}
-            </ol>
-          )}
+            </ul>
+          </DetailGroup>
+
+          <DetailGroup icon={<ReceiptIcon size={16} />} title="ยอดที่ลูกค้าจ่าย">
+            <dl className="flex flex-col gap-1.5">
+              <MoneyRow label="ค่าเช่า" value={order.rentalTotal} />
+              <MoneyRow label="มัดจำ" value={order.depositTotal} />
+              {order.laundryTotal > 0 && <MoneyRow label="ค่าซักรีด" value={order.laundryTotal} />}
+              <MoneyRow label="ค่าส่ง" value={order.shippingFee} />
+              <div className="mt-1 flex items-baseline justify-between border-t border-line-subtle pt-2">
+                <dt className="font-semibold text-ink">รวม</dt>
+                <dd className="text-base font-bold tabular-nums text-ink">{formatBaht(order.grandTotal)}</dd>
+              </div>
+            </dl>
+          </DetailGroup>
+
+          <RefundInfo order={order} detail={detail} />
         </div>
+
+        {/* ขวา: คนและเหตุการณ์ */}
+        <div className="flex min-w-0 flex-col gap-7">
+          <DetailGroup icon={<MapPinIcon size={16} />} title="จัดส่งถึง">
+            <p className="font-semibold text-ink">{order.shipName}</p>
+            <a
+              href={`tel:${order.shipPhone}`}
+              className="mt-0.5 inline-flex items-center gap-1.5 font-mono text-ink underline-offset-2 hover:underline"
+            >
+              <PhoneIcon size={14} className="text-muted" />
+              {order.shipPhone}
+            </a>
+            <p className="mt-1 leading-relaxed text-secondary">{fullAddress(order)}</p>
+            {detail?.extras?.receiptIssueNote && (
+              <p className="mt-3 flex gap-2 rounded-control bg-warning-subtle px-3 py-2 text-warning">
+                <WarningIcon size={16} weight="fill" className="mt-0.5 flex-none" />
+                <span>
+                  <b className="font-semibold">ลูกค้าแจ้งปัญหาตอนรับของ</b> {detail.extras.receiptIssueNote}
+                </span>
+              </p>
+            )}
+          </DetailGroup>
+
+          <DetailGroup icon={<ClockCounterClockwiseIcon size={16} />} title="ไทม์ไลน์ · ล่าสุดอยู่บน">
+            {!detail ? (
+              <p className="text-muted">กำลังโหลด…</p>
+            ) : detail.history.length === 0 ? (
+              <p className="text-muted">ยังไม่มีประวัติ (ออเดอร์ก่อนเปิดระบบบันทึกประวัติ)</p>
+            ) : (
+              <ol className="relative flex flex-col gap-3.5 before:absolute before:bottom-2 before:left-[4px] before:top-2 before:w-px before:bg-line-subtle">
+                {detail.history.map((h, i) => (
+                  <li key={i} className="relative flex gap-3">
+                    <span
+                      className={`relative mt-[7px] h-[9px] w-[9px] flex-none rounded-full ring-2 ring-white ${
+                        h.actor === 'system' ? 'bg-[#2E9E62]' : h.actor === 'admin' ? 'bg-brand' : 'bg-[#2F7FD6]'
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <p className={i === 0 ? 'font-bold text-ink' : 'font-medium text-ink'}>{ADMIN_STATUS_LABEL[h.to]}</p>
+                      <p className="text-xs text-muted">
+                        <span className="tabular-nums">{formatDateTime(h.at)}</span> · {ACTOR_LABEL[h.actor]}
+                        {h.reason && ` · ${h.reason}`}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </DetailGroup>
+        </div>
+
+        {!!detail?.evidence.length && (
+          <div className="md:col-span-2">
+            <DetailGroup icon={<CameraIcon size={16} />} title="รูปหลักฐาน">
+              <div className="flex flex-wrap gap-6">
+                {detail.evidence.map((ev) => {
+                  const label = ev.stage === 'packing' ? 'ตอนแพ็ก' : 'ตอนรับคืน'
+                  return (
+                    <div key={ev.stage}>
+                      <p className="mb-1.5 text-xs text-secondary">{label}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {ev.urls.map((u, i) => (
+                          <a key={u} href={u} target="_blank" rel="noreferrer" className="focus-ring rounded-lg">
+                            <img src={u} alt={`รูป${label} ${i + 1}`} className="h-16 w-16 rounded-lg border border-line-subtle object-cover" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </DetailGroup>
+          </div>
+        )}
       </div>
     </details>
   )
 }
+
+function DetailGroup({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h3 className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold text-secondary">
+        <span className="text-muted">{icon}</span>
+        {title}
+      </h3>
+      {children}
+    </section>
+  )
+}
+
+function MoneyRow({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4">
+      <dt className="text-secondary">{label}</dt>
+      <dd className="tabular-nums text-ink">{formatBaht(value)}</dd>
+    </div>
+  )
+}
+
+// ซ่อนเลขบัญชีเหลือ 4 หลักท้าย: ไว้เทียบกับลูกค้าตอนถามว่าเงินเข้าหรือยัง เลขเต็มอยู่ในคิว "รอโอนเงินคืน" ที่เดียว
+function maskAccount(no: string): string {
+  const digits = no.replace(/\D/g, '')
+  return digits.length <= 4 ? digits : `xxx-x-x${digits.slice(-4)}`
+}
+
+// ผลการคืนเงิน: สีและไอคอนบอกสถานะให้เห็นก่อนอ่านตัวเลข
+function RefundInfo({ order, detail }: { order: OrderSummary; detail: OrderDetail | null }) {
+  const what = order.status === 'completed' ? 'มัดจำ' : 'เงิน'
+  const deductions = order.status === 'completed' ? (detail?.deductions ?? []) : []
+
+  let state: { tone: string; icon: ReactNode; title: string } | null = null
+  if (order.refundStatus === 'transferred')
+    state = { tone: 'bg-success-subtle text-success', icon: <CheckCircleIcon size={20} weight="fill" />, title: `คืน${what}แล้ว` }
+  else if (order.refundStatus === 'pending')
+    state = { tone: 'bg-warning-subtle text-warning', icon: <ClockIcon size={20} weight="fill" />, title: `รอโอนคืน${what}` }
+  else if (order.refundStatus === 'failed')
+    state = { tone: 'bg-danger-subtle text-danger', icon: <WarningCircleIcon size={20} weight="fill" />, title: 'โอนคืนไม่สำเร็จ' }
+  else if (order.status === 'completed')
+    state =
+      order.depositTotal > 0
+        ? { tone: 'bg-sunken text-ink', icon: <ProhibitIcon size={20} />, title: 'ยึดมัดจำ ไม่มียอดคืน' }
+        : { tone: 'bg-sunken text-secondary', icon: <MinusCircleIcon size={20} />, title: 'ไม่มีมัดจำ ไม่ต้องคืนเงิน' }
+
+  if (!state) return null
+  const hasRefund = order.refundStatus !== null
+  const showAccount = hasRefund && !!order.refundAccountNumber
+
+  return (
+    <DetailGroup icon={<BankIcon size={16} />} title="คืนเงิน">
+      <div className="overflow-hidden rounded-control border border-line-subtle">
+        <div className={`flex items-center gap-2.5 px-4 py-3 ${state.tone}`}>
+          {state.icon}
+          <p className="flex-1 font-semibold">{state.title}</p>
+          {hasRefund && <p className="text-lg font-bold tabular-nums">{formatBaht(order.refundAmount ?? 0)}</p>}
+        </div>
+
+        {(deductions.length > 0 || showAccount || order.refundedAt) && (
+          <div className="flex flex-col gap-3 px-4 py-3">
+            {deductions.length > 0 && (
+              <dl className="flex flex-col gap-1">
+                <MoneyRow label="มัดจำ" value={order.depositTotal} />
+                {deductions.map((d, i) => (
+                  <div key={i} className="flex items-baseline justify-between gap-4">
+                    <dt className="text-secondary">
+                      หัก {DEDUCTION_LABEL[d.type] ?? d.type}
+                      {d.note && <span className="text-muted"> · {d.note}</span>}
+                    </dt>
+                    <dd className="tabular-nums text-danger">−{formatBaht(d.amount)}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+
+            {showAccount && (
+              <div className={deductions.length > 0 ? 'border-t border-line-subtle pt-3' : ''}>
+                <p className="text-xs text-muted">{order.refundStatus === 'transferred' ? 'โอนเข้าบัญชี' : 'บัญชีรับเงินคืน'}</p>
+                <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-semibold text-ink">{order.refundBank}</span>
+                  <span className="whitespace-nowrap font-mono text-ink">{maskAccount(order.refundAccountNumber ?? '')}</span>
+                </p>
+                <p className="text-secondary">{order.refundAccountName}</p>
+              </div>
+            )}
+
+            {order.refundedAt && (
+              <p className="flex items-center gap-1.5 text-xs text-muted">
+                <CalendarCheckIcon size={14} />
+                โอนเมื่อ <span className="tabular-nums">{formatDateTime(order.refundedAt)}</span>
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </DetailGroup>
+  )
+}
+
 
 function Row({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (

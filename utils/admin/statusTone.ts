@@ -1,4 +1,5 @@
 import type { OrderStatus } from '@/utils/orderStatus'
+import type { OrderSummary } from '@/utils/customer/fetchOrders'
 
 // สีสถานะฝั่งแอดมิน: สื่อว่า "ใครต้องลงมือ" ไม่ใช่แค่ตกแต่ง และแยกจากสีชมพูของแบรนด์
 //   action   = ร้านต้องทำอะไรตอนนี้ (ตรวจสลิป / แพ็กส่ง / ตรวจสภาพ)
@@ -54,4 +55,17 @@ export const ADMIN_STATUS_LABEL: Record<OrderStatus, string> = {
   completed: 'เสร็จสิ้น',
   expired: 'หมดอายุ',
   cancelled: 'ยกเลิก',
+}
+
+// ป้ายสถานะที่บอกผลการคืนเงินต่อท้ายด้วย เช่น "เสร็จสิ้น · คืนมัดจำแล้ว"
+// ไม่ใช่สถานะใหม่ในฐานข้อมูล อ่านจาก refund_status ที่แยกเก็บไว้อยู่แล้ว
+export function orderBadge(o: Pick<OrderSummary, 'status' | 'refundStatus' | 'depositTotal'>): { tone: Tone; label: string } {
+  const base = ADMIN_STATUS_LABEL[o.status]
+  const what = o.status === 'completed' ? 'คืนมัดจำ' : 'คืนเงิน'
+  if (o.refundStatus === 'transferred') return { tone: ORDER_STATUS_TONE[o.status], label: `${base} · ${what}แล้ว` }
+  if (o.refundStatus === 'pending') return { tone: 'action', label: `${base} · รอ${what}` }
+  if (o.refundStatus === 'failed') return { tone: 'problem', label: `${base} · โอนคืนไม่สำเร็จ` }
+  // จบแล้วแต่ไม่มียอดต้องคืน = มัดจำถูกหักจนหมด
+  if (o.status === 'completed' && o.depositTotal > 0) return { tone: 'closed', label: `${base} · ยึดมัดจำ` }
+  return { tone: ORDER_STATUS_TONE[o.status], label: base }
 }

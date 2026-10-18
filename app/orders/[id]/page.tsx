@@ -11,6 +11,7 @@ import {
   HourglassIcon,
   ImageIcon,
   MagnifyingGlassIcon,
+  PackageIcon,
   StarIcon,
   TruckIcon,
   UploadSimpleIcon,
@@ -67,22 +68,33 @@ export default function OrderPage() {
     setSlip({ name: file.name, url: URL.createObjectURL(file), file })
   }
 
-  const load = useCallback(async () => {
+  // ดึงข้อมูลครบก่อน แล้วค่อย set state ทีเดียว (effect จะได้ set state เฉพาะใน callback)
+  const fetchPageData = useCallback(async () => {
     const [res, settings] = await Promise.all([fetchOrder(orderId), fetchBookingSettings()])
+    const reviews =
+      res.data?.status === 'completed' ? await fetchMyReviewsByOrderItem(res.data.lines.map((l) => l.id)) : null
+    return { res, settings, reviews }
+  }, [orderId])
+
+  const apply = useCallback(({ res, settings, reviews }: Awaited<ReturnType<typeof fetchPageData>>) => {
     setBufferBefore(settings.bufferDaysBefore)
     if (res.error || !res.data) setLoadError(res.error ?? 'ไม่พบออเดอร์นี้')
     else {
       setOrder(res.data)
-      if (res.data.status === 'completed') {
-        setMyReviews(await fetchMyReviewsByOrderItem(res.data.lines.map((l) => l.id)))
-      }
+      if (reviews) setMyReviews(reviews)
     }
     setLoading(false)
-  }, [orderId])
+  }, [])
+
+  const load = useCallback(() => fetchPageData().then(apply), [fetchPageData, apply])
 
   useEffect(() => {
-    load()
-  }, [load])
+    let alive = true
+    fetchPageData().then((data) => alive && apply(data))
+    return () => {
+      alive = false
+    }
+  }, [fetchPageData, apply])
 
   async function runAction(kind: 'pay' | 'cancel') {
     const supabase = createClient()
@@ -365,6 +377,8 @@ export default function OrderPage() {
             <TrackingSection key={order.status} order={order} onSaved={load} />
           )}
 
+          {PACKING_VISIBLE.includes(order.status) && <PackingProof orderId={order.id} returning={order.status === 'active'} />}
+
           {(order.status === 'returned' || order.status === 'inspecting') && (
             <section className="flex gap-4 rounded-card border border-line bg-[#EDE6FA] p-6">
               <MagnifyingGlassIcon size={32} className="flex-shrink-0 text-[#263544]" />
@@ -515,6 +529,74 @@ export default function OrderPage() {
         })()}
       </div>
     </CustomerLayout>
+  )
+}
+
+// รูปและเช็กลิสต์ที่ร้านบันทึกตอนแพ็ก (ฝั่งแอดมินบอกว่า "ลูกค้าเห็นรูปนี้") — เห็นได้ตั้งแต่ร้านส่งของออก
+const PACKING_VISIBLE: OrderSummary['status'][] = ['shipped', 'active', 'returned', 'inspecting', 'completed']
+
+type Packing = { photos: string[]; checklist: { name: string; checked: boolean }[]; packedAt: string }
+
+function PackingProof({ orderId, returning }: { orderId: string; returning: boolean }) {
+  // undefined = กำลังโหลด · null = ไม่มีข้อมูลตอนแพ็ก (ไม่ต้องแสดงส่วนนี้)
+  const [packing, setPacking] = useState<Packing | null | undefined>(undefined)
+
+  useEffect(() => {
+    let alive = true
+    fetch(`/api/orders/${orderId}/evidence`)
+      .then((r) => (r.ok ? r.json() : { packing: null }))
+      .then((d: { packing: Packing | null }) => alive && setPacking(d.packing ?? null))
+      .catch(() => alive && setPacking(null))
+    return () => {
+      alive = false
+    }
+  }, [orderId])
+
+  if (packing === undefined) return <div className="h-40 animate-pulse rounded-card bg-sunken" />
+  if (!packing) return null
+  const items = packing.checklist.filter((c) => c.checked)
+  if (packing.photos.length === 0 && items.length === 0) return null
+
+  return (
+    <section className="rounded-card border border-line bg-white p-6">
+      <h2 className="flex items-center gap-2 text-lg font-bold text-[#263544]">
+        <PackageIcon size={22} className="text-[#E5457F]" />
+        ของที่ร้านแพ็กให้คุณ
+      </h2>
+      <p className="mt-1 text-base text-[#263544]/70">
+        {returning
+          ? 'ก่อนแพ็กส่งคืน เทียบกับรายการนี้ให้ครบทุกชิ้น ของที่ขาดจะถูกหักจากมัดจำ'
+          : 'เปิดกล่องแล้วเทียบกับรูปและรายการนี้ได้เลย ถ้าของไม่ครบหรือชุดมีปัญหา แจ้งร้านภายในวันที่ได้รับ'}
+      </p>
+
+      {packing.photos.length > 0 && (
+        <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {packing.photos.map((url, i) => (
+            <a key={url} href={url} target="_blank" rel="noreferrer" className="focus-ring block overflow-hidden rounded-xl border border-line-subtle">
+              <img src={url} alt={`รูปตอนแพ็ก ${i + 1}`} className="aspect-square w-full object-cover transition-transform hover:scale-105" />
+            </a>
+          ))}
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <div className="mt-5">
+          <h3 className="text-base font-semibold text-[#263544]">
+            ในกล่องมี <span className="tabular-nums">{items.length}</span> รายการ
+          </h3>
+          <ul className="mt-2 grid gap-x-6 gap-y-1.5 text-base text-[#263544]/80 sm:grid-cols-2">
+            {items.map((c) => (
+              <li key={c.name} className="flex items-start gap-2">
+                <CheckIcon size={16} weight="bold" className="mt-1 flex-shrink-0 text-success" />
+                {c.name}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <p className="mt-4 text-sm text-[#263544]/50">ร้านบันทึกไว้เมื่อ {formatDateTime(packing.packedAt)}</p>
+    </section>
   )
 }
 

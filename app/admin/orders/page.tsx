@@ -4,14 +4,15 @@
 // ซ้าย: รายการตามแท็บ (เรียงตามเส้นตาย) · ขวา: ฟอร์มของงานที่ออเดอร์นั้นต้องทำ
 // ทำเสร็จแล้วเลื่อนไปออเดอร์ถัดไปในคิวเดียวกันเอง — ไม่ต้องกดเข้า-ออกทีละหน้า
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { CheckCircleIcon, MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { EmptyState, Metric, MetricStrip, PageHeader, Segmented, StatusBadge } from '../../components/admin/ui'
 import DateRangeFilter, { inDateRange, type DateRange } from '../../components/admin/inventory/DateRangeFilter'
 import OrderPanel from '../../components/admin/orders/OrderPanel'
 import { fetchAllOrdersForAdmin, type OrderSummary } from '@/utils/customer/fetchOrders'
-import { ADMIN_STATUS_LABEL, ORDER_STATUS_TONE } from '@/utils/admin/statusTone'
+import { orderBadge } from '@/utils/admin/statusTone'
 import { dueOf, taskOf, type OrderTask } from '@/utils/admin/orderOps'
 import { todayISO } from '@/utils/dateUtils'
 import { DEFAULT_BOOKING_SETTINGS, fetchBookingSettings, type BookingSettings } from '@/utils/customer/bookingSettings'
@@ -39,46 +40,59 @@ const TABS: TabDef[] = [
 
 // คิวงานของร้าน = ช่องตัวเลขด้านบน · สถานะอื่น (ติดตาม/ปิดแล้ว/ทั้งหมด) = segmented ในแถวตัวกรอง
 const TODO_TABS = TABS.filter((t) => t.group === 'todo')
-const OTHER_TABS = [...TABS.filter((t) => t.group !== 'todo' && t.group !== 'all'), ...TABS.filter((t) => t.group === 'all')]
+// "รอโอนเงินคืน" อยู่ทั้งในคิวงานและแถบนี้ (เรียงตามลำดับชีวิตออเดอร์ ก่อน "เสร็จสิ้น") ให้เห็นยอดค้างโอนตอนไล่ดูสถานะ
+const OTHER_TAB_ORDER = ['unpaid', 'renting', 'refund', 'done', 'closed', 'all']
+const OTHER_TABS = OTHER_TAB_ORDER.map((v) => TABS.find((t) => t.value === v)).filter((t): t is TabDef => !!t)
+
+function fetchPageData() {
+  return Promise.all([fetchAllOrdersForAdmin(), fetchBookingSettings()])
+}
 
 export default function AdminOrdersPage() {
+  return (
+    <Suspense fallback={<AdminLayout><div className="theme-v2 px-5 py-7 sm:px-8"><div className="h-72 animate-pulse rounded-card bg-sunken" /></div></AdminLayout>}>
+      <AdminOrdersInner />
+    </Suspense>
+  )
+}
+
+function AdminOrdersInner() {
+  // ลิงก์จากหน้าภาพรวม: ?tab=คิว หรือ ?q=คำค้น (มีคำค้น = เปิดแท็บทั้งหมด)
+  const searchParams = useSearchParams()
+  const urlQuery = searchParams.get('q') ?? ''
+  const urlTab = searchParams.get('tab')
+  const initialTab = urlQuery ? 'all' : urlTab && TABS.some((x) => x.value === urlTab) ? urlTab : null
+
   const [orders, setOrders] = useState<OrderSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [settings, setSettings] = useState<BookingSettings>(DEFAULT_BOOKING_SETTINGS)
-  const [tab, setTab] = useState('to_ship')
-  const [search, setSearch] = useState('')
+  const [tab, setTab] = useState(initialTab ?? 'to_ship')
+  const [search, setSearch] = useState(urlQuery)
   const [range, setRange] = useState<DateRange>({ from: '', to: '' })
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const advanceRef = useRef<{ id: string; index: number } | null>(null)
-  const tabFromUrl = useRef(false)
+  const tabFromUrl = useRef(initialTab !== null)
   const panelRef = useRef<HTMLDivElement>(null)
   const today = todayISO()
 
-  const load = useCallback(async () => {
-    const [res, s] = await Promise.all([fetchAllOrdersForAdmin(), fetchBookingSettings()])
+  const apply = useCallback(([res, s]: Awaited<ReturnType<typeof fetchPageData>>) => {
     setSettings(s)
     if (res.error) setLoadError(res.error)
     else setOrders(res.data)
     setLoading(false)
   }, [])
 
+  const load = useCallback(() => fetchPageData().then(apply), [apply])
+
   useEffect(() => {
-    load()
-    const params = new URLSearchParams(window.location.search)
-    const t = params.get('tab')
-    if (t && TABS.some((x) => x.value === t)) {
-      setTab(t)
-      tabFromUrl.current = true
+    let alive = true
+    fetchPageData().then((data) => alive && apply(data))
+    return () => {
+      alive = false
     }
-    const q = params.get('q')
-    if (q) {
-      setSearch(q)
-      setTab('all')
-      tabFromUrl.current = true
-    }
-  }, [load])
+  }, [apply])
 
   // คำค้น + ช่วงวันที่ก่อน แล้วค่อยแยกแท็บ → ตัวเลขบนแท็บตรงกับรายการที่เห็น
   const base = useMemo(() => {
@@ -256,6 +270,7 @@ export default function AdminOrdersPage() {
                 list.map(({ order: o, due }) => {
                   const active = o.id === selectedId
                   const first = o.lines[0]
+                  const badge = orderBadge(o)
                   return (
                     <button
                       key={o.id}
@@ -281,7 +296,7 @@ export default function AdminOrdersPage() {
                       </span>
                       {current.group !== 'todo' && (
                         <span className="mt-1">
-                          <StatusBadge tone={ORDER_STATUS_TONE[o.status]}>{ADMIN_STATUS_LABEL[o.status]}</StatusBadge>
+                          <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
                         </span>
                       )}
                     </button>
