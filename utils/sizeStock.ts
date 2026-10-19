@@ -9,7 +9,8 @@ export type SizeStock = {
 }
 
 // เรียงตามขนาดจริง ไม่ใช่ตามตัวอักษร (enum ที่เพิ่ม XS/XXL ทีหลังอาจเรียงผิดในฐานข้อมูล)
-const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size']
+// รองเท้า EU 35–45 ต่อท้าย (Step 18) — ชุดหนึ่งมีไซส์ระบบเดียว จึงไม่ปนกัน
+const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45']
 
 export function sortSizes<T extends { size: string }>(rows: T[]): T[] {
   const rank = (s: string) => {

@@ -10,7 +10,16 @@ export type FranchiseType =
 
 export type CostumeCategory = 'cosplay' | 'fancy' | 'props_shoes'
 export type GenderTag = 'male' | 'female' | 'unisex'
-export type SizeOption = 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL' | 'Free Size'
+export type ClothingSize = 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL' | 'Free Size'
+export type ShoeSize = '35' | '36' | '37' | '38' | '39' | '40' | '41' | '42' | '43' | '44' | '45'
+export type SizeOption = ClothingSize | ShoeSize
+
+// ระบบไซส์ของชุด (products.size_system — Step 18)
+// clothing = ไซส์ตัวอักษร วัดอก/เอว/สะโพกเป็นนิ้ว · shoes = ไซส์ EU วัดความยาวเท้าเป็นซม.
+export type SizeSystem = 'clothing' | 'shoes'
+
+export const CLOTHING_SIZES: ClothingSize[] = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size']
+export const SHOE_SIZES: ShoeSize[] = ['35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45']
 
 // สเตป 1 — ตรงกับตาราง products
 export type ProductBasicInfo = {
@@ -25,6 +34,7 @@ export type ProductBasicInfo = {
   themeTags: string[]
   crossplayFriendly: boolean
   isGroupSet: boolean
+  sizeSystem: SizeSystem
 }
 
 // สเตป 2 — ตรงกับตาราง product_images และ product_inclusions
@@ -53,12 +63,18 @@ export type ProductVariant = {
   depositAmount: string
   depositReturnHours: string
   laundryFee: string
-  chestIn: string // รอบอก หน่วยนิ้ว
-  waistIn: string // รอบเอว หน่วยนิ้ว
-  hipIn: string // รอบสะโพก หน่วยนิ้ว
+  // ช่วงสัดส่วนที่ใส่ได้ หน่วยนิ้ว — ค่าต่ำสุดเก็บที่ chest_in/waist_in/hip_in เดิม ค่าสูงสุดที่ *_max_in (Step 18)
+  chestIn: string
+  chestMaxIn: string
+  waistIn: string
+  waistMaxIn: string
+  hipIn: string
+  hipMaxIn: string
   lengthIn: string // ความยาวชุด หน่วยนิ้ว
   recommendedHeightMin: string // ส่วนสูงแนะนำ ยังเป็นหน่วยซม. ตามปกติ
   recommendedHeightMax: string
+  footMinCm: string // ความยาวเท้า ต่ำสุด (ซม.) — รองเท้าเท่านั้น
+  footMaxCm: string
 }
 
 // สเตป 4 — ตรงกับตาราง product_items
@@ -90,6 +106,7 @@ export const EMPTY_FORM_DATA: CostumeFormData = {
     themeTags: [],
     crossplayFriendly: false,
     isGroupSet: false,
+    sizeSystem: 'clothing',
   },
   coverImage: null,
   images: [],

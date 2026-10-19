@@ -532,8 +532,9 @@ export default function OrderPage() {
   )
 }
 
-// รูปและเช็กลิสต์ที่ร้านบันทึกตอนแพ็ก (ฝั่งแอดมินบอกว่า "ลูกค้าเห็นรูปนี้") — เห็นได้ตั้งแต่ร้านส่งของออก
-const PACKING_VISIBLE: OrderSummary['status'][] = ['shipped', 'active', 'returned', 'inspecting', 'completed']
+// รูปและเช็กลิสต์ที่ร้านบันทึกตอนแพ็ก (ฝั่งแอดมินบอกว่า "ลูกค้าเห็นรูปนี้")
+// แสดงเฉพาะช่วงที่ใช้จริง: ตอนชุดกำลังมาส่ง (เทียบตอนเปิดกล่อง) และตอนต้องส่งคืน (เช็กก่อนแพ็กกลับ)
+const PACKING_VISIBLE: OrderSummary['status'][] = ['shipped', 'active']
 
 type Packing = { photos: string[]; checklist: { name: string; checked: boolean }[]; packedAt: string }
 

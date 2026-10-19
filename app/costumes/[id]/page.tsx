@@ -27,6 +27,7 @@ import { fetchRatingSummaries, type RatingSummary } from '@/utils/customer/revie
 import { addToCart, encodeCheckoutItems } from '@/utils/customer/cart'
 import { loginHref } from '@/utils/customer/authUser'
 import { COLOR_HEX, colorKeysOf } from '@/utils/customer/filterOptions'
+import { formatRange } from '@/utils/sizeDefaults'
 import { fetchCostumeDetail, type CostumeDetail } from '@/utils/customer/fetchCostumeDetail'
 import {
   DEFAULT_BOOKING_SETTINGS,
@@ -142,6 +143,7 @@ export default function CostumeDetailPage() {
   )
 
   const hasSizeChart = detail?.variants.some((v) => v.chart) ?? false
+  const isShoes = detail?.sizeSystem === 'shoes'
 
   // ราคาต่างกันตามไซส์ไหม → ถ้าต่าง แสดงราคาใต้ปุ่มไซส์และในตารางไซส์ ถ้าเท่ากันไม่ต้องแสดงซ้ำ
   const variantPrices = detail?.variants.map((v) => v.packagePrice) ?? []
@@ -432,42 +434,59 @@ export default function CostumeDetailPage() {
               </p>
             )}
 
-            {/* ตารางไซส์อยู่ติดกับปุ่มไซส์ ดูประกอบตอนเลือกได้ทันที */}
+            {/* ตารางไซส์อยู่ติดกับปุ่มไซส์ ดูประกอบตอนเลือกได้ทันที — ตัวเลขเป็นช่วงสัดส่วนร่างกายที่ใส่ได้ */}
             {hasSizeChart && (
               <details className="group mt-3 rounded-card border border-line bg-white" open>
                 <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-base font-semibold text-[#263544]">
                   <RulerIcon size={18} />
-                  ตารางไซส์ (นิ้ว)
+                  {isShoes ? 'ตารางไซส์รองเท้า (ซม.)' : 'ตารางไซส์ (นิ้ว)'}
                   <CaretDownIcon size={14} className="ml-auto transition group-open:rotate-180" />
                 </summary>
                 <div className="overflow-x-auto px-4 pb-4">
-                  <table className="w-full min-w-[480px] text-center text-base">
+                  <p className="mb-2 text-sm text-[#5B6472]">
+                    {isShoes
+                      ? 'วัดความยาวเท้าจากส้นถึงปลายนิ้วที่ยาวที่สุด แล้วเลือกไซส์ที่ช่วงครอบความยาวเท้าคุณ'
+                      : 'ตัวเลขคือสัดส่วนร่างกายที่ใส่ได้ ถ้าสัดส่วนคุณอยู่ระหว่างสองไซส์ เลือกไซส์ใหญ่กว่าจะสบายกว่า'}
+                  </p>
+                  <table className={`w-full text-center text-base ${isShoes ? 'min-w-[280px]' : 'min-w-[480px]'}`}>
                     <thead className="bg-[#FDE3EE] text-[#263544]">
                       <tr>
                         <th className="rounded-l-lg px-2 py-2">ไซส์</th>
-                        <th className="px-2 py-2">รอบอก</th>
-                        <th className="px-2 py-2">รอบเอว</th>
-                        <th className="px-2 py-2">รอบสะโพก</th>
-                        <th className="px-2 py-2">ความยาว</th>
-                        <th className={`px-2 py-2 ${pricesVary ? '' : 'rounded-r-lg'}`}>ส่วนสูง (ซม.)</th>
+                        {isShoes ? (
+                          <th className={`px-2 py-2 ${pricesVary ? '' : 'rounded-r-lg'}`}>ความยาวเท้า</th>
+                        ) : (
+                          <>
+                            <th className="px-2 py-2">รอบอก</th>
+                            <th className="px-2 py-2">รอบเอว</th>
+                            <th className="px-2 py-2">รอบสะโพก</th>
+                            <th className="px-2 py-2">ความยาว</th>
+                            <th className={`px-2 py-2 ${pricesVary ? '' : 'rounded-r-lg'}`}>ส่วนสูง (ซม.)</th>
+                          </>
+                        )}
                         {pricesVary && <th className="rounded-r-lg px-2 py-2">ค่าเช่า</th>}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-line-subtle text-[#263544]/80">
+                    <tbody className="divide-y divide-line-subtle tabular-nums text-[#263544]/80">
                       {detail.variants
                         .filter((v) => v.chart)
                         .map((v) => (
                           <tr key={v.id} className={v.id === variantId ? 'bg-[#FFFAFC] font-semibold' : ''}>
                             <td className="px-2 py-2 font-bold text-[#263544]">{v.size}</td>
-                            <td className="px-2 py-2">{v.chart?.chestIn ?? '—'}</td>
-                            <td className="px-2 py-2">{v.chart?.waistIn ?? '—'}</td>
-                            <td className="px-2 py-2">{v.chart?.hipIn ?? '—'}</td>
-                            <td className="px-2 py-2">{v.chart?.lengthIn ?? '—'}</td>
-                            <td className="px-2 py-2">
-                              {v.chart?.heightMin || v.chart?.heightMax
-                                ? `${v.chart?.heightMin ?? '?'}–${v.chart?.heightMax ?? '?'}`
-                                : '—'}
-                            </td>
+                            {isShoes ? (
+                              <td className="px-2 py-2">{formatRange(v.chart?.footMinCm ?? null, v.chart?.footMaxCm ?? null) ?? '—'}</td>
+                            ) : (
+                              <>
+                                <td className="px-2 py-2">{formatRange(v.chart?.chestIn ?? null, v.chart?.chestMaxIn ?? null) ?? '—'}</td>
+                                <td className="px-2 py-2">{formatRange(v.chart?.waistIn ?? null, v.chart?.waistMaxIn ?? null) ?? '—'}</td>
+                                <td className="px-2 py-2">{formatRange(v.chart?.hipIn ?? null, v.chart?.hipMaxIn ?? null) ?? '—'}</td>
+                                <td className="px-2 py-2">{v.chart?.lengthIn ?? '—'}</td>
+                                <td className="px-2 py-2">
+                                  {v.chart?.heightMin || v.chart?.heightMax
+                                    ? `${v.chart?.heightMin ?? '?'}–${v.chart?.heightMax ?? '?'}`
+                                    : '—'}
+                                </td>
+                              </>
+                            )}
                             {pricesVary && (
                               <td className="px-2 py-2 tabular-nums">{formatBaht(v.packagePrice)}</td>
                             )}

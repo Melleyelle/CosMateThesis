@@ -1,9 +1,15 @@
 import { createClient } from '@/utils/client'
 
+// chestIn/waistIn/hipIn = ค่าต่ำสุดของช่วง · *MaxIn = ค่าสูงสุด (Step 18) · ช่วงเท่ากัน = ค่าเดียว
 export type CostumeSizeChart = {
   chestIn: number | null
+  chestMaxIn: number | null
   waistIn: number | null
+  waistMaxIn: number | null
   hipIn: number | null
+  hipMaxIn: number | null
+  footMinCm: number | null
+  footMaxCm: number | null
   lengthIn: number | null
   heightMin: number | null
   heightMax: number | null
@@ -32,6 +38,7 @@ export type CostumeDetail = {
   colorTags: string[]
   crossplayFriendly: boolean
   isGroupSet: boolean
+  sizeSystem: 'clothing' | 'shoes'
   images: string[]
   // price = ค่าเช่าเมื่อเลือกแยกชิ้น (null = ชิ้นนี้ไม่เปิดให้เช่าแยก)
   inclusions: { id: string; name: string; imageUrl: string | null; price: number | null; laundryFee: number }[]
@@ -87,12 +94,53 @@ function mapSizeChart(value: CostumeVariantRow['size_charts']): CostumeSizeChart
   if (!chart) return null
   return {
     chestIn: nullableNumber(chart.chest_in),
+    chestMaxIn: null,
     waistIn: nullableNumber(chart.waist_in),
+    waistMaxIn: null,
     hipIn: nullableNumber(chart.hip_in),
+    hipMaxIn: null,
+    footMinCm: null,
+    footMaxCm: null,
     lengthIn: nullableNumber(chart.length_in),
     heightMin: nullableNumber(chart.recommended_height_min),
     heightMax: nullableNumber(chart.recommended_height_max),
   }
+}
+
+function withRange(
+  chart: CostumeSizeChart | null,
+  range:
+    | {
+        chest_max_in: number | string | null
+        waist_max_in: number | string | null
+        hip_max_in: number | string | null
+        foot_min_cm: number | string | null
+        foot_max_cm: number | string | null
+      }
+    | undefined,
+): CostumeSizeChart | null {
+  if (!range) return chart
+  const merged: CostumeSizeChart = {
+    ...(chart ?? {
+      chestIn: null,
+      chestMaxIn: null,
+      waistIn: null,
+      waistMaxIn: null,
+      hipIn: null,
+      hipMaxIn: null,
+      footMinCm: null,
+      footMaxCm: null,
+      lengthIn: null,
+      heightMin: null,
+      heightMax: null,
+    }),
+    chestMaxIn: nullableNumber(range.chest_max_in),
+    waistMaxIn: nullableNumber(range.waist_max_in),
+    hipMaxIn: nullableNumber(range.hip_max_in),
+    footMinCm: nullableNumber(range.foot_min_cm),
+    footMaxCm: nullableNumber(range.foot_max_cm),
+  }
+  return merged
 }
 
 export async function fetchCostumeDetail(productId: string): Promise<{
@@ -139,6 +187,30 @@ export async function fetchCostumeDetail(productId: string): Promise<{
       if (r.laundry_fee != null) laundryById.set(r.id, Number(r.laundry_fee))
     }
   }
+  // ช่วงไซส์ + ประเภทไซส์ (Step 18) ดึงแยก — ยังไม่ได้รัน SQL หน้าชุดยังแสดงตารางไซส์ค่าเดียวได้
+  const variantIds = (product.product_variants ?? []).map((v) => v.id)
+  const [rangeRes, systemRes] = await Promise.all([
+    variantIds.length > 0
+      ? supabase
+          .from('size_charts')
+          .select('variant_id, chest_max_in, waist_max_in, hip_max_in, foot_min_cm, foot_max_cm')
+          .in('variant_id', variantIds)
+      : Promise.resolve({ data: [], error: null }),
+    supabase.from('products').select('size_system').eq('id', productId).maybeSingle(),
+  ])
+  type RangeRow = {
+    variant_id: string
+    chest_max_in: number | string | null
+    waist_max_in: number | string | null
+    hip_max_in: number | string | null
+    foot_min_cm: number | string | null
+    foot_max_cm: number | string | null
+  }
+  const rangeByVariant = new Map(
+    rangeRes.error ? [] : ((rangeRes.data ?? []) as RangeRow[]).map((r) => [r.variant_id, r]),
+  )
+  const sizeSystem = !systemRes.error && systemRes.data?.size_system === 'shoes' ? 'shoes' : 'clothing'
+
   const galleryImages = (product.product_images ?? [])
     .slice()
     .sort((a, b) => a.display_order - b.display_order)
@@ -154,7 +226,7 @@ export async function fetchCostumeDetail(productId: string): Promise<{
     depositReturnHours: Number(variant.deposit_return_hours ?? 72),
     laundryFee: Number(variant.laundry_fee ?? 0),
     availableUnits: (variant.product_items ?? []).filter((item) => item.condition_status === 'available').length,
-    chart: mapSizeChart(variant.size_charts),
+    chart: withRange(mapSizeChart(variant.size_charts), rangeByVariant.get(variant.id)),
   }))
 
   return {
@@ -169,6 +241,7 @@ export async function fetchCostumeDetail(productId: string): Promise<{
       colorTags: product.color_tags ?? [],
       crossplayFriendly: product.crossplay_friendly ?? false,
       isGroupSet: product.is_group_set ?? false,
+      sizeSystem,
       images,
       inclusions: (product.product_inclusions ?? [])
         // ตัดแถวว่างที่แอดมินเพิ่มไว้แต่ไม่ได้กรอก — ถ้าไม่เหลือเลย หน้าชุดจะไม่แสดง section สิ่งที่ได้รับ

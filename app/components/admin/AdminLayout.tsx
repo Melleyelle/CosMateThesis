@@ -8,6 +8,7 @@ import {
   ClipboardIcon,
   DressIcon,
   ListIcon,
+  RulerIcon,
   SignOutIcon,
   SquaresFourIcon,
   StorefrontIcon,
@@ -34,6 +35,7 @@ const NAV: NavItem[] = [
   { href: '/admin/orders', label: 'ออเดอร์', icon: ClipboardIcon, badgeKey: 'orders' },
   { href: '/admin/inventory', label: 'คลังชุด', icon: DressIcon },
   { href: '/admin/members', label: 'สมาชิก', icon: UsersThreeIcon },
+  { href: '/admin/size-defaults', label: 'ไซส์มาตรฐาน', icon: RulerIcon },
 ]
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

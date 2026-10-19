@@ -67,8 +67,35 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
       laundryFee: laundryById.get(inc.id) ?? '',
     }))
 
+  // ช่วงไซส์ + ประเภทไซส์ (Step 18) ดึงแยก — ยังไม่ได้รัน SQL ก็เปิดฟอร์มได้ (ถือว่าเป็นค่าเดียว/เสื้อผ้า)
+  const variantIds = (data.product_variants ?? []).map((v) => v.id)
+  const [rangeRes, systemRes] = await Promise.all([
+    variantIds.length > 0
+      ? supabase
+          .from('size_charts')
+          .select('variant_id, chest_max_in, waist_max_in, hip_max_in, foot_min_cm, foot_max_cm')
+          .in('variant_id', variantIds)
+      : Promise.resolve({ data: [], error: null }),
+    supabase.from('products').select('size_system').eq('id', productId).maybeSingle(),
+  ])
+  type RangeRow = {
+    variant_id: string
+    chest_max_in: number | null
+    waist_max_in: number | null
+    hip_max_in: number | null
+    foot_min_cm: number | null
+    foot_max_cm: number | null
+  }
+  const rangeByVariant = new Map(
+    rangeRes.error ? [] : ((rangeRes.data ?? []) as RangeRow[]).map((r) => [r.variant_id, r]),
+  )
+  const sizeSystem: CostumeFormData['basicInfo']['sizeSystem'] =
+    !systemRes.error && systemRes.data?.size_system === 'shoes' ? 'shoes' : 'clothing'
+  const str = (n: number | string | null | undefined) => (n != null ? String(Number(n)) : '')
+
   const variants = (data.product_variants ?? []).map((v) => {
     const chart = Array.isArray(v.size_charts) ? v.size_charts[0] : v.size_charts
+    const range = rangeByVariant.get(v.id)
     return {
       id: v.id,
       size: v.size,
@@ -80,6 +107,11 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
       chestIn: chart?.chest_in != null ? String(chart.chest_in) : '',
       waistIn: chart?.waist_in != null ? String(chart.waist_in) : '',
       hipIn: chart?.hip_in != null ? String(chart.hip_in) : '',
+      chestMaxIn: str(range?.chest_max_in),
+      waistMaxIn: str(range?.waist_max_in),
+      hipMaxIn: str(range?.hip_max_in),
+      footMinCm: str(range?.foot_min_cm),
+      footMaxCm: str(range?.foot_max_cm),
       lengthIn: chart?.length_in != null ? String(chart.length_in) : '',
       recommendedHeightMin: chart?.recommended_height_min != null ? String(chart.recommended_height_min) : '',
       recommendedHeightMax: chart?.recommended_height_max != null ? String(chart.recommended_height_max) : '',
@@ -118,6 +150,7 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
       themeTags: data.theme_tags ?? [],
       crossplayFriendly: data.crossplay_friendly ?? false,
       isGroupSet: data.is_group_set ?? false,
+      sizeSystem,
     },
     coverImage,
     images,

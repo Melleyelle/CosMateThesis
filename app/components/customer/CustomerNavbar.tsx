@@ -33,17 +33,25 @@ export default function CustomerNavbar() {
 
   const [email, setEmail] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
-  const [ready, setReady] = useState(false)
+  // ไม่ได้ตั้งค่า Supabase = ไม่มีอะไรต้องรอโหลด แสดงเมนูแบบยังไม่ล็อกอินได้เลย
+  const [noBackend] = useState(() => !createClient())
+  const [authLoaded, setAuthLoaded] = useState(false)
+  const ready = authLoaded || noBackend
   const [menuOpen, setMenuOpen] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
+  // เปลี่ยนหน้า → ปิดเมนูทั้งสอง (ปรับ state ระหว่าง render ตามแนวทางของ React แทนการใช้ effect)
+  const [lastPath, setLastPath] = useState(pathname)
+  if (pathname !== lastPath) {
+    setLastPath(pathname)
+    setMenuOpen(false)
+    setNavOpen(false)
+  }
+
   useEffect(() => {
     const supabase = createClient()
-    if (!supabase) {
-      setReady(true)
-      return
-    }
+    if (!supabase) return
 
     async function load(userEmail: string | null) {
       setEmail(userEmail)
@@ -53,7 +61,7 @@ export default function CustomerNavbar() {
       } else {
         setIsAdmin(false)
       }
-      setReady(true)
+      setAuthLoaded(true)
     }
 
     supabase.auth.getUser().then(({ data }) => load(data.user?.email ?? null))
@@ -73,11 +81,6 @@ export default function CustomerNavbar() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [menuOpen])
 
-  useEffect(() => {
-    setMenuOpen(false)
-    setNavOpen(false)
-  }, [pathname])
-
   async function handleLogout() {
     const supabase = createClient()
     await supabase?.auth.signOut()
@@ -95,7 +98,8 @@ export default function CustomerNavbar() {
     'nudge relative flex h-10 w-10 items-center justify-center rounded-full text-[#263544]'
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur">
+    // ตัวละครบนแบนเนอร์หน้าแรกล้นขึ้นมาทับขอบ navbar ด้วย z-50 → ตอนเปิดเมนูโปรไฟล์ยก header ขึ้นเหนือรูป ไม่ให้เมนูโดนบัง
+    <header className={`sticky top-0 ${menuOpen ? 'z-[60]' : 'z-40'} bg-white/95 backdrop-blur`}>
       <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-4 sm:px-6">
         <Link href="/" aria-label="CosMate หน้าหลัก" className="flex-shrink-0">
           <CosMateLogo />

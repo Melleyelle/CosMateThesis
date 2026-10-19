@@ -17,6 +17,7 @@ import { EMPTY_FORM_DATA, type CostumeFormData } from '@/app/components/admin/co
 import { fetchCostumeForEdit } from '@/utils/fetchCostumeForEdit'
 import { saveInclusionPrices } from '@/utils/saveInclusionPrices'
 import { validateSkuPrefix } from '@/utils/skuPrefix'
+import { saveSizeDetails, validateSizeRanges } from '@/utils/sizeDefaults'
 
 // แก้ไขชุดเดิม — ใช้การ์ดฟอร์มชุดเดียวกับหน้า "เพิ่มชุดใหม่" ทั้งหมด ต่างกันแค่:
 // 1) โหลดข้อมูลเดิมมาใส่ฟอร์มก่อน (id ของไซส์/ตัวชุดเป็น id จริงจาก DB)
@@ -100,6 +101,8 @@ export default function EditCostumePage() {
     if (formData.variants.some((v) => !v.packagePrice || !v.depositAmount)) {
       return 'กรุณากรอกราคาและมัดจำให้ครบทุกไซส์'
     }
+    const rangeError = validateSizeRanges(formData.variants)
+    if (rangeError) return rangeError
     if (formData.items.length === 0) {
       return 'กรุณาใส่จำนวนชุดที่มีอย่างน้อย 1 ตัว'
     }
@@ -185,11 +188,13 @@ export default function EditCostumePage() {
       return
     }
 
+    const sizeError = await saveSizeDetails(productId, basicInfo.sizeSystem, variants)
     const priceError = await saveInclusionPrices(productId, inclusions)
     setSaving(false)
-    if (priceError) {
+    const followUpError = [sizeError, priceError].filter(Boolean).join(' · ')
+    if (followUpError) {
       // ข้อมูลชุดบันทึกแล้ว กดบันทึกซ้ำได้อย่างปลอดภัย
-      setSaveError(`บันทึกข้อมูลชุดแล้ว แต่${priceError}`)
+      setSaveError(`บันทึกข้อมูลชุดแล้ว แต่${followUpError}`)
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
@@ -265,6 +270,10 @@ export default function EditCostumePage() {
             />
             <SizesStockCard
               skuPrefix={formData.basicInfo.skuPrefix}
+              sizeSystem={formData.basicInfo.sizeSystem}
+              onSizeSystemChange={(sizeSystem) =>
+                setFormData((f) => ({ ...f, basicInfo: { ...f.basicInfo, sizeSystem } }))
+              }
               variants={formData.variants}
               onVariantsChange={(variants) => setFormData((f) => ({ ...f, variants }))}
               items={formData.items}

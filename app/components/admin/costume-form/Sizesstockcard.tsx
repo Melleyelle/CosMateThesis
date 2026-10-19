@@ -1,23 +1,99 @@
 'use client'
 
-import { useState } from 'react'
-import { CaretDownIcon } from '@phosphor-icons/react'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { ArrowCounterClockwiseIcon, CaretDownIcon } from '@phosphor-icons/react'
 import SectionCard from './Sectioncard'
 import { FormField } from './FormFields'
-import type { ProductItem, ProductVariant, SizeOption } from './types'
+import { Segmented } from '@/app/components/admin/ui'
+import {
+  CLOTHING_SIZES,
+  SHOE_SIZES,
+  type ProductItem,
+  type ProductVariant,
+  type SizeOption,
+  type SizeSystem,
+} from './types'
+import {
+  EMPTY_SIZE_DEFAULTS,
+  defaultMeasurementsFor,
+  fetchSizeDefaults,
+  matchesDefault,
+  type SizeDefaults,
+} from '@/utils/sizeDefaults'
 
 type Props = {
   skuPrefix: string
+  sizeSystem: SizeSystem
+  onSizeSystemChange: (sizeSystem: SizeSystem) => void
   variants: ProductVariant[]
   onVariantsChange: (variants: ProductVariant[]) => void
   items: ProductItem[]
   onItemsChange: (items: ProductItem[]) => void
 }
 
-const SIZE_OPTIONS: SizeOption[] = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size']
+const SYSTEM_OPTIONS = [
+  { value: 'clothing', label: 'เสื้อผ้า XS–XXL' },
+  { value: 'shoes', label: 'รองเท้า EU 35–45' },
+] as const
 
 function makeId() {
   return crypto.randomUUID()
+}
+
+// ช่องช่วงตัวเลข ต่ำสุด–สูงสุด ในแถวเดียว
+function RangeField({
+  id,
+  label,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  id: string
+  label: string
+  min: string
+  max: string
+  step: string
+  onChange: (patch: { min?: string; max?: string }) => void
+}) {
+  const invalid = min.trim() !== '' && max.trim() !== '' && Number(min) > Number(max)
+  const inputClass = `w-full min-w-0 rounded-xl border bg-white px-3 py-2.5 text-center text-sm tabular-nums text-gray-900 outline-none focus:ring-2 ${
+    invalid
+      ? 'border-[#D92D20] focus:border-[#D92D20] focus:ring-[#D92D20]/15'
+      : 'border-gray-300 focus:border-[#E5457F] focus:ring-[#E5457F]/15'
+  }`
+  return (
+    <fieldset className="space-y-1.5">
+      <legend className="mb-1.5 text-sm font-medium text-gray-700">{label}</legend>
+      <div className="flex items-center gap-2">
+        <input
+          id={`${id}-min`}
+          aria-label={`${label} ต่ำสุด`}
+          type="number"
+          min="0"
+          step={step}
+          placeholder="ต่ำสุด"
+          value={min}
+          onChange={(e) => onChange({ min: e.target.value })}
+          className={inputClass}
+        />
+        <span aria-hidden className="text-gray-400">–</span>
+        <input
+          id={`${id}-max`}
+          aria-label={`${label} สูงสุด`}
+          type="number"
+          min="0"
+          step={step}
+          placeholder="สูงสุด"
+          value={max}
+          onChange={(e) => onChange({ max: e.target.value })}
+          className={inputClass}
+        />
+      </div>
+      {invalid && <p className="text-xs text-[#B42318]">ต่ำสุดมากกว่าสูงสุด</p>}
+    </fieldset>
+  )
 }
 
 function emptyVariant(size: SizeOption): ProductVariant {
@@ -30,11 +106,16 @@ function emptyVariant(size: SizeOption): ProductVariant {
     depositReturnHours: '72',
     laundryFee: '',
     chestIn: '',
+    chestMaxIn: '',
     waistIn: '',
+    waistMaxIn: '',
     hipIn: '',
+    hipMaxIn: '',
     lengthIn: '',
     recommendedHeightMin: '',
     recommendedHeightMax: '',
+    footMinCm: '',
+    footMaxCm: '',
   }
 }
 
@@ -54,6 +135,8 @@ function nextItemCode(skuPrefix: string, size: string, existingCodes: string[]) 
 // (จำนวนวัน/ค่าซัก/ตารางไซส์) กับรหัสชุดรายตัวที่ระบบตั้งให้อัตโนมัติอยู่แล้ว
 export default function SizesStockCard({
   skuPrefix,
+  sizeSystem,
+  onSizeSystemChange,
   variants,
   onVariantsChange,
   items,
@@ -61,8 +144,37 @@ export default function SizesStockCard({
 }: Props) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [showCodes, setShowCodes] = useState<Record<string, boolean>>({})
+  const [defaults, setDefaults] = useState<SizeDefaults>(EMPTY_SIZE_DEFAULTS)
+  const [defaultsError, setDefaultsError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchSizeDefaults().then(({ data, error }) => {
+      if (cancelled) return
+      setDefaults(data)
+      setDefaultsError(error)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const usedSizes = new Set(variants.map((v) => v.size))
+  const sizeOptions: SizeOption[] = sizeSystem === 'shoes' ? SHOE_SIZES : CLOTHING_SIZES
+  const isShoes = sizeSystem === 'shoes'
+
+  const defaultFor = (size: string) => defaultMeasurementsFor(defaults, sizeSystem, size)
+
+  function changeSizeSystem(next: SizeSystem) {
+    if (next === sizeSystem) return
+    if (variants.length > 0) {
+      const ok = window.confirm('เปลี่ยนประเภทไซส์จะล้างไซส์ ราคา และจำนวนชุดที่กรอกไว้ทั้งหมด ต้องการเปลี่ยนไหม')
+      if (!ok) return
+      onVariantsChange([])
+      onItemsChange([])
+    }
+    onSizeSystemChange(next)
+  }
 
   function itemsForVariant(variantId: string) {
     return items.filter((item) => item.variantId === variantId)
@@ -74,7 +186,8 @@ export default function SizesStockCard({
       onVariantsChange(variants.filter((v) => v.id !== existing.id))
       onItemsChange(items.filter((item) => item.variantId !== existing.id))
     } else {
-      onVariantsChange([...variants, emptyVariant(size)])
+      // เติมสัดส่วนจากไซส์มาตรฐานของร้านให้ทันที แอดมินแก้ต่อได้
+      onVariantsChange([...variants, { ...emptyVariant(size), ...(defaultFor(size) ?? {}) }])
     }
   }
 
@@ -112,7 +225,7 @@ export default function SizesStockCard({
   return (
     <SectionCard
       title="ไซส์ ราคา และสต็อก"
-      subtitle="กดเลือกไซส์ที่มีชุดนี้ แล้วกรอกราคา มัดจำ และจำนวนที่มีของแต่ละไซส์"
+      subtitle="กดเลือกไซส์ที่มีชุดนี้ ระบบเติมสัดส่วนจากไซส์มาตรฐานของร้านให้ แล้วกรอกราคา มัดจำ และจำนวน"
       action={
         totalItems > 0 ? (
           <span className="whitespace-nowrap rounded-full bg-[#FCE7EF] px-4 py-1 text-sm font-semibold text-[#E5457F]">
@@ -122,10 +235,34 @@ export default function SizesStockCard({
       }
     >
       <div className="space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Segmented
+            label="ประเภทไซส์"
+            options={SYSTEM_OPTIONS}
+            value={sizeSystem}
+            onChange={changeSizeSystem}
+          />
+          <Link
+            href="/admin/size-defaults"
+            target="_blank"
+            className="text-xs font-medium text-[#5B6472] underline decoration-[#D5D9E0] underline-offset-4 hover:text-[#263544]"
+          >
+            แก้ไซส์มาตรฐานของร้าน
+          </Link>
+        </div>
+
+        {defaultsError && (
+          <p className="rounded-xl bg-[#FFF8EB] px-4 py-2.5 text-xs text-[#875200]">
+            โหลดไซส์มาตรฐานไม่ได้ ({defaultsError}) — กรอกสัดส่วนเองได้ตามปกติ
+          </p>
+        )}
+
         <div>
-          <p className="mb-2 text-sm font-medium text-gray-700">ไซส์ที่มี</p>
+          <p className="mb-2 text-sm font-medium text-gray-700">
+            ไซส์ที่มี
+          </p>
           <div className="flex flex-wrap gap-2">
-            {SIZE_OPTIONS.map((size) => {
+            {sizeOptions.map((size) => {
               const selected = usedSizes.has(size)
               return (
                 <button
@@ -154,11 +291,33 @@ export default function SizesStockCard({
         <div className="space-y-4">
           {variants.map((variant) => {
             const variantItems = itemsForVariant(variant.id)
+            const def = defaultFor(variant.size)
+            const isDefault = matchesDefault(variant, def)
             return (
               <div key={variant.id} className="rounded-xl border border-gray-200 p-4">
-                <span className="mb-3 inline-block rounded-full bg-[#FCE7EF] px-4 py-1 text-sm font-semibold text-[#E5457F]">
-                  ไซส์ {variant.size}
-                </span>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <span className="inline-block rounded-full bg-[#FCE7EF] px-4 py-1 text-sm font-semibold text-[#E5457F]">
+                    ไซส์ {variant.size}
+                  </span>
+                  {def && isDefault && (
+                    <span className="text-xs text-[#5B6472]">สัดส่วนตามไซส์มาตรฐาน</span>
+                  )}
+                  {def && !isDefault && (
+                    <>
+                      <span className="rounded-full bg-[#FFF1D6] px-2.5 py-0.5 text-xs font-medium text-[#875200]">
+                        ปรับสัดส่วนเอง
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => updateVariant(variant.id, def)}
+                        className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-[#5B6472] hover:text-[#263544]"
+                      >
+                        <ArrowCounterClockwiseIcon size={14} />
+                        ใช้ค่ามาตรฐาน
+                      </button>
+                    </>
+                  )}
+                </div>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <FormField
@@ -193,6 +352,72 @@ export default function SizesStockCard({
                   />
                 </div>
 
+                {/* สัดส่วนที่ใส่ได้ — เห็นตลอด เพราะลูกค้าใช้เลือกไซส์ และระบบเติมค่าให้อยู่แล้ว */}
+                <div className="mt-4 rounded-xl bg-[#FAFAFB] p-3">
+                  <p className="mb-2 text-xs font-semibold text-[#5B6472]">
+                    {isShoes ? 'ความยาวเท้าที่ใส่ได้' : 'สัดส่วนร่างกายที่ใส่ได้'}
+                  </p>
+                  {isShoes ? (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                      <RangeField
+                        id={`foot-${variant.id}`}
+                        label="ความยาวเท้า (ซม.)"
+                        step="0.1"
+                        min={variant.footMinCm}
+                        max={variant.footMaxCm}
+                        onChange={(p) =>
+                          updateVariant(variant.id, {
+                            ...(p.min !== undefined && { footMinCm: p.min }),
+                            ...(p.max !== undefined && { footMaxCm: p.max }),
+                          })
+                        }
+                      />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                      <RangeField
+                        id={`chest-${variant.id}`}
+                        label="รอบอก (นิ้ว)"
+                        step="0.5"
+                        min={variant.chestIn}
+                        max={variant.chestMaxIn}
+                        onChange={(p) =>
+                          updateVariant(variant.id, {
+                            ...(p.min !== undefined && { chestIn: p.min }),
+                            ...(p.max !== undefined && { chestMaxIn: p.max }),
+                          })
+                        }
+                      />
+                      <RangeField
+                        id={`waist-${variant.id}`}
+                        label="รอบเอว (นิ้ว)"
+                        step="0.5"
+                        min={variant.waistIn}
+                        max={variant.waistMaxIn}
+                        onChange={(p) =>
+                          updateVariant(variant.id, {
+                            ...(p.min !== undefined && { waistIn: p.min }),
+                            ...(p.max !== undefined && { waistMaxIn: p.max }),
+                          })
+                        }
+                      />
+                      <RangeField
+                        id={`hip-${variant.id}`}
+                        label="รอบสะโพก (นิ้ว)"
+                        step="0.5"
+                        min={variant.hipIn}
+                        max={variant.hipMaxIn}
+                        onChange={(p) =>
+                          updateVariant(variant.id, {
+                            ...(p.min !== undefined && { hipIn: p.min }),
+                            ...(p.max !== undefined && { hipMaxIn: p.max }),
+                          })
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+
                 <button
                   type="button"
                   onClick={() => setExpanded((s) => ({ ...s, [variant.id]: !s[variant.id] }))}
@@ -202,7 +427,7 @@ export default function SizesStockCard({
                     size={14}
                     className={`transition-transform ${expanded[variant.id] ? 'rotate-180' : ''}`}
                   />
-                  จำนวนวันเช่า, ค่าซัก และตารางไซส์ (ไม่บังคับ)
+                  {isShoes ? 'จำนวนวันเช่า และค่าซัก (ไม่บังคับ)' : 'จำนวนวันเช่า, ค่าซัก, ความยาวชุด และส่วนสูง (ไม่บังคับ)'}
                 </button>
 
                 {expanded[variant.id] && (
@@ -234,30 +459,8 @@ export default function SizesStockCard({
                       value={variant.laundryFee}
                       onChange={(e) => updateVariant(variant.id, { laundryFee: e.target.value })}
                     />
-                    <FormField
-                      id={`chest-${variant.id}`}
-                      label="รอบอก (นิ้ว)"
-                      type="number"
-                      step="0.1"
-                      value={variant.chestIn}
-                      onChange={(e) => updateVariant(variant.id, { chestIn: e.target.value })}
-                    />
-                    <FormField
-                      id={`waist-${variant.id}`}
-                      label="รอบเอว (นิ้ว)"
-                      type="number"
-                      step="0.1"
-                      value={variant.waistIn}
-                      onChange={(e) => updateVariant(variant.id, { waistIn: e.target.value })}
-                    />
-                    <FormField
-                      id={`hip-${variant.id}`}
-                      label="รอบสะโพก (นิ้ว)"
-                      type="number"
-                      step="0.1"
-                      value={variant.hipIn}
-                      onChange={(e) => updateVariant(variant.id, { hipIn: e.target.value })}
-                    />
+                    {!isShoes && (
+                      <>
                     <FormField
                       id={`length-${variant.id}`}
                       label="ความยาวชุด (นิ้ว)"
@@ -282,6 +485,8 @@ export default function SizesStockCard({
                       value={variant.recommendedHeightMax}
                       onChange={(e) => updateVariant(variant.id, { recommendedHeightMax: e.target.value })}
                     />
+                      </>
+                    )}
                   </div>
                 )}
 

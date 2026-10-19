@@ -13,6 +13,7 @@ import SizesStockCard from '@/app/components/admin/costume-form/Sizesstockcard'
 import { EMPTY_FORM_DATA, type CostumeFormData } from '@/app/components/admin/costume-form/types'
 import { findProductIdBySku, saveInclusionPrices } from '@/utils/saveInclusionPrices'
 import { validateSkuPrefix } from '@/utils/skuPrefix'
+import { saveSizeDetails, validateSizeRanges } from '@/utils/sizeDefaults'
 
 // หน้าเดียวจบ ไม่ใช้สเตปแล้ว — จัดเป็น 2 คอลัมน์แบบฟอร์มเพิ่มสินค้าทั่วไป:
 // ซ้าย = เนื้อหาหลัก (ชื่อ/คำอธิบาย, ไซส์-ราคา-สต็อก, สิ่งที่รวมในชุด)
@@ -60,6 +61,8 @@ export default function NewCostumePage() {
     if (formData.variants.some((v) => !v.packagePrice || !v.depositAmount)) {
       return 'กรุณากรอกราคาและมัดจำให้ครบทุกไซส์'
     }
+    const rangeError = validateSizeRanges(formData.variants)
+    if (rangeError) return rangeError
     if (formData.items.length === 0) {
       return 'กรุณาใส่จำนวนชุดที่มีอย่างน้อย 1 ตัว'
     }
@@ -138,13 +141,22 @@ export default function NewCostumePage() {
       return
     }
 
+    const productId = typeof created === 'string' ? created : await findProductIdBySku(basicInfo.skuPrefix)
+    const followUpErrors: string[] = []
+
+    // ประเภทไซส์ + ค่าสูงสุดของช่วง + ความยาวเท้า (Step 18) — create_costume รู้จักแค่ค่าต่ำสุด
+    const sizeError = productId
+      ? await saveSizeDetails(productId, basicInfo.sizeSystem, variants)
+      : 'บันทึกช่วงไซส์ไม่สำเร็จ: หาชุดที่เพิ่งสร้างไม่พบ'
+    if (sizeError) followUpErrors.push(sizeError)
+
     if (inclusions.some((inc) => inc.price.trim())) {
-      const productId = typeof created === 'string' ? created : await findProductIdBySku(basicInfo.skuPrefix)
       const priceError = productId ? await saveInclusionPrices(productId, inclusions) : 'บันทึกราคาแยกชิ้นไม่สำเร็จ: หาชุดที่เพิ่งสร้างไม่พบ'
-      if (priceError) {
-        // ชุดถูกสร้างแล้ว อย่าให้กดบันทึกซ้ำ (จะได้ชุดซ้ำ) → แจ้งแล้วไปหน้าคลัง ให้แก้ราคาในหน้าแก้ไขชุด
-        window.alert(`สร้างชุดแล้ว แต่${priceError}\nแก้ราคาแยกชิ้นได้ในหน้าแก้ไขชุด`)
-      }
+      if (priceError) followUpErrors.push(priceError)
+    }
+    if (followUpErrors.length > 0) {
+      // ชุดถูกสร้างแล้ว อย่าให้กดบันทึกซ้ำ (จะได้ชุดซ้ำ) → แจ้งแล้วไปหน้าคลัง ให้แก้ในหน้าแก้ไขชุด
+      window.alert(`สร้างชุดแล้ว แต่${followUpErrors.join('\n')}\nแก้ได้ในหน้าแก้ไขชุด`)
     }
     setSaving(false)
 
@@ -181,6 +193,10 @@ export default function NewCostumePage() {
             />
             <SizesStockCard
               skuPrefix={formData.basicInfo.skuPrefix}
+              sizeSystem={formData.basicInfo.sizeSystem}
+              onSizeSystemChange={(sizeSystem) =>
+                setFormData((f) => ({ ...f, basicInfo: { ...f.basicInfo, sizeSystem } }))
+              }
               variants={formData.variants}
               onVariantsChange={(variants) => setFormData((f) => ({ ...f, variants }))}
               items={formData.items}

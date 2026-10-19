@@ -8,8 +8,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// ลูกค้าเห็นได้ตั้งแต่ร้านส่งของออกไปแล้ว
-const VISIBLE_STATUSES = ['shipped', 'active', 'returned', 'inspecting', 'completed'];
+// ตรงกับหน้าออเดอร์ลูกค้า: ช่วงชุดกำลังมาส่ง และช่วงที่ต้องส่งคืน
+const VISIBLE_STATUSES = ['shipped', 'active'];
 const SIGNED_URL_SECONDS = 60 * 30;
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
