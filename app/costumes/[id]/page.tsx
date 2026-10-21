@@ -18,7 +18,8 @@ import {
   XIcon,
 } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
-import BookingCalendar from '@/app/components/customer/BookingCalendar'
+import BookingCalendar, { type SizeBooking } from '@/app/components/customer/BookingCalendar'
+import { sortSizes } from '@/utils/sizeStock'
 import FavoriteButton from '@/app/components/customer/FavoriteButton'
 import MeasureGuideButton from '@/app/components/customer/MeasureGuide'
 import ProductReviews from '@/app/components/customer/ProductReviews'
@@ -60,6 +61,8 @@ export default function CostumeDetailPage() {
   const [datesLoading, setDatesLoading] = useState(false)
   const [datesError, setDatesError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  // วันเริ่มเช่าไม่ได้ของทุกไซส์ (variant id → วันที่) — ปฏิทินใช้บอกว่าวันไหนไซส์อะไรถูกจอง
+  const [unavailableByVariant, setUnavailableByVariant] = useState<Map<string, Set<string>>>(new Map())
   const [rating, setRating] = useState<RatingSummary | null>(null)
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [previewInclusion, setPreviewInclusion] = useState<{ url: string; name: string } | null>(null)
@@ -92,7 +95,8 @@ export default function CostumeDetailPage() {
       } else {
         setDetail(res.data)
         // เลือกไซส์แรกที่ยังมีชุดพร้อมให้เช่าไว้ให้ก่อน ลดขั้นตอนลูกค้า
-        const firstAvailable = res.data.variants.find((v) => v.availableUnits > 0)
+        // ไม่มีไซส์ไหนพร้อมเลย (เช่น ชุดไซส์เดียวที่เพิ่งคืนมาและอยู่ระหว่างซัก/ซ่อม) ก็ยังเลือกไซส์แรก ให้ปฏิทินแสดงวันที่ไม่ว่างตามเดิม
+        const firstAvailable = res.data.variants.find((v) => v.availableUnits > 0) ?? res.data.variants[0]
         setVariantId(firstAvailable?.id ?? null)
       }
       setLoading(false)
@@ -126,6 +130,42 @@ export default function CostumeDetailPage() {
       cancelled = true
     }
   }, [variantId])
+
+  // โหลดวันไม่ว่างของทุกไซส์ครั้งเดียวต่อชุด · ไซส์ไหนโหลดไม่สำเร็จก็แค่ไม่แสดงป้ายไซส์นั้น ปฏิทินยังใช้ได้
+  useEffect(() => {
+    const supabase = createClient()
+    const variantIds = detail?.variants.map((v) => v.id) ?? []
+    if (!supabase || variantIds.length < 2) return
+
+    let cancelled = false
+    Promise.all(
+      variantIds.map((id) =>
+        supabase
+          .rpc('get_unavailable_start_dates', { p_variant_id: id, p_days_ahead: DAYS_AHEAD })
+          .then(({ data, error }) => [id, error ? null : ((data ?? []) as string[])] as const),
+      ),
+    ).then((rows) => {
+      if (cancelled) return
+      const map = new Map<string, Set<string>>()
+      for (const [id, dates] of rows) if (dates) map.set(id, new Set(dates.map((d) => String(d).slice(0, 10))))
+      setUnavailableByVariant(map)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [detail])
+
+  const sizeBookings = useMemo<SizeBooking[]>(
+    () =>
+      sortSizes(detail?.variants ?? [])
+        .filter((v) => unavailableByVariant.has(v.id))
+        .map((v) => ({
+          size: v.size,
+          unavailable: unavailableByVariant.get(v.id)!,
+          getTimeline: (useDate: string) => getRentalTimeline(useDate, v.packageDays, settings),
+        })),
+    [detail, unavailableByVariant, settings],
+  )
 
   const variant = useMemo(
     () => detail?.variants.find((v) => v.id === variantId) ?? null,
@@ -403,22 +443,24 @@ export default function CostumeDetailPage() {
                     <button
                       key={v.id}
                       type="button"
-                      disabled={soldOut}
+                      // ไซส์ที่ไม่พร้อมตอนนี้ยังกดดูปฏิทินได้ — การจองถูกกันด้วยวันที่ไม่ว่างในปฏิทินอยู่แล้ว
                       onClick={() => setVariantId(v.id)}
                       aria-pressed={active}
                       aria-label={`ไซส์ ${v.size} ค่าเช่า ${formatBaht(v.packagePrice)}${soldOut ? ' (หมด)' : ''}`}
-                      // ไซส์ที่เลือก = สถานะที่เลือก (พื้น brand-soft เส้นดำ) · ยังไม่เลือก = ปุ่มรอง .lift · หมด = เส้นจาง
-                      className={`focus-ring flex min-w-[64px] flex-col items-center rounded-xl border px-4 py-2 disabled:cursor-not-allowed ${
+                      // ไซส์ที่เลือก = พื้น brand ตัวขาว (เด่นกว่า brand-soft เพราะเป็นตัวเลือกหลักของการจอง) · ยังไม่เลือก = ปุ่มรอง .lift · หมด = เส้นจาง
+                      className={`focus-ring flex min-w-[64px] flex-col items-center rounded-xl border px-4 py-2 ${
                         active
-                          ? 'border-line bg-brand-soft text-ink'
+                          ? 'border-line bg-brand text-white'
                           : soldOut
                             ? 'border-line-subtle bg-canvas text-muted'
                             : 'lift border-line bg-white text-ink'
                       }`}
                     >
-                      <span className={`text-base font-bold ${soldOut ? 'line-through' : ''}`}>{v.size}</span>
+                      <span className={`text-base font-bold ${soldOut && !active ? 'line-through' : ''}`}>{v.size}</span>
                       {pricesVary && (
-                        <span className={`text-sm tabular-nums ${soldOut ? '' : 'text-secondary'}`}>
+                        <span
+                          className={`text-sm tabular-nums ${active ? 'font-semibold text-white' : soldOut ? '' : 'text-secondary'}`}
+                        >
                           {soldOut ? 'หมด' : formatBaht(v.packagePrice)}
                         </span>
                       )}
@@ -517,6 +559,7 @@ export default function CostumeDetailPage() {
                   loading={datesLoading}
                   getTimeline={getTimeline}
                   events={events}
+                  sizeBookings={sizeBookings}
                 />
               )}
             </section>

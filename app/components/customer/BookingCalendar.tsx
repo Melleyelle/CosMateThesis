@@ -20,6 +20,19 @@ interface BookingCalendarProps {
   minLeadDays?: number
   /** วันกันไว้หลังวันคืน (ขนส่งกลับ/ตรวจ/ซัก) ตาม booking_settings — ใช้ถอดว่าวันไหนชุดถูกใช้อยู่จริง */
   bufferDaysAfter?: number
+  /** วันเริ่มเช่าไม่ได้ของทุกไซส์ในชุดนี้ (เรียงไซส์แล้ว) — ใช้บอกใต้วันที่ว่าไซส์ไหนถูกจองวันนั้น */
+  sizeBookings?: SizeBooking[]
+}
+
+export type SizeBooking = {
+  size: string
+  unavailable: Set<string>
+  getTimeline: (useDate: string) => Timeline
+}
+
+// ป้ายไซส์ใต้วันที่: ช่องแคบบนมือถือ จึงแสดงสูงสุด 2 ไซส์ ที่เหลือเป็น +n (ชื่อเต็มอยู่ใน aria-label/title)
+function sizesCaption(sizes: string[]) {
+  return sizes.length <= 2 ? sizes.join('·') : `${sizes.slice(0, 2).join('·')}+${sizes.length - 2}`
 }
 
 function daysBetween(fromISO: string, toISO: string) {
@@ -78,6 +91,7 @@ export default function BookingCalendar({
   events = [],
   minLeadDays = 0,
   bufferDaysAfter = 0,
+  sizeBookings = [],
 }: BookingCalendarProps) {
   const today = todayISO()
   const firstBookable = addDays(today, minLeadDays)
@@ -97,6 +111,29 @@ export default function BookingCalendar({
       bufferDaysAfter,
     )
   }, [loading, unavailable, getTimeline, today, firstBookable, lastDate, bufferDaysAfter])
+
+  // วันที่ → ไซส์ที่ถูกจองวันนั้น (ถอดแบบเดียวกับ booked แต่ทำทุกไซส์ — แต่ละไซส์อาจมีจำนวนวันเช่าต่างกัน)
+  // แสดงเฉพาะชุดที่มีมากกว่า 1 ไซส์ ชุดไซส์เดียวใช้คำว่า "จองแล้ว" ตามเดิม
+  const multiSize = sizeBookings.length > 1
+  const bookedSizes = useMemo(() => {
+    const map = new Map<string, string[]>()
+    if (!multiSize) return map
+    for (const sb of sizeBookings) {
+      if (sb.unavailable.size === 0) continue
+      const ref = sb.getTimeline(today)
+      const days = occupiedDays(
+        sb.unavailable,
+        firstBookable,
+        lastDate,
+        daysBetween(ref.receiveDate, today),
+        daysBetween(today, ref.returnBy),
+        bufferDaysAfter,
+      )
+      for (const d of days) map.set(d, [...(map.get(d) ?? []), sb.size])
+    }
+    return map
+  }, [multiSize, sizeBookings, today, firstBookable, lastDate, bufferDaysAfter])
+
   const firstMonth = today.slice(0, 7)
   const lastMonth = lastDate.slice(0, 7)
   const [visibleMonth, setVisibleMonth] = useState(firstMonth)
@@ -167,6 +204,7 @@ export default function BookingCalendar({
           const inRange = !!range && date > range.receiveDate && date < range.returnBy
           // แพ็กเกจ 1 วัน วันใส่กับวันคืนเป็นวันเดียวกัน จึงแสดงได้หลายป้ายในช่องเดียว
           const labels = [isReceive && 'รับชุด', isUse && 'ใส่', isReturn && 'คืน'].filter(Boolean).join('·')
+          const sizesHere = bookedSizes.get(date) ?? []
 
           const tone = isUse
             ? 'bg-brand text-white font-bold'
@@ -185,9 +223,13 @@ export default function BookingCalendar({
               key={date}
               type="button"
               disabled={disabled}
-              aria-label={`${formatThaiDateWithWeekday(date)}${isBooked ? ' ถูกจองแล้ว' : disabled ? ' เลือกเป็นวันใส่ไม่ได้' : ''}${dayEvents ? ` มีงาน ${dayEvents.map((e) => e.name).join(', ')}` : ''}`}
+              aria-label={`${formatThaiDateWithWeekday(date)}${isBooked ? ' ถูกจองแล้ว' : disabled ? ' เลือกเป็นวันใส่ไม่ได้' : ''}${sizesHere.length ? ` ไซส์ ${sizesHere.join(', ')} ถูกจองวันนี้` : ''}${dayEvents ? ` มีงาน ${dayEvents.map((e) => e.name).join(', ')}` : ''}`}
               aria-pressed={selected === date}
-              title={dayEvents?.map((e) => e.name).join('\n')}
+              title={
+                [sizesHere.length ? `ไซส์ที่ถูกจอง: ${sizesHere.join(', ')}` : '', ...(dayEvents?.map((e) => e.name) ?? [])]
+                  .filter(Boolean)
+                  .join('\n') || undefined
+              }
               onClick={() => onSelect(date)}
               className={`focus-ring relative flex h-12 flex-col items-center justify-center rounded-control text-body tabular-nums transition sm:h-14 ${tone} ${
                 selected === date ? 'ring-2 ring-ink ring-offset-1' : ''
@@ -195,8 +237,19 @@ export default function BookingCalendar({
             >
               <span>{Number(date.slice(-2))}</span>
               {labels && <span className="mt-0.5 text-caption font-medium leading-none">{labels}</span>}
-              {isBooked && !labels && (
-                <span className="mt-0.5 whitespace-nowrap text-caption font-medium leading-none">จองแล้ว</span>
+              {!labels && sizesHere.length > 0 ? (
+                <span
+                  className={`mt-0.5 max-w-full truncate px-0.5 text-caption font-semibold leading-none ${
+                    isBooked ? '' : 'text-secondary'
+                  }`}
+                >
+                  {sizesCaption(sizesHere)}
+                </span>
+              ) : (
+                isBooked &&
+                !labels && (
+                  <span className="mt-0.5 whitespace-nowrap text-caption font-medium leading-none">จองแล้ว</span>
+                )
               )}
               {dayEvents && (
                 <span className="absolute right-1.5 top-1.5 flex gap-0.5" aria-hidden="true">
@@ -233,7 +286,13 @@ export default function BookingCalendar({
         <Legend swatch="bg-brand-soft" label="วันรับชุด / ส่งคืน" />
         <Legend swatch="bg-brand" label="วันใส่ชุด" />
         {events.length > 0 && <Legend swatch="bg-info" label="มีงานอีเวนต์" dot />}
-        <Legend swatch="bg-sunken ring-1 ring-inset ring-line-subtle" label="ถูกจองแล้ว" />
+        <Legend swatch="bg-sunken ring-1 ring-inset ring-line-subtle" label="ไซส์ที่เลือกถูกจองแล้ว" />
+        {multiSize && (
+          <span className="flex items-center gap-1.5">
+            <span className="text-caption font-semibold text-secondary">S·M</span>
+            ใต้วันที่ = ไซส์ที่ถูกจองวันนั้น
+          </span>
+        )}
         <span className="flex items-center gap-1.5">
           <span className="text-muted/50 line-through">12</span>
           เลือกเป็นวันใส่ไม่ได้
