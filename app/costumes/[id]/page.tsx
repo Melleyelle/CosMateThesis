@@ -390,7 +390,7 @@ export default function CostumeDetailPage() {
             {/* ปุ่มวิธีวัดตัวอยู่บรรทัดเดียวกับหัวข้อ — เห็นได้แม้ชุดยังไม่มีตารางไซส์ */}
             <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
               <p className="text-base font-semibold text-[#263544]">1. เลือกไซส์</p>
-              {detail.variants.length > 0 && <MeasureGuideButton />}
+              {detail.variants.length > 0 && <MeasureGuideButton kind={isShoes ? 'shoes' : 'clothing'} />}
             </div>
             {detail.variants.length === 0 ? (
               <p className="text-base text-[#263544]/50">ชุดนี้ยังไม่ได้ตั้งไซส์และราคา</p>

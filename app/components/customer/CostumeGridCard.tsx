@@ -45,6 +45,15 @@ function priceLabel(minPrice: number | null | undefined, heldDays: number, sizes
   return `${sizes && pricesVary(sizes) ? 'เริ่ม ' : ''}${formatBaht(minPrice)} / ${heldDays} วัน`
 }
 
+// คะแนนรีวิวแสดงทุกการ์ด (เนื้อหาเท่ากันทุกใบ) — ยังไม่มีรีวิวแสดง 0.0
+function hasRating(costume: CostumeGridCardProps['costume']) {
+  return (costume.reviewCount ?? 0) > 0 && costume.avgRating != null
+}
+
+function ratingValue(costume: CostumeGridCardProps['costume']) {
+  return hasRating(costume) ? costume.avgRating!.toFixed(1) : '0.0'
+}
+
 /** สัดส่วนรูปของการ์ด v2 — export ให้โครงการ์ดตอนโหลด (skeleton) สูงเท่าการ์ดจริง */
 export const CARD_MEDIA = 'aspect-[4/5] max-h-[50vh]'
 
@@ -91,13 +100,9 @@ export default function CostumeGridCard({ costume, heldDays, sizes, variant = 'l
           {costume.name}
         </h2>
         <p className={`mt-1.5 flex h-6 items-center gap-1 ${s.rating}`}>
-          {costume.reviewCount != null && costume.reviewCount > 0 && costume.avgRating != null && (
-            <>
-              <StarIcon size={16} weight="fill" className="text-[#F5B400]" />
-              <span>{costume.avgRating.toFixed(1)}</span>
-              <span>({costume.reviewCount} รีวิว)</span>
-            </>
-          )}
+          <StarIcon size={16} weight="fill" className="text-[#F5B400]" />
+          <span>{ratingValue(costume)}</span>
+          <span>({costume.reviewCount ?? 0} รีวิว)</span>
         </p>
         {/* ไซส์และจำนวนที่มี — ลูกค้าไม่ต้องกดเข้าไปดูทีละชุด */}
         <div className="mt-2 min-h-[26px]">
@@ -122,7 +127,7 @@ function CostumeGridCardV2({
 }: Omit<CostumeGridCardProps, 'variant'> & { gumroad?: boolean }) {
   const colors = (costume.colorKeys ?? []).map((k) => COLOR_BY_KEY[k]).filter(Boolean)
   const shown = colors.slice(0, MAX_SWATCHES)
-  const hasRating = costume.reviewCount != null && costume.reviewCount > 0 && costume.avgRating != null
+  const rated = hasRating(costume)
 
   return (
     <Link
@@ -183,16 +188,15 @@ function CostumeGridCardV2({
           <p className="text-h3 font-bold text-brand">
             {priceLabel(costume.minPrice, heldDays, sizes)}
           </p>
-          {hasRating && (
-            <p
-              className="flex shrink-0 items-center gap-1 text-body-sm text-secondary"
-              aria-label={`คะแนน ${costume.avgRating!.toFixed(1)} จาก ${costume.reviewCount} รีวิว`}
-            >
-              <StarIcon size={14} weight="fill" className="text-[#F5B400]" />
-              <span className="font-semibold text-ink">{costume.avgRating!.toFixed(1)}</span>
-              <span>({costume.reviewCount})</span>
-            </p>
-          )}
+          {/* แสดงทุกการ์ดให้เนื้อหาเท่ากัน · ยังไม่มีรีวิว = 0.0 (0) ดาวสีเดียวกัน */}
+          <p
+            className="flex shrink-0 items-center gap-1 text-body-sm text-secondary"
+            aria-label={rated ? `คะแนน ${ratingValue(costume)} จาก ${costume.reviewCount} รีวิว` : 'ยังไม่มีรีวิว'}
+          >
+            <StarIcon size={14} weight="fill" className="text-[#F5B400]" />
+            <span className="font-semibold text-ink">{ratingValue(costume)}</span>
+            <span>({costume.reviewCount ?? 0})</span>
+          </p>
         </div>
       </div>
     </Link>

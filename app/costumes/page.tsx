@@ -21,6 +21,7 @@ import CostumeGridCard, { CARD_MEDIA } from '@/app/components/customer/CostumeGr
 import Pagination from '@/app/components/customer/Pagination'
 import ExploreFilters, {
   EMPTY_FILTERS,
+  SHOE_SIZE_LABEL,
   USE_DATE_DAYS_AHEAD,
   countActiveFilters,
   priceRangeLabel,
@@ -219,7 +220,7 @@ function ExploreInner() {
       )
     add('categories', CATEGORY_LABEL)
     add('genders', GENDER_LABEL)
-    add('sizes')
+    add('sizes', SHOE_SIZE_LABEL)
     add('colors', COLOR_LABEL)
     add('themes', THEME_LABEL)
     if (filters.series) {
@@ -297,10 +298,12 @@ function ExploreInner() {
               e.preventDefault()
               setSearch(searchInput)
             }}
-            className="rise relative mx-auto mt-5 flex h-[52px] max-w-xl overflow-hidden rounded-full border-2 border-ink bg-surface shadow-[3px_3px_0_0_var(--color-ink)] transition focus-within:ring-[3px] focus-within:ring-brand/30"
+            className="rise relative mx-auto mt-5 flex h-[52px] max-w-xl items-center gap-1 rounded-full border border-ink bg-surface p-[3px] pl-4 transition-shadow duration-200 ease-out hover:shadow-[3px_3px_0_0_var(--color-ink)] focus-within:shadow-[3px_3px_0_0_var(--color-ink)]"
             style={riseDelay(160)}
           >
-            <label className="flex min-w-0 flex-1">
+            {/* แคปซูลเดียว: แว่นขยายนำหน้าบอกว่าเป็นช่องค้นหา · ปุ่มชมพูแคปซูลอยู่ด้านในขอบ · เงาแข็งโผล่ตอน hover/พิมพ์ */}
+            <label className="flex h-full min-w-0 flex-1 cursor-text items-center gap-2.5">
+              <MagnifyingGlassIcon size={20} weight="bold" aria-hidden="true" className="flex-shrink-0 text-muted" />
               <span className="sr-only">ค้นหาชุด</span>
               <input
                 type="search"
@@ -309,16 +312,30 @@ function ExploreInner() {
                   setSearchInput(e.target.value)
                   if (e.target.value === '') setSearch('')
                 }}
-                placeholder="ค้นหาชื่อชุด ตัวละคร หรือชื่อเรื่อง"
-                className="w-full min-w-0 bg-transparent px-5 text-body text-ink outline-none placeholder:text-muted"
+                placeholder="ชื่อชุด ตัวละคร หรือชื่อเรื่อง"
+                className="h-full w-full min-w-0 bg-transparent text-body text-ink caret-brand outline-none placeholder:text-muted [&::-webkit-search-cancel-button]:appearance-none"
               />
             </label>
+            {searchInput && (
+              <button
+                type="button"
+                aria-label="ล้างคำค้นหา"
+                onClick={() => {
+                  setSearchInput('')
+                  setSearch('')
+                }}
+                className="focus-ring flex size-11 flex-shrink-0 items-center justify-center rounded-full text-secondary transition-colors hover:bg-sunken hover:text-ink"
+              >
+                <XIcon size={18} weight="bold" />
+              </button>
+            )}
             <button
               type="submit"
               aria-label="ค้นหา"
-              className="flex w-14 flex-shrink-0 items-center justify-center bg-brand text-white outline-none transition hover:bg-brand-strong active:bg-brand-strong focus-visible:bg-brand-strong"
+              className="focus-ring flex h-11 min-w-11 flex-shrink-0 items-center justify-center gap-1.5 rounded-full border border-ink bg-brand px-3 text-body font-bold text-white transition-colors active:bg-brand-strong sm:px-5"
             >
-              <MagnifyingGlassIcon size={22} weight="bold" />
+              <MagnifyingGlassIcon size={18} weight="bold" className="sm:hidden" />
+              <span className="hidden sm:inline">ค้นหา</span>
             </button>
           </form>
 

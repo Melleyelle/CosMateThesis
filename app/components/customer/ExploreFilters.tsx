@@ -60,6 +60,13 @@ const GENDER_OPTIONS = [
 ]
 
 const SIZE_OPTIONS = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size']
+// ไซส์รองเท้า EU 35–45 ตรงกับ shoe_size_defaults (Step 18) — เก็บใน filters.sizes ช่องเดียวกับเสื้อผ้า เพราะค่าไม่ซ้ำกัน
+const SHOE_SIZE_OPTIONS = ['35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45']
+
+/** ป้ายชิปตัวกรองของไซส์รองเท้า — เลขเปล่า ๆ อ่านไม่ออกว่าเป็นไซส์อะไร */
+export const SHOE_SIZE_LABEL: Record<string, string> = Object.fromEntries(
+  SHOE_SIZE_OPTIONS.map((s) => [s, `รองเท้า EU ${s}`]),
+)
 
 export function countActiveFilters(filters: ExploreFilterState): number {
   return (
@@ -167,8 +174,17 @@ export default function ExploreFilters({ value, onChange, categoryCounts }: Expl
       </FilterSection>
 
       <FilterSection title="ไซส์">
+        <h3 className="mb-2 text-body-sm font-semibold text-secondary">เสื้อผ้า</h3>
         <div className="flex flex-wrap gap-2">
           {SIZE_OPTIONS.map((size) => (
+            <Pill key={size} active={value.sizes.includes(size)} onClick={() => toggle('sizes', size)}>
+              {size}
+            </Pill>
+          ))}
+        </div>
+        <h3 className="mb-2 mt-4 text-body-sm font-semibold text-secondary">รองเท้า (EU)</h3>
+        <div className="flex flex-wrap gap-2">
+          {SHOE_SIZE_OPTIONS.map((size) => (
             <Pill key={size} active={value.sizes.includes(size)} onClick={() => toggle('sizes', size)}>
               {size}
             </Pill>
