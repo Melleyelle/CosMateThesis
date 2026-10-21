@@ -371,11 +371,11 @@ function ExploreInner() {
         </section>
       </div>
 
-      <div className="mx-auto mt-8 flex max-w-7xl gap-8 px-4 sm:px-6">
+      <div className="mx-auto mt-8 flex max-w-7xl gap-8 px-4 sm:px-6 lg:max-w-none lg:pl-0 lg:pr-8">
         {/* ---------------- ตัวกรองซ้าย (จอใหญ่) ---------------- */}
         <aside
           aria-label="ตัวกรอง"
-          className="hidden w-72 flex-shrink-0 self-start rounded-card bg-sunken px-5 pt-5 lg:block"
+          className="hidden w-72 flex-shrink-0 self-start rounded-r-card bg-sunken px-5 pt-5 lg:block"
         >
           <div className="flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-h2 font-bold text-ink">
@@ -477,7 +477,7 @@ function ExploreInner() {
           )}
 
           {busy && !loadError && (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 xl:grid-cols-4" aria-busy="true" aria-label="กำลังโหลด">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 xl:grid-cols-4 min-[2200px]:grid-cols-5" aria-busy="true" aria-label="กำลังโหลด">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="overflow-hidden rounded-card border border-line">
                   <div className={`${CARD_MEDIA} animate-pulse border-b border-line bg-sunken`} />
@@ -556,7 +556,7 @@ function ExploreInner() {
 
           {!busy && !loadError && pageItems.length > 0 && (
             <>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 xl:grid-cols-4 min-[2200px]:grid-cols-5">
                 {pageItems.map((c) => (
                   <CostumeGridCard
                     key={c.id}

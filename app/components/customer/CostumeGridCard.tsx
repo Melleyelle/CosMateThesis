@@ -104,8 +104,8 @@ export default function CostumeGridCard({ costume, heldDays, sizes, variant = 'l
           <span>{ratingValue(costume)}</span>
           <span>({costume.reviewCount ?? 0} รีวิว)</span>
         </p>
-        {/* ไซส์และจำนวนที่มี — ลูกค้าไม่ต้องกดเข้าไปดูทีละชุด */}
-        <div className="mt-2 min-h-[26px]">
+        {/* ไซส์ที่ว่าง เป็นตัวหนังสือสีเทาบรรทัดเดียว — ลูกค้าไม่ต้องกดเข้าไปดูทีละชุด แต่ไม่แย่งสายตาจากชื่อและราคา */}
+        <div className="mt-1 h-6">
           {sizes && <SizeStockChips sizes={sizes} max={3} />}
         </div>
         <p className={`mt-auto pt-2 font-bold ${s.price}`}>
@@ -179,10 +179,10 @@ function CostumeGridCardV2({
       </div>
 
       <div className="flex flex-1 flex-col p-3">
-        <p className="h-[18px] truncate text-caption text-muted">{costume.seriesName}</p>
+        <p className="h-[22px] truncate text-body-sm text-muted">{costume.seriesName}</p>
         <h2 className="mt-0.5 line-clamp-2 min-h-[2.75em] text-h3 font-bold text-ink">{costume.name}</h2>
-        {/* ไซส์และจำนวนที่มี — ลูกค้าไม่ต้องกดเข้าไปดูทีละชุด */}
-        <div className="mt-2 min-h-[26px]">{sizes && <SizeStockChips sizes={sizes} max={3} />}</div>
+        {/* ไซส์ที่ว่าง เป็นตัวหนังสือสีเทาบรรทัดเดียว — ลูกค้าไม่ต้องกดเข้าไปดูทีละชุด แต่ไม่แย่งสายตาจากชื่อและราคา */}
+        <div className="mt-1 h-6">{sizes && <SizeStockChips sizes={sizes} max={3} />}</div>
         {/* การ์ดแคบบนมือถือ: คะแนนตกลงบรรทัดใหม่แทนการบีบราคา */}
         <div className="mt-auto flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 pt-2">
           <p className="text-h3 font-bold text-brand">
