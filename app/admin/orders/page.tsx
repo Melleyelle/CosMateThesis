@@ -303,7 +303,7 @@ function AdminOrdersInner() {
                   )
                 })
               )}
-              {list.length > 0 && current.group === 'todo' && <p className="px-1 text-xs text-muted">เรียงตามเส้นตาย ด่วนสุดอยู่บน</p>}
+              {list.length > 0 && current.group === 'todo' && <p className="px-1 text-xs text-muted">ออเดอร์ด่วนสุดอยู่ด้านบน</p>}
             </section>
 
             <div ref={panelRef} className="flex scroll-mt-4 flex-col gap-3">

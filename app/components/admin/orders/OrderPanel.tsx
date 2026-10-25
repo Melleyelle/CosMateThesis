@@ -16,6 +16,7 @@ import {
   ClockCounterClockwiseIcon,
   ClockIcon,
   CopyIcon,
+  ImageIcon,
   MapPinIcon,
   MinusCircleIcon,
   PhoneIcon,
@@ -27,6 +28,7 @@ import {
   XIcon,
 } from '@phosphor-icons/react'
 import { StatusBadge, primaryButtonClass, secondaryButtonClass } from '@/app/components/admin/ui'
+import WebcamCapture from '@/app/components/admin/orders/WebcamCapture'
 import type { OrderSummary } from '@/utils/customer/fetchOrders'
 import type { BookingSettings } from '@/utils/customer/bookingSettings'
 import { ADMIN_STATUS_LABEL, orderBadge } from '@/utils/admin/statusTone'
@@ -178,7 +180,7 @@ function AddressCard({ order }: { order: OrderSummary }) {
   )
 }
 
-// เลือก/ถ่ายรูป → ย่อ → อัปโหลดทันที (กดยืนยันจะได้ไม่ต้องรออัปโหลด)
+// เลือกไฟล์ หรือถ่ายจากเว็บแคม → ย่อ → อัปโหลดทันที (กดยืนยันจะได้ไม่ต้องรออัปโหลด)
 function PhotoPicker({
   orderId,
   stage,
@@ -193,37 +195,46 @@ function PhotoPicker({
   max?: number
 }) {
   const [previews, setPreviews] = useState<Record<string, string>>({})
-  const [busy, setBusy] = useState(false)
+  const [pending, setPending] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [camera, setCamera] = useState(false)
   const urlsRef = useRef<string[]>([])
+  // กดถ่ายจากกล้องรัวได้เร็วกว่าอัปโหลดเสร็จ → ต่อคิวทีละชุด และอ่าน paths ล่าสุดจาก ref ไม่ให้รูปทับกันหาย
+  const pathsRef = useRef(paths)
+  const queueRef = useRef(Promise.resolve())
+  const busy = pending > 0
+  const remaining = max - paths.length - pending
 
+  useEffect(() => {
+    pathsRef.current = paths
+  }, [paths])
   useEffect(() => () => urlsRef.current.forEach((u) => URL.revokeObjectURL(u)), [])
 
-  async function add(files: FileList | null) {
-    if (!files?.length) return
-    setBusy(true)
+  function add(input: FileList | File[] | null) {
+    const files = Array.from(input ?? []).slice(0, Math.max(0, remaining))
+    if (!files.length) return
     setError(null)
-    const next = [...paths]
-    const nextPreviews = { ...previews }
-    for (const file of Array.from(files).slice(0, max - paths.length)) {
-      const { path, error: err } = await uploadEvidence(orderId, stage, file)
-      if (err || !path) {
-        setError(err)
-        continue
+    setPending((n) => n + files.length)
+    queueRef.current = queueRef.current.then(async () => {
+      for (const file of files) {
+        const { path, error: err } = await uploadEvidence(orderId, stage, file)
+        setPending((n) => n - 1)
+        if (err || !path) {
+          setError(err)
+          continue
+        }
+        const url = URL.createObjectURL(file)
+        urlsRef.current.push(url)
+        setPreviews((p) => ({ ...p, [path]: url }))
+        pathsRef.current = [...pathsRef.current, path]
+        onChange(pathsRef.current)
       }
-      const url = URL.createObjectURL(file)
-      urlsRef.current.push(url)
-      nextPreviews[path] = url
-      next.push(path)
-    }
-    setPreviews(nextPreviews)
-    onChange(next)
-    setBusy(false)
+    })
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap gap-2 empty:hidden">
         {paths.map((p, i) => (
           <div key={p} className="relative h-24 w-24 overflow-hidden rounded-control border border-line-subtle bg-sunken">
             {previews[p] && <img src={previews[p]} alt={`รูปที่ ${i + 1}`} className="h-full w-full object-cover" />}
@@ -237,15 +248,37 @@ function PhotoPicker({
             </button>
           </div>
         ))}
-        {paths.length < max && (
-          <label className="flex h-24 w-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-control border border-dashed border-line bg-white text-xs font-semibold text-ink hover:bg-sunken">
-            <CameraIcon size={22} className="text-brand-strong" />
-            {busy ? 'กำลังอัปโหลด…' : 'ถ่าย / เลือกรูป'}
-            <input type="file" accept="image/*" multiple className="sr-only" disabled={busy} onChange={(e) => add(e.target.files)} />
-          </label>
+        {busy && (
+          <div className="flex h-24 w-24 items-center justify-center rounded-control border border-line-subtle bg-sunken text-center text-xs text-secondary">
+            กำลังอัปโหลด {pending} รูป…
+          </div>
         )}
       </div>
+      {remaining > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => setCamera(true)} className={secondaryButtonClass}>
+            <CameraIcon size={18} className="text-brand-strong" />
+            ถ่ายจากกล้อง
+          </button>
+          <label className={`${secondaryButtonClass} cursor-pointer focus-within:ring-[3px] focus-within:ring-brand/25`}>
+            <ImageIcon size={18} className="text-brand-strong" />
+            เลือกไฟล์รูป
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              onChange={(e) => {
+                add(e.target.files)
+                e.target.value = ''
+              }}
+            />
+          </label>
+          {paths.length > 0 && <span className="text-xs text-muted">เพิ่มได้อีก {remaining} รูป</span>}
+        </div>
+      )}
       {error && <ErrorBox>{error}</ErrorBox>}
+      {camera && <WebcamCapture remaining={remaining} busy={busy} onCapture={(f) => add([f])} onClose={() => setCamera(false)} />}
     </div>
   )
 }
