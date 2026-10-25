@@ -51,7 +51,7 @@ import {
 
 // design v2: ช่องกรอกเส้น 1px มุม 10px · focus เส้นชมพู + วงชมพูโปร่ง 3px
 const inputClass =
-  'w-full rounded-control border border-line bg-white px-4 py-2.5 text-base text-[#263544] outline-none transition placeholder:text-muted focus:border-brand-strong focus:ring-[3px] focus:ring-brand/25'
+  'w-full rounded-control border border-line bg-white px-4 py-2.5 text-base text-[#263544] outline-none transition placeholder:text-muted focus:border-brand-strong focus:ring-[3px] focus:ring-brand/25 disabled:cursor-not-allowed disabled:border-line-subtle disabled:bg-sunken disabled:text-[#263544]/70'
 
 const primaryButtonClass =
   'lift focus-ring rounded-full border border-line bg-brand text-base font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40'
@@ -111,6 +111,8 @@ export default function AccountPage() {
 
   const [section, setSection] = useState<Section>('profile')
   const [editing, setEditing] = useState<Editing>(null)
+  const [editingProfile, setEditingProfile] = useState(false)
+  const firstNameInput = useRef<HTMLInputElement>(null)
   const [draftProfile, setDraftProfile] = useState(profileDraftOf(null))
   const [draftAddress, setDraftAddress] = useState<Address>(EMPTY_ADDRESS)
   const [draftBank, setDraftBank] = useState<BankAccount>(EMPTY_BANK)
@@ -136,6 +138,11 @@ export default function AccountPage() {
     load()
   }, [])
 
+  // กดแก้ไข → ช่องเปิดให้กรอกแล้ว โฟกัสช่องแรกให้พิมพ์ต่อได้เลย
+  useEffect(() => {
+    if (editingProfile) firstNameInput.current?.focus()
+  }, [editingProfile])
+
   function clearMessages() {
     setError(null)
     setNotice(null)
@@ -144,6 +151,7 @@ export default function AccountPage() {
   function selectSection(next: Section) {
     setSection(next)
     setEditing(null)
+    setEditingProfile(false)
     clearMessages()
     setDraftProfile(profileDraftOf(profile))
   }
@@ -174,8 +182,21 @@ export default function AccountPage() {
     const err = await saveMyProfile(draftProfile)
     setSaving(false)
     if (err) return setError(err)
+    setEditingProfile(false)
     setNotice('บันทึกเรียบร้อย')
     await load()
+  }
+
+  function startEditProfile() {
+    clearMessages()
+    setEditingProfile(true)
+  }
+
+  // ยกเลิก = ทิ้งที่พิมพ์ไว้ กลับเป็นข้อมูลที่บันทึกล่าสุด
+  function cancelEditProfile() {
+    clearMessages()
+    setDraftProfile(profileDraftOf(profile))
+    setEditingProfile(false)
   }
 
   async function saveEditing() {
@@ -381,6 +402,16 @@ export default function AccountPage() {
                   {section === 'address' ? 'เพิ่มที่อยู่ใหม่' : 'เพิ่มบัญชีธนาคาร'}
                 </button>
               )}
+              {section === 'profile' && !editingProfile && (
+                <button
+                  type="button"
+                  onClick={startEditProfile}
+                  className={`${secondaryButtonClass} inline-flex items-center gap-2 px-5 py-2.5`}
+                >
+                  <PencilSimpleIcon size={18} />
+                  แก้ไขข้อมูล
+                </button>
+              )}
             </header>
 
             {/* ---------- ข้อมูลส่วนตัว ---------- */}
@@ -392,10 +423,12 @@ export default function AccountPage() {
                   </Row>
                   <Row label="ชื่อ">
                     <input
+                      ref={firstNameInput}
                       value={draftProfile.firstName}
                       onChange={(e) => setDraftProfile({ ...draftProfile, firstName: e.target.value })}
+                      disabled={!editingProfile}
                       autoComplete="given-name"
-                      placeholder="กรอกชื่อจริง"
+                      placeholder={editingProfile ? 'กรอกชื่อจริง' : 'ยังไม่ได้กรอก'}
                       className={inputClass}
                     />
                   </Row>
@@ -403,8 +436,9 @@ export default function AccountPage() {
                     <input
                       value={draftProfile.lastName}
                       onChange={(e) => setDraftProfile({ ...draftProfile, lastName: e.target.value })}
+                      disabled={!editingProfile}
                       autoComplete="family-name"
-                      placeholder="กรอกนามสกุล"
+                      placeholder={editingProfile ? 'กรอกนามสกุล' : 'ยังไม่ได้กรอก'}
                       className={inputClass}
                     />
                   </Row>
@@ -414,8 +448,9 @@ export default function AccountPage() {
                       maxLength={10}
                       value={draftProfile.phone}
                       onChange={(e) => setDraftProfile({ ...draftProfile, phone: onlyDigits(e.target.value) })}
+                      disabled={!editingProfile}
                       autoComplete="tel"
-                      placeholder="0xxxxxxxxx"
+                      placeholder={editingProfile ? '0xxxxxxxxx' : 'ยังไม่ได้กรอก'}
                       className={inputClass}
                     />
                   </Row>
@@ -438,7 +473,8 @@ export default function AccountPage() {
                                 measurements: { ...draftProfile.measurements, [key]: onlyDecimal(e.target.value) },
                               })
                             }
-                            placeholder={`เช่น ${placeholder}`}
+                            disabled={!editingProfile}
+                            placeholder={editingProfile ? `เช่น ${placeholder}` : 'ยังไม่ได้กรอก'}
                             className={`${inputClass} tabular-nums`}
                           />
                         </Row>
@@ -446,7 +482,11 @@ export default function AccountPage() {
                     </div>
                   </div>
 
-                  <div className="pt-2">{formActions(saveProfileForm)}</div>
+                  {editingProfile ? (
+                    <div className="pt-2">{formActions(saveProfileForm, cancelEditProfile)}</div>
+                  ) : (
+                    (notice || error) && <div className="flex flex-wrap items-center gap-4 pt-2">{messages}</div>
+                  )}
                 </div>
 
                 {/* รูปโปรไฟล์ */}
