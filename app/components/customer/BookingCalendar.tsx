@@ -2,71 +2,39 @@
 
 import { useMemo, useState } from 'react'
 import { CaretLeftIcon, CaretRightIcon, MapPinIcon } from '@phosphor-icons/react'
-import { addDays, formatThaiDateWithWeekday, parseISODate, todayISO, toISODate } from '@/utils/dateUtils'
+import { addDays, formatThaiDateWithWeekday, todayISO, toISODate } from '@/utils/dateUtils'
 import { eventsByDate, type CalendarEvent } from '@/utils/customer/events'
 
 type Timeline = { receiveDate: string; returnBy: string }
 
 interface BookingCalendarProps {
+  /** วันที่ใช้เป็นวันใส่ไม่ได้ สำหรับจำนวนวันเช่าที่เลือกอยู่ (get_unavailable_start_dates) */
   unavailable: Set<string>
+  /** วันที่ชุดไซส์นี้ถูกจองอยู่จริง ไม่ขึ้นกับจำนวนวันที่เลือก (get_occupied_dates) */
+  occupied: Set<string>
   selected: string | null
   onSelect: (date: string) => void
   daysAhead: number
   loading: boolean
+  /** จำนวนวันเช่าที่เลือก — วันใส่ที่ทำให้วันคืนเลยช่วงเปิดจองจะเลือกไม่ได้ */
+  rentalDays: number
   // คำนวณวันรับ/วันคืนจากวันใช้งาน
   getTimeline: (useDate: string) => Timeline
   events?: CalendarEvent[]
-  /** จองล่วงหน้าอย่างน้อยกี่วัน — วันก่อนหน้านั้นปิดรับจอง ไม่ใช่ "จองแล้ว" */
-  minLeadDays?: number
-  /** วันกันไว้หลังวันคืน (ขนส่งกลับ/ตรวจ/ซัก) ตาม booking_settings — ใช้ถอดว่าวันไหนชุดถูกใช้อยู่จริง */
-  bufferDaysAfter?: number
-  /** วันเริ่มเช่าไม่ได้ของทุกไซส์ในชุดนี้ (เรียงไซส์แล้ว) — ใช้บอกใต้วันที่ว่าไซส์ไหนถูกจองวันนั้น */
+  /** วันใส่ที่เร็วที่สุดนับจากวันนี้ = greatest(min_lead_days, buffer_days_before) — กันพลาดฝั่งเว็บ RPC ส่งมาอยู่แล้ว */
+  minStartOffset?: number
+  /** วันที่ถูกจองของทุกไซส์ในชุดนี้ (เรียงไซส์แล้ว) — ใช้บอกใต้วันที่ว่าไซส์ไหนถูกจองวันนั้น */
   sizeBookings?: SizeBooking[]
 }
 
 export type SizeBooking = {
   size: string
-  unavailable: Set<string>
-  getTimeline: (useDate: string) => Timeline
+  occupied: Set<string>
 }
 
 // ป้ายไซส์ใต้วันที่: ช่องแคบบนมือถือ จึงแสดงสูงสุด 2 ไซส์ ที่เหลือเป็น +n (ชื่อเต็มอยู่ใน aria-label/title)
 function sizesCaption(sizes: string[]) {
   return sizes.length <= 2 ? sizes.join('·') : `${sizes.slice(0, 2).join('·')}+${sizes.length - 2}`
-}
-
-function daysBetween(fromISO: string, toISO: string) {
-  return Math.round((parseISODate(toISO).getTime() - parseISODate(fromISO).getTime()) / 86_400_000)
-}
-
-/**
- * แปลง "วันที่เริ่มเช่าไม่ได้" (จาก RPC) เป็น "วันที่ชุดถูกใช้อยู่จริง"
- * RPC บอกว่าเริ่มวัน D ไม่ได้เมื่อช่วงล็อกของเรา [D - before, D + span + after] ชนกับการจองเดิม
- * ดังนั้นช่วงเริ่มไม่ได้ที่ต่อกัน [s, e] เกิดจากการจองที่ล็อกชุดไว้ [s + span + after, e - before]
- * (ไม่หดฝั่งที่ชนขอบช่วงเปิดจอง เพราะไม่รู้ว่าช่วงจริงเริ่ม/จบตรงไหน)
- */
-function occupiedDays(
-  unavailable: Set<string>,
-  firstBookable: string,
-  lastDate: string,
-  before: number,
-  span: number,
-  after: number,
-): Set<string> {
-  const out = new Set<string>()
-  let runStart: string | null = null
-  for (let d = firstBookable; d <= addDays(lastDate, 1); d = addDays(d, 1)) {
-    const blocked = d <= lastDate && unavailable.has(d)
-    if (blocked && !runStart) runStart = d
-    if (!blocked && runStart) {
-      const runEnd = addDays(d, -1)
-      const from = runStart === firstBookable ? runStart : addDays(runStart, span + after)
-      const to = runEnd === lastDate ? runEnd : addDays(runEnd, -before)
-      for (let x = from; x <= to; x = addDays(x, 1)) out.add(x)
-      runStart = null
-    }
-  }
-  return out
 }
 
 const WEEKDAYS = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.']
@@ -83,56 +51,33 @@ const navButtonClass =
 // ปฏิทินเลือกวันใส่ชุด — สีตาม design system: ชมพู = ช่วงเช่าที่เลือก · ฟ้า (info) = งานอีเวนต์
 export default function BookingCalendar({
   unavailable,
+  occupied,
   selected,
   onSelect,
   daysAhead,
   loading,
+  rentalDays,
   getTimeline,
   events = [],
-  minLeadDays = 0,
-  bufferDaysAfter = 0,
+  minStartOffset = 0,
   sizeBookings = [],
 }: BookingCalendarProps) {
   const today = todayISO()
-  const firstBookable = addDays(today, minLeadDays)
+  const firstBookable = addDays(today, minStartOffset)
   const lastDate = addDays(today, Math.max(0, daysAhead))
+  // วันใส่สุดท้ายที่วันคืนยังอยู่ในช่วงเปิดจอง
+  const lastStart = addDays(lastDate, -(Math.max(1, rentalDays) - 1))
 
-  // "จองแล้ว" = วันที่ชุดอยู่กับลูกค้าคนอื่นจริง ไม่ใช่ทุกวันที่เริ่มเช่าไม่ได้
-  // (วันก่อนหน้าการจองเดิมเริ่มเช่าไม่ได้เพราะช่วงเช่าของเราจะยาวไปชน แต่ชุดยังว่างอยู่)
-  const booked = useMemo(() => {
-    if (loading || unavailable.size === 0) return new Set<string>()
-    const ref = getTimeline(today)
-    return occupiedDays(
-      unavailable,
-      firstBookable,
-      lastDate,
-      daysBetween(ref.receiveDate, today),
-      daysBetween(today, ref.returnBy),
-      bufferDaysAfter,
-    )
-  }, [loading, unavailable, getTimeline, today, firstBookable, lastDate, bufferDaysAfter])
-
-  // วันที่ → ไซส์ที่ถูกจองวันนั้น (ถอดแบบเดียวกับ booked แต่ทำทุกไซส์ — แต่ละไซส์อาจมีจำนวนวันเช่าต่างกัน)
-  // แสดงเฉพาะชุดที่มีมากกว่า 1 ไซส์ ชุดไซส์เดียวใช้คำว่า "จองแล้ว" ตามเดิม
+  // วันที่ → ไซส์ที่ถูกจองวันนั้น · แสดงเฉพาะชุดที่มีมากกว่า 1 ไซส์ ชุดไซส์เดียวใช้คำว่า "จองแล้ว" ตามเดิม
   const multiSize = sizeBookings.length > 1
   const bookedSizes = useMemo(() => {
     const map = new Map<string, string[]>()
     if (!multiSize) return map
     for (const sb of sizeBookings) {
-      if (sb.unavailable.size === 0) continue
-      const ref = sb.getTimeline(today)
-      const days = occupiedDays(
-        sb.unavailable,
-        firstBookable,
-        lastDate,
-        daysBetween(ref.receiveDate, today),
-        daysBetween(today, ref.returnBy),
-        bufferDaysAfter,
-      )
-      for (const d of days) map.set(d, [...(map.get(d) ?? []), sb.size])
+      for (const d of sb.occupied) map.set(d, [...(map.get(d) ?? []), sb.size])
     }
     return map
-  }, [multiSize, sizeBookings, today, firstBookable, lastDate, bufferDaysAfter])
+  }, [multiSize, sizeBookings])
 
   const firstMonth = today.slice(0, 7)
   const lastMonth = lastDate.slice(0, 7)
@@ -151,7 +96,8 @@ export default function BookingCalendar({
   })
   const monthLabel = firstDay.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
 
-  const isDisabled = (date: string) => loading || date < today || date > lastDate || unavailable.has(date)
+  const isDisabled = (date: string) =>
+    loading || date < firstBookable || date > lastStart || unavailable.has(date)
 
   // ช่วงเช่าของวันที่เลือกไว้ (รับชุด → ใส่ → คืน)
   const range = selected ? { useDate: selected, ...getTimeline(selected) } : null
@@ -195,14 +141,15 @@ export default function BookingCalendar({
         {days.map((date, index) => {
           if (!date) return <span key={`blank-${index}`} />
           const disabled = isDisabled(date)
-          const isBooked = booked.has(date)
+          // "จองแล้ว" = ชุดอยู่กับลูกค้าคนอื่นจริง · ขีดฆ่า = ชุดว่างแต่เริ่มเช่าตามจำนวนวันที่เลือกไม่ได้
+          const isBooked = !loading && occupied.has(date)
           const dayEvents = eventMap.get(date)
 
           const isUse = range?.useDate === date
           const isReceive = range?.receiveDate === date
           const isReturn = range?.returnBy === date
           const inRange = !!range && date > range.receiveDate && date < range.returnBy
-          // แพ็กเกจ 1 วัน วันใส่กับวันคืนเป็นวันเดียวกัน จึงแสดงได้หลายป้ายในช่องเดียว
+          // เช่า 1 วัน วันใส่กับวันคืนเป็นวันเดียวกัน จึงแสดงได้หลายป้ายในช่องเดียว
           const labels = [isReceive && 'รับชุด', isUse && 'ใส่', isReturn && 'คืน'].filter(Boolean).join('·')
           const sizesHere = bookedSizes.get(date) ?? []
 

@@ -5,7 +5,11 @@ export type OrderLine = {
   id: string
   startDate: string
   endDate: string
-  rentalPrice: number
+  rentalPrice: number // ค่าเช่ารวมของรายการ = baseRentalPrice + extraDaysFee
+  rentalDays: number
+  baseRentalPrice: number // ค่าเช่าวันแรก
+  extraDayRate: number // อัตราวันเพิ่มต่อวันที่ใช้จริงตอนจอง (รายการก่อน v2 = 0)
+  extraDaysFee: number
   depositAmount: number
   laundryFee: number
   size: string | null
@@ -88,6 +92,10 @@ type OrderRow = {
         start_date: string
         end_date: string
         rental_price: number | string
+        rental_days: number | null
+        base_rental_price: number | string | null
+        extra_day_rate: number | string | null
+        extra_days_fee: number | string | null
         deposit_amount: number | string
         laundry_fee: number | string
         pieces?: { name: string }[] | null
@@ -110,15 +118,21 @@ const ORDER_COLUMNS = `
 `
 
 const LINE_COLUMNS = `
-  id, start_date, end_date, rental_price, deposit_amount, laundry_fee, pieces,
+  id, start_date, end_date, rental_price, rental_days, base_rental_price, extra_day_rate, extra_days_fee,
+  deposit_amount, laundry_fee, pieces,
   product_variants ( size, products ( id, name, cover_image_url ) )
 `
 
 const LINE_COLUMNS_ADMIN = `
-  id, start_date, end_date, rental_price, deposit_amount, laundry_fee, pieces,
+  id, start_date, end_date, rental_price, rental_days, base_rental_price, extra_day_rate, extra_days_fee,
+  deposit_amount, laundry_fee, pieces,
   product_items ( item_code ),
   product_variants ( size, products ( id, name, cover_image_url ) )
 `
+
+function daysInclusive(start: string, end: string): number {
+  return Math.round((Date.parse(end) - Date.parse(start)) / 86_400_000) + 1
+}
 
 function mapOrder(o: OrderRow): OrderSummary {
   return {
@@ -157,6 +171,10 @@ function mapOrder(o: OrderRow): OrderSummary {
         startDate: i.start_date,
         endDate: i.end_date,
         rentalPrice: Number(i.rental_price),
+        rentalDays: i.rental_days ?? daysInclusive(i.start_date, i.end_date),
+        baseRentalPrice: Number(i.base_rental_price ?? i.rental_price),
+        extraDayRate: Number(i.extra_day_rate ?? 0),
+        extraDaysFee: Number(i.extra_days_fee ?? 0),
         depositAmount: Number(i.deposit_amount),
         laundryFee: Number(i.laundry_fee),
         size: i.product_variants?.size ?? null,

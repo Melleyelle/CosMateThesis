@@ -8,7 +8,6 @@ import CostumeGridCard, { CARD_MEDIA } from '@/app/components/customer/CostumeGr
 import { fetchCatalog, type CatalogCostume } from '@/utils/customer/fetchCatalog'
 import { useFavorites } from '@/utils/customer/favorites'
 import { useRequireLogin } from '@/utils/customer/authUser'
-import { customerHeldDays } from '@/utils/customer/bookingSettings'
 
 export default function FavoritesPage() {
   const loggedIn = useRequireLogin()
@@ -69,7 +68,6 @@ export default function FavoritesPage() {
               key={c.id}
               variant="gumroad"
               costume={c}
-              heldDays={customerHeldDays(c.minPricePackageDays)}
             />
           ))}
         </div>

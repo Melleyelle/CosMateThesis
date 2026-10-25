@@ -16,12 +16,14 @@ import { Metric, MetricStrip, Panel, StatusBadge, primaryButtonClass, secondaryB
 import OccupancyBoard from '../components/admin/dashboard/OccupancyBoard'
 import WeeklyRevenueChart from '../components/admin/dashboard/WeeklyRevenueChart'
 import TopCostumes, { type TopCostume } from '../components/admin/dashboard/TopCostumes'
+import RentalDaysChart from '../components/admin/dashboard/RentalDaysChart'
 import { StarDisplay } from '../components/customer/StarRating'
 import {
   BLOCKING,
   REVENUE,
   dayDiff,
   fetchDashboard,
+  rentalDaysStats,
   shipByDate,
   utilization,
   weeklyRevenue,
@@ -131,6 +133,10 @@ export default function AdminDashboardPage() {
   }, [data, today])
 
   const weeks = useMemo(() => (data ? weeklyRevenue(data.orders, 8) : []), [data])
+  const daysStats = useMemo(
+    () => (data ? rentalDaysStats(data.orders, addDays(today, -90), data.settings.maxRentalDays) : null),
+    [data, today],
+  )
 
   const top: TopCostume[] = useMemo(() => {
     if (!data) return []
@@ -270,9 +276,18 @@ export default function AdminDashboardPage() {
           >
             {data ? <WeeklyRevenueChart weeks={weeks} /> : <div className="m-5 h-48 animate-pulse rounded-xl bg-[#F5F4F8]" />}
           </Panel>
-          <Panel title="ชุดที่ถูกเช่ามากที่สุด" description="90 วันล่าสุด" bodyClassName="">
-            {data ? <TopCostumes items={top} /> : <div className="m-5 h-48 animate-pulse rounded-xl bg-[#F5F4F8]" />}
-          </Panel>
+          <div className="flex flex-col gap-6">
+            <Panel title="ชุดที่ถูกเช่ามากที่สุด" description="90 วันล่าสุด" bodyClassName="">
+              {data ? <TopCostumes items={top} /> : <div className="m-5 h-48 animate-pulse rounded-xl bg-[#F5F4F8]" />}
+            </Panel>
+            <Panel
+              title="ลูกค้าเช่ากี่วัน"
+              description="รายการในออเดอร์ที่ชำระแล้ว สั่งใน 90 วันล่าสุด"
+              bodyClassName=""
+            >
+              {daysStats ? <RentalDaysChart stats={daysStats} /> : <div className="m-5 h-48 animate-pulse rounded-xl bg-[#F5F4F8]" />}
+            </Panel>
+          </div>
         </div>
 
         {/* ---------------- รีวิวล่าสุด ---------------- */}

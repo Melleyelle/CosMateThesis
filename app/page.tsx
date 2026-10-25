@@ -20,7 +20,6 @@ import EmptyState from '@/app/components/EmptyState'
 import CostumeGridCard, { CARD_MEDIA } from '@/app/components/customer/CostumeGridCard'
 import Reveal from '@/app/components/Reveal'
 import { fetchCatalog, type CatalogCostume } from '@/utils/customer/fetchCatalog'
-import { customerHeldDays } from '@/utils/customer/bookingSettings'
 import { fetchEvents, type CalendarEvent } from '@/utils/customer/events'
 import { todayISO } from '@/utils/dateUtils'
 import { fetchSizeStock, type SizeStock } from '@/utils/sizeStock'
@@ -309,7 +308,6 @@ export default function HomePage() {
                 <CostumeGridCard
                   variant="gumroad"
                   costume={c}
-                  heldDays={customerHeldDays(c.minPricePackageDays)}
                   sizes={sizeStock ? (sizeStock.get(c.id) ?? []) : undefined}
                 />
               </Reveal>

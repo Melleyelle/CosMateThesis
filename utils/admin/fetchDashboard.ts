@@ -130,6 +130,29 @@ export function utilization(data: DashboardData, fromISO: string, days: number):
   return locked / (rentable.length * days)
 }
 
+// สถิติจำนวนวันเช่า (v2): นับทุกรายการในออเดอร์ที่ชำระแล้ว ที่สั่งตั้งแต่ sinceISO
+// ใช้ยอดที่บันทึกไว้ในรายการ ไม่คำนวณย้อนจากราคาชุดปัจจุบัน
+export function rentalDaysStats(orders: OrderSummary[], sinceISO: string, maxDays: number) {
+  const byDays = Array.from({ length: Math.max(1, maxDays) }, (_, i) => ({ days: i + 1, items: 0, extraFee: 0 }))
+  let items = 0
+  let totalDays = 0
+  let baseRevenue = 0
+  let extraRevenue = 0
+  for (const o of orders) {
+    if (!REVENUE.includes(o.status) || toISODate(new Date(o.createdAt)) < sinceISO) continue
+    for (const l of o.lines) {
+      items += 1
+      totalDays += l.rentalDays
+      baseRevenue += l.baseRentalPrice
+      extraRevenue += l.extraDaysFee
+      const bucket = byDays[Math.min(byDays.length, Math.max(1, l.rentalDays)) - 1]
+      bucket.items += 1
+      bucket.extraFee += l.extraDaysFee
+    }
+  }
+  return { items, avgDays: items ? totalDays / items : null, baseRevenue, extraRevenue, byDays }
+}
+
 // รายได้ค่าเช่า + ค่าซักต่อสัปดาห์ (เริ่มวันจันทร์) ย้อนหลัง n สัปดาห์ นับตามวันที่สั่ง
 export function weeklyRevenue(orders: OrderSummary[], weeks: number) {
   const today = parseISODate(todayISO())

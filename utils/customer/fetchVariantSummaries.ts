@@ -5,8 +5,7 @@ import { createClient } from '@/utils/client'
 export type VariantSummary = {
   id: string
   size: string
-  packagePrice: number
-  packageDays: number
+  packagePrice: number // ราคาเช่า 1 วัน (v2) — วันที่ 2 เป็นต้นไปคิดตาม calcRentalPrice()
   depositAmount: number
   laundryFee: number
   depositReturnHours: number
@@ -22,7 +21,6 @@ type Row = {
   id: string
   size: string
   package_price: number | string
-  package_days: number | null
   deposit_amount: number | string
   laundry_fee: number | string | null
   deposit_return_hours: number | null
@@ -49,7 +47,7 @@ export async function fetchVariantSummaries(
   const { data, error } = await supabase
     .from('product_variants')
     .select(
-      `id, size, package_price, package_days, deposit_amount, laundry_fee, deposit_return_hours,
+      `id, size, package_price, deposit_amount, laundry_fee, deposit_return_hours,
        product_items ( condition_status ),
        products ( id, name, character_name, series_name, cover_image_url, status )`,
     )
@@ -64,7 +62,6 @@ export async function fetchVariantSummaries(
       id: row.id,
       size: row.size,
       packagePrice: Number(row.package_price),
-      packageDays: row.package_days ?? 2,
       depositAmount: Number(row.deposit_amount),
       laundryFee: Number(row.laundry_fee ?? 0),
       depositReturnHours: row.deposit_return_hours ?? 72,
@@ -79,16 +76,27 @@ export async function fetchVariantSummaries(
   return { data: result, error: null }
 }
 
-// วันที่เริ่มใช้งานไม่ได้ของหลายไซส์พร้อมกัน (ใช้ตรวจของในตะกร้าว่ายังว่างอยู่ไหม)
-export async function fetchUnavailableDates(variantIds: string[], daysAhead = 180): Promise<Record<string, Set<string>>> {
+export const unavailableKey = (variantId: string, rentalDays: number) => `${variantId}:${rentalDays}`
+
+// วันที่เริ่มใช้งานไม่ได้ของหลาย (ไซส์, จำนวนวัน) พร้อมกัน (ใช้ตรวจของในตะกร้าว่ายังว่างอยู่ไหม)
+// ผลเก็บตาม unavailableKey() เพราะวันที่เริ่มไม่ได้ขึ้นกับจำนวนวันที่เช่า
+export async function fetchUnavailableDates(
+  requests: { variantId: string; rentalDays: number }[],
+  daysAhead = 180,
+): Promise<Record<string, Set<string>>> {
   const supabase = createClient()
   const result: Record<string, Set<string>> = {}
   if (!supabase) return result
 
+  const unique = new Map(requests.map((r) => [unavailableKey(r.variantId, r.rentalDays), r]))
   await Promise.all(
-    Array.from(new Set(variantIds)).map(async (id) => {
-      const { data } = await supabase.rpc('get_unavailable_start_dates', { p_variant_id: id, p_days_ahead: daysAhead })
-      result[id] = new Set(((data ?? []) as string[]).map((d) => String(d).slice(0, 10)))
+    Array.from(unique.entries()).map(async ([key, r]) => {
+      const { data } = await supabase.rpc('get_unavailable_start_dates', {
+        p_variant_id: r.variantId,
+        p_days_ahead: daysAhead,
+        p_rental_days: r.rentalDays,
+      })
+      result[key] = new Set(((data ?? []) as string[]).map((d) => String(d).slice(0, 10)))
     }),
   )
   return result

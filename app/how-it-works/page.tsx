@@ -11,9 +11,8 @@ import {
 } from '@/utils/customer/bookingSettings'
 import { formatBaht } from '@/utils/dateUtils'
 
-// แพ็กเกจมาตรฐานของร้าน (วันใช้งาน + วันส่งคืน) ใช้เป็นตัวอย่างบนหน้านี้เท่านั้น
-// ชุดแต่ละตัวกำหนด package_days เองได้ หน้ารายละเอียดชุดจะแสดงตามจริง
-const EXAMPLE_PACKAGE_DAYS = 2
+// จำนวนวันเช่าตัวอย่างบนหน้านี้เท่านั้น — ลูกค้าเลือกจำนวนวันเองตอนจอง (min_rental_days–max_rental_days)
+const EXAMPLE_RENTAL_DAYS = 2
 
 // นโยบายร้านที่ยังไม่อยู่ใน booking_settings (ดู PRODUCT.md) ถ้าเปลี่ยนนโยบาย แก้ที่นี่ที่เดียว
 const CANCEL_FREE_DAYS_BEFORE = 3
@@ -35,11 +34,12 @@ function buildPhases(s: BookingSettings): Phase[] {
           tip: 'กดหัวใจเก็บชุดที่ชอบไว้ แล้วค่อยกลับมาเทียบทีหลัง',
         },
         {
-          title: 'เลือกไซส์และวันที่จะใส่',
+          title: 'เลือกไซส์ จำนวนวัน และวันที่จะใส่',
           when: `ล่วงหน้าอย่างน้อย ${s.minLeadDays} วัน`,
           text: (
             <>
-              ปฏิทินให้กดได้เฉพาะวันที่ไซส์นั้นว่างจริง คุณเลือกแค่<b className="font-semibold text-ink">วันที่จะใส่ชุด</b>{' '}
+              เลือกว่าจะเช่ากี่วัน ({s.minRentalDays}–{s.maxRentalDays} วัน) แล้วเลือก
+              <b className="font-semibold text-ink">วันที่จะใส่ชุด</b> ปฏิทินให้กดได้เฉพาะวันที่ไซส์นั้นว่างตลอดช่วงที่เช่า
               ระบบคำนวณวันรับชุดและวันส่งคืนให้เอง
             </>
           ),
@@ -77,9 +77,9 @@ function buildPhases(s: BookingSettings): Phase[] {
       steps: [
         {
           title: 'ใส่ชุดไปงาน',
-          when: `ใช้ได้ ${EXAMPLE_PACKAGE_DAYS} วัน*`,
+          when: `ใช้ได้ ${EXAMPLE_RENTAL_DAYS} วัน*`,
           text: 'ใส่ไปงานคอสเพลย์ ปาร์ตี้ หรือถ่ายรูปได้เต็มที่ ระวังแค่สีทาตัวที่ล้างไม่ออก ของมีคมที่เกี่ยวผ้าขาด และการเปียกน้ำนาน ๆ',
-          tip: '*จำนวนวันขึ้นกับชุด ดูได้ในหน้ารายละเอียดชุด',
+          tip: `*ตัวอย่าง เลือกได้ ${s.minRentalDays}–${s.maxRentalDays} วันตอนจอง`,
         },
       ],
     },
@@ -301,7 +301,11 @@ export default function HowItWorksPage() {
             <p className="mt-2 text-body text-secondary">ทุกยอดแสดงครบในหน้าชำระเงินก่อนกดยืนยัน</p>
 
             <dl className="mt-6">
-              <ReceiptRow label="ค่าเช่า" value="ตามชุด" />
+              <ReceiptRow
+                label="ค่าเช่า"
+                value={`วันแรกตามชุด · วันถัดไป +${formatBaht(settings.extraDayRate)}/วัน`}
+                note={`เช่าแยกชิ้น วันถัดไปคิด ${settings.pieceExtraDayPercent}% ของราคาชิ้น แต่ไม่เกิน ${formatBaht(settings.extraDayRate)}/วัน`}
+              />
               <ReceiptRow label="ค่าซักทำความสะอาด" value="บางชุด" />
               <ReceiptRow label="เงินมัดจำ" value="ตามชุด · ได้คืน" note="ดูยอดมัดจำของแต่ละชุดในหน้ารายละเอียดชุด" />
               <ReceiptRow
@@ -504,7 +508,7 @@ function ListItem({ children }: { children: ReactNode }) {
 }
 
 // ไทม์ไลน์ตัวอย่าง: คำนวณจากค่าตั้งค่าจริง แบบเดียวกับ create_booking()
-// ล็อก = [วันใช้งาน - before, วันใช้งาน + package_days - 1 + after]
+// ล็อก = [วันใช้งาน - before, วันใช้งาน + จำนวนวันเช่า - 1 + after]
 function RentalTimelineExample({ settings }: { settings: BookingSettings }) {
   type Day = { key: string; label: string; kind: 'receive' | 'use' | 'return' | 'buffer' }
   const days: Day[] = []
@@ -517,11 +521,11 @@ function RentalTimelineExample({ settings }: { settings: BookingSettings }) {
     })
   }
   days.push({ key: 'use', label: 'วันใช้งาน', kind: 'use' })
-  for (let i = 1; i < EXAMPLE_PACKAGE_DAYS; i++) {
+  for (let i = 1; i < EXAMPLE_RENTAL_DAYS; i++) {
     days.push({
       key: `r${i}`,
-      label: i === EXAMPLE_PACKAGE_DAYS - 1 ? 'ส่งคืน' : 'ใช้งานต่อ',
-      kind: i === EXAMPLE_PACKAGE_DAYS - 1 ? 'return' : 'use',
+      label: i === EXAMPLE_RENTAL_DAYS - 1 ? 'ส่งคืน' : 'ใช้งานต่อ',
+      kind: i === EXAMPLE_RENTAL_DAYS - 1 ? 'return' : 'use',
     })
   }
   for (let i = 1; i <= settings.bufferDaysAfter; i++) {
@@ -542,7 +546,7 @@ function RentalTimelineExample({ settings }: { settings: BookingSettings }) {
   return (
     <section className="border-t border-line py-12 lg:grid lg:grid-cols-12 lg:gap-12 lg:py-14">
       <div className="lg:col-span-4">
-        <h2 className="text-h1 font-bold">เช่า {EXAMPLE_PACKAGE_DAYS} วัน นับยังไง</h2>
+        <h2 className="text-h1 font-bold">เช่า {EXAMPLE_RENTAL_DAYS} วัน นับยังไง</h2>
         <p className="mt-2 max-w-[30em] text-body text-secondary">
           คุณเลือกแค่<b className="font-semibold text-ink">วันใช้งาน</b> วันเช่านับจากวันใช้งานถึงวันส่งคืน
           ส่วนวันที่ชุดเดินทางมาถึงคุณ<b className="font-semibold text-ink">ไม่นับ</b>เป็นวันเช่า

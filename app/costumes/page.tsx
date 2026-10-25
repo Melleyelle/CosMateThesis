@@ -29,7 +29,6 @@ import ExploreFilters, {
 } from '@/app/components/customer/ExploreFilters'
 import { fetchCatalog, fetchUnavailableStartDates, type CatalogCostume } from '@/utils/customer/fetchCatalog'
 import { formatThaiDate } from '@/utils/dateUtils'
-import { customerHeldDays } from '@/utils/customer/bookingSettings'
 import { COLOR_OPTIONS, THEME_OPTIONS } from '@/utils/customer/filterOptions'
 import { fetchSizeStock, type SizeStock } from '@/utils/sizeStock'
 
@@ -562,7 +561,6 @@ function ExploreInner() {
                     key={c.id}
                     variant="gumroad"
                     costume={c}
-                    heldDays={customerHeldDays(c.minPricePackageDays)}
                     sizes={sizeStock ? (sizeStock.get(c.id) ?? []) : undefined}
                   />
                 ))}

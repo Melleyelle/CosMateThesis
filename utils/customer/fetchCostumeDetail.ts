@@ -18,8 +18,7 @@ export type CostumeSizeChart = {
 export type CostumeVariant = {
   id: string
   size: string
-  packagePrice: number
-  packageDays: number
+  packagePrice: number // ราคาเช่า 1 วัน (v2)
   depositAmount: number
   depositReturnHours: number
   laundryFee: number
@@ -58,7 +57,6 @@ type CostumeVariantRow = {
   id: string
   size: string
   package_price: number | string | null
-  package_days: number | string | null
   deposit_amount: number | string | null
   deposit_return_hours: number | string | null
   laundry_fee: number | string | null
@@ -159,7 +157,7 @@ export async function fetchCostumeDetail(productId: string): Promise<{
       product_images ( image_url, display_order ),
       product_inclusions ( id, name, image_url, display_order ),
       product_variants (
-        id, size, package_price, package_days, deposit_amount, deposit_return_hours, laundry_fee,
+        id, size, package_price, deposit_amount, deposit_return_hours, laundry_fee,
         size_charts ( chest_in, waist_in, hip_in, length_in, recommended_height_min, recommended_height_max ),
         product_items ( condition_status )
       )
@@ -221,7 +219,6 @@ export async function fetchCostumeDetail(productId: string): Promise<{
     id: variant.id,
     size: variant.size,
     packagePrice: Number(variant.package_price ?? 0),
-    packageDays: Number(variant.package_days ?? 2),
     depositAmount: Number(variant.deposit_amount ?? 0),
     depositReturnHours: Number(variant.deposit_return_hours ?? 72),
     laundryFee: Number(variant.laundry_fee ?? 0),

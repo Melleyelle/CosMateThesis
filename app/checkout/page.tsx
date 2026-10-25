@@ -22,6 +22,7 @@ import {
   DEFAULT_BOOKING_SETTINGS,
   fetchBookingSettings,
   getRentalTimeline,
+  minStartOffset,
   type BookingSettings,
 } from '@/utils/customer/bookingSettings'
 import { isDateProblem, translateRpcError } from '@/utils/bookingErrors'
@@ -70,7 +71,7 @@ function CheckoutInner() {
     if (fromCart.length > 0) return fromCart
     const variantId = searchParams.get('variant')
     const date = searchParams.get('date')
-    return decodeCheckoutItems(variantId && isISODate(date) ? `${variantId}:${date}` : null)
+    return decodeCheckoutItems(variantId && isISODate(date) ? `${variantId}:${date}:${searchParams.get('days') ?? 1}` : null)
   }, [searchParams])
   const fromCart = !!searchParams.get('items')
 
@@ -196,23 +197,25 @@ function CheckoutInner() {
     }
   }, [requested])
 
-  const minStart = addDays(todayISO(), Math.max(settings.minLeadDays, settings.bufferDaysBefore))
+  const minStart = addDays(todayISO(), minStartOffset(settings))
   const lines = requested.map((r) => {
     const v = variants[r.variantId]
-    const price = v ? priceLine(v, r.pieces, pieces) : null
+    const price = v ? priceLine(v, r.pieces, pieces, r.rentalDays, settings) : null
     return {
       key: cartKeyOf(r),
       request: r,
       variant: v,
       price,
-      timeline: v ? getRentalTimeline(r.startDate, v.packageDays, settings) : null,
+      timeline: v ? getRentalTimeline(r.startDate, r.rentalDays, settings) : null,
       problem: !v
         ? 'ชุดหรือไซส์นี้ปิดให้เช่าแล้ว'
         : price?.invalid
           ? 'บางชิ้นที่เลือกไม่เปิดให้เช่าแยกแล้ว'
-          : r.startDate < minStart
-            ? `วันใช้งานกระชั้นเกินไป (ต้องจองล่วงหน้าอย่างน้อย ${settings.minLeadDays} วัน)`
-            : null,
+          : r.rentalDays < settings.minRentalDays || r.rentalDays > settings.maxRentalDays
+            ? `จำนวนวันเช่าต้องอยู่ระหว่าง ${settings.minRentalDays}–${settings.maxRentalDays} วัน`
+            : r.startDate < minStart
+              ? `วันใช้งานกระชั้นเกินไป (ต้องจองล่วงหน้าอย่างน้อย ${settings.minLeadDays} วัน)`
+              : null,
     }
   })
   const hasProblem = lines.some((l) => l.problem)
@@ -267,6 +270,7 @@ function CheckoutInner() {
       p_items: requested.map((r) => ({
         variant_id: r.variantId,
         start_date: r.startDate,
+        rental_days: r.rentalDays,
         ...(r.pieces ? { pieces: r.pieces } : {}),
       })),
       p_ship_name: address.name.trim(),
@@ -583,6 +587,17 @@ function CheckoutInner() {
                   {l.variant && <p className="text-[#263544]/80">ไซส์: {l.variant.size}</p>}
                   {l.price?.pieceNames && (
                     <p className="text-[#263544]/80">เช่าแยกชิ้น: {l.price.pieceNames.join(', ')}</p>
+                  )}
+                  {l.price && (
+                    <p className="text-[#263544]/80">
+                      เช่า {l.price.rentalDays} วัน · {formatBaht(l.price.rental)}
+                      {l.price.rentalDays > 1 && (
+                        <span className="block text-[#263544]/60">
+                          วันแรก {formatBaht(l.price.baseRental)} + {l.price.rentalDays - 1} วัน ×{' '}
+                          {formatBaht(l.price.dayRate)}
+                        </span>
+                      )}
+                    </p>
                   )}
                   {l.timeline && (
                     <div className="mt-2">

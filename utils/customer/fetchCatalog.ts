@@ -16,8 +16,7 @@ export type CatalogCostume = {
   rentableVariants: { id: string; size: string }[]
   colorKeys: string[]
   themeKeys: string[]
-  minPrice: number | null
-  minPricePackageDays: number | null
+  minPrice: number | null // ราคาเช่าวันแรกที่ถูกที่สุดในทุกไซส์
   avgRating: number | null
   reviewCount: number
 }
@@ -26,7 +25,6 @@ type ProductVariantRow = {
   id: string
   size: string | null
   package_price: number | string | null
-  package_days: number | string | null
   product_items: { condition_status: string }[] | null
 }
 
@@ -61,7 +59,7 @@ export async function fetchCatalog(limit?: number): Promise<{ data: CatalogCostu
       `
       id, name, character_name, series_name, franchise_type, costume_category, gender_tag,
       color_tags, theme_tags, cover_image_url, created_at,
-      product_variants ( id, size, package_price, package_days, product_items ( condition_status ) )
+      product_variants ( id, size, package_price, product_items ( condition_status ) )
     `,
     )
     .eq('status', 'active')
@@ -95,14 +93,10 @@ export async function fetchCatalog(limit?: number): Promise<{ data: CatalogCostu
 
   const mapped = products.map((product): CatalogCostume => {
     const variants = product.product_variants ?? []
-    const pricedVariants = variants
+    const prices = variants
       .filter((variant) => variant.package_price != null)
-      .map((variant) => ({
-        price: Number(variant.package_price),
-        days: variant.package_days == null ? null : Number(variant.package_days),
-      }))
-      .filter((variant) => Number.isFinite(variant.price))
-      .sort((a, b) => a.price - b.price)
+      .map((variant) => Number(variant.package_price))
+      .filter((price) => Number.isFinite(price))
     const rating = ratings.get(product.id)
     const rentableVariants = variants
       .filter((variant) => (variant.product_items ?? []).some((item) => item.condition_status === 'available'))
@@ -123,8 +117,7 @@ export async function fetchCatalog(limit?: number): Promise<{ data: CatalogCostu
       rentableVariants,
       colorKeys: colorKeysOf(product.color_tags), // รองรับทั้งคีย์ (pink) และชื่อไทย (ชมพู) ที่บันทึกไว้แบบเก่า
       themeKeys: stringArray(product.theme_tags),
-      minPrice: pricedVariants[0]?.price ?? null,
-      minPricePackageDays: pricedVariants[0]?.days ?? null,
+      minPrice: prices.length > 0 ? Math.min(...prices) : null,
       avgRating: rating && rating.count > 0 ? rating.sum / rating.count : null,
       reviewCount: rating?.count ?? 0,
     }
@@ -136,11 +129,13 @@ export async function fetchCatalog(limit?: number): Promise<{ data: CatalogCostu
 /**
  * วันเริ่มใช้งาน (วันใส่ชุด) ที่จองไม่ได้ของหลายไซส์ — RPC เดียวกับปฏิทินหน้ารายละเอียดชุด
  * จึงคิด buffer ขนส่ง/ซัก และจำนวนชุดจริงเหมือนกันทุกจุด
+ * ตัวกรองหน้ารวมชุดถามแค่ "วันนั้นใส่ได้อย่างน้อย rentalDays วันไหม" (ค่าเริ่มต้น 1 วัน) ลูกค้าเลือกจำนวนวันจริงที่หน้าชุด
  * ยิงทีละกลุ่มเพื่อไม่ให้ส่งคำขอพร้อมกันมากเกินไปเมื่อแคตตาล็อกใหญ่
  */
 export async function fetchUnavailableStartDates(
   variantIds: string[],
   daysAhead: number,
+  rentalDays = 1,
 ): Promise<{ data: Map<string, Set<string>>; error: string | null }> {
   const result = new Map<string, Set<string>>()
   const supabase = createClient()
@@ -151,7 +146,9 @@ export async function fetchUnavailableStartDates(
   for (let i = 0; i < ids.length; i += BATCH) {
     const batch = ids.slice(i, i + BATCH)
     const responses = await Promise.all(
-      batch.map((id) => supabase.rpc('get_unavailable_start_dates', { p_variant_id: id, p_days_ahead: daysAhead })),
+      batch.map((id) =>
+        supabase.rpc('get_unavailable_start_dates', { p_variant_id: id, p_days_ahead: daysAhead, p_rental_days: rentalDays }),
+      ),
     )
     for (const [j, { data, error }] of responses.entries()) {
       if (error) return { data: new Map(), error: error.message }

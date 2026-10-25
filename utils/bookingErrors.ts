@@ -8,6 +8,7 @@ const MESSAGES: Record<string, string> = {
   VARIANT_NOT_FOUND: 'ชุดหรือไซส์นี้ปิดให้เช่าแล้ว กรุณาเลือกชุดอื่น',
   START_DATE_TOO_SOON: 'วันที่เลือกกระชั้นเกินไป กรุณาเลือกวันที่ไกลกว่านี้',
   DATE_UNAVAILABLE: 'วันที่เลือกเพิ่งถูกจองไป กรุณากลับไปเลือกวันใหม่',
+  INVALID_RENTAL_DAYS: 'จำนวนวันเช่าไม่ถูกต้อง กรุณากลับไปเลือกจำนวนวันใหม่',
   ORDER_NOT_FOUND: 'ไม่พบออเดอร์นี้',
   INVALID_TRANSITION: 'เปลี่ยนสถานะนี้ไม่ได้ สถานะออเดอร์อาจถูกเปลี่ยนไปแล้ว ลองรีเฟรชหน้า',
   NOT_ADMIN: 'บัญชีนี้ไม่มีสิทธิ์แอดมิน',
@@ -42,5 +43,10 @@ export function translateRpcError(message: string | null | undefined): string {
 
 // ใช้เช็คว่าต้องพาลูกค้ากลับไปเลือกวันใหม่หรือไม่
 export function isDateProblem(message: string | null | undefined): boolean {
-  return !!message && (message.includes('DATE_UNAVAILABLE') || message.includes('START_DATE_TOO_SOON'))
+  return (
+    !!message &&
+    (message.includes('DATE_UNAVAILABLE') ||
+      message.includes('START_DATE_TOO_SOON') ||
+      message.includes('INVALID_RENTAL_DAYS'))
+  )
 }

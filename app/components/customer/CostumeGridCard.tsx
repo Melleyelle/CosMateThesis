@@ -3,7 +3,7 @@ import { ImageIcon, StarIcon } from '@phosphor-icons/react'
 import { formatBaht } from '@/utils/dateUtils'
 import { COLOR_OPTIONS } from '@/utils/customer/filterOptions'
 import SizeStockChips from '@/app/components/SizeStockChips'
-import { pricesVary, type SizeStock } from '@/utils/sizeStock'
+import type { SizeStock } from '@/utils/sizeStock'
 
 const COLOR_BY_KEY = Object.fromEntries(COLOR_OPTIONS.map((c) => [c.key, c]))
 
@@ -18,7 +18,6 @@ interface CostumeGridCardProps {
     avgRating?: number | null
     reviewCount?: number
   }
-  heldDays: number
   /** ไซส์และจำนวนที่พร้อมเช่า · undefined = กำลังโหลด (จองพื้นที่ไว้ การ์ดไม่กระตุก) */
   sizes?: SizeStock[]
   /** v2 = design system ใหม่ (สี ink ขนาดกะทัดรัด) · ทยอยย้ายทีละหน้า หน้าที่ยังไม่ย้ายใช้ค่าเดิม
@@ -39,10 +38,11 @@ const s = {
 
 const MAX_SWATCHES = 4
 
-// ใช้ร่วมกันทั้งการ์ด legacy และ v2 — ถ้าราคาต่างกันตามไซส์ ขึ้นต้นด้วย "เริ่ม" ลูกค้าจะไม่คิดว่าทุกไซส์ราคานี้
-function priceLabel(minPrice: number | null | undefined, heldDays: number, sizes?: SizeStock[]) {
+// ใช้ร่วมกันทั้งการ์ด legacy และ v2 — ราคาวันแรกของไซส์ที่ถูกที่สุด
+// ขึ้นต้นด้วย "เริ่มต้น" เสมอ เพราะราคาจริงขึ้นกับจำนวนวันเช่า (และไซส์) ที่ลูกค้าเลือกในหน้าชุด
+function priceLabel(minPrice: number | null | undefined) {
   if (minPrice == null) return 'ยังไม่ตั้งราคา'
-  return `${sizes && pricesVary(sizes) ? 'เริ่ม ' : ''}${formatBaht(minPrice)} / ${heldDays} วัน`
+  return `เริ่มต้น ${formatBaht(minPrice)}`
 }
 
 // คะแนนรีวิวแสดงทุกการ์ด (เนื้อหาเท่ากันทุกใบ) — ยังไม่มีรีวิวแสดง 0.0
@@ -57,9 +57,8 @@ function ratingValue(costume: CostumeGridCardProps['costume']) {
 /** สัดส่วนรูปของการ์ด v2 — export ให้โครงการ์ดตอนโหลด (skeleton) สูงเท่าการ์ดจริง */
 export const CARD_MEDIA = 'aspect-[4/5] max-h-[50vh]'
 
-export default function CostumeGridCard({ costume, heldDays, sizes, variant = 'legacy' }: CostumeGridCardProps) {
-  if (variant !== 'legacy')
-    return <CostumeGridCardV2 costume={costume} heldDays={heldDays} sizes={sizes} gumroad={variant === 'gumroad'} />
+export default function CostumeGridCard({ costume, sizes, variant = 'legacy' }: CostumeGridCardProps) {
+  if (variant !== 'legacy') return <CostumeGridCardV2 costume={costume} sizes={sizes} gumroad={variant === 'gumroad'} />
   const colors = (costume.colorKeys ?? []).map((k) => COLOR_BY_KEY[k]).filter(Boolean)
 
   return (
@@ -109,7 +108,7 @@ export default function CostumeGridCard({ costume, heldDays, sizes, variant = 'l
           {sizes && <SizeStockChips sizes={sizes} max={3} />}
         </div>
         <p className={`mt-auto pt-2 font-bold ${s.price}`}>
-          {priceLabel(costume.minPrice, heldDays, sizes)}
+          {priceLabel(costume.minPrice)}
         </p>
       </div>
     </Link>
@@ -121,7 +120,6 @@ export default function CostumeGridCard({ costume, heldDays, sizes, variant = 'l
 // gumroad: เส้น 1px · hover ยกซ้ายบน + เงาแข็ง (.lift) · รูปคั่นด้วยเส้น 1px เหมือนกรอบรูป
 function CostumeGridCardV2({
   costume,
-  heldDays,
   sizes,
   gumroad = false,
 }: Omit<CostumeGridCardProps, 'variant'> & { gumroad?: boolean }) {
@@ -186,7 +184,7 @@ function CostumeGridCardV2({
         {/* การ์ดแคบบนมือถือ: คะแนนตกลงบรรทัดใหม่แทนการบีบราคา */}
         <div className="mt-auto flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 pt-2">
           <p className="text-h3 font-bold text-brand">
-            {priceLabel(costume.minPrice, heldDays, sizes)}
+            {priceLabel(costume.minPrice)}
           </p>
           {/* แสดงทุกการ์ดให้เนื้อหาเท่ากัน · ยังไม่มีรีวิว = 0.0 (0) ดาวสีเดียวกัน */}
           <p

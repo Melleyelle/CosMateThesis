@@ -435,6 +435,11 @@ export default function OrderPage() {
                     {line.pieceNames && (
                       <p className="text-[#263544]/60">เช่าแยกชิ้น: {line.pieceNames.join(', ')}</p>
                     )}
+                    <p className="text-[#263544]/60">
+                      เช่า {line.rentalDays} วัน · ค่าเช่า {formatBaht(line.rentalPrice)}
+                      {line.extraDaysFee > 0 &&
+                        ` (วันแรก ${formatBaht(line.baseRentalPrice)} + ${line.rentalDays - 1} วัน × ${formatBaht(line.extraDayRate)})`}
+                    </p>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
                       <DateChip label="ได้รับชุด" date={addDays(line.startDate, -bufferBefore)} />
                       <DateChip label="วันใช้งาน" date={line.startDate} highlight />

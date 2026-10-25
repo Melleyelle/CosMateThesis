@@ -20,26 +20,28 @@ import { fetchPieces, priceLine, type PieceInfo } from '@/utils/customer/pieces'
 import {
   fetchUnavailableDates,
   fetchVariantSummaries,
+  unavailableKey,
   type VariantSummary,
 } from '@/utils/customer/fetchVariantSummaries'
 import { fetchCatalog, type CatalogCostume } from '@/utils/customer/fetchCatalog'
 import { useRequireLogin } from '@/utils/customer/authUser'
 import {
   DEFAULT_BOOKING_SETTINGS,
-  customerHeldDays,
   fetchBookingSettings,
   getRentalTimeline,
+  minStartOffset,
   type BookingSettings,
 } from '@/utils/customer/bookingSettings'
 import { addDays, formatBaht, formatThaiDateLong, todayISO } from '@/utils/dateUtils'
 
-type ItemStatus = 'ok' | 'closed' | 'pieces_changed' | 'too_soon' | 'booked'
+type ItemStatus = 'ok' | 'closed' | 'pieces_changed' | 'too_soon' | 'booked' | 'bad_days'
 
 const STATUS_MESSAGE: Record<Exclude<ItemStatus, 'ok'>, string> = {
   closed: 'ชุดหรือไซส์นี้ปิดให้เช่าแล้ว',
   pieces_changed: 'บางชิ้นที่เลือกไม่เปิดให้เช่าแยกแล้ว กรุณาเลือกชิ้นใหม่',
   too_soon: 'วันที่เลือกกระชั้นเกินไปแล้ว กรุณาเลือกวันใหม่',
   booked: 'วันที่เลือกถูกจองไปแล้ว กรุณาเลือกวันใหม่',
+  bad_days: 'จำนวนวันเช่านี้ไม่เปิดให้จองแล้ว กรุณาเลือกใหม่',
 }
 
 export default function CartPage() {
@@ -56,14 +58,21 @@ export default function CartPage() {
   const [selectionReady, setSelectionReady] = useState(false)
   const [recommended, setRecommended] = useState<CatalogCostume[]>([])
 
-  // โหลดใหม่เมื่อชุดของไซส์ในตะกร้าเปลี่ยน (เพิ่ม/ลบไซส์ใหม่)
-  const variantKey = useMemo(() => Array.from(new Set(cart.map((i) => i.variantId))).sort().join(','), [cart])
+  // โหลดใหม่เมื่อชุด (ไซส์, จำนวนวัน) ในตะกร้าเปลี่ยน — วันที่ว่างขึ้นกับจำนวนวันเช่าของแต่ละรายการ
+  const requestKey = useMemo(
+    () => Array.from(new Set(cart.map((i) => unavailableKey(i.variantId, i.rentalDays)))).sort().join(','),
+    [cart],
+  )
 
   useEffect(() => {
     if (!ready) return
     let cancelled = false
-    const ids = variantKey ? variantKey.split(',') : []
-    Promise.all([fetchVariantSummaries(ids), fetchUnavailableDates(ids), fetchBookingSettings()]).then(
+    const requests = (requestKey ? requestKey.split(',') : []).map((k) => {
+      const [variantId, days] = k.split(':')
+      return { variantId, rentalDays: Number(days) }
+    })
+    const ids = requests.map((r) => r.variantId)
+    Promise.all([fetchVariantSummaries(ids), fetchUnavailableDates(requests), fetchBookingSettings()]).then(
       async ([v, u, s]) => {
         const p = await fetchPieces(Object.values(v.data).map((x) => x.productId))
         if (cancelled) return
@@ -77,16 +86,18 @@ export default function CartPage() {
     return () => {
       cancelled = true
     }
-  }, [ready, variantKey])
+  }, [ready, requestKey])
 
-  const minStart = addDays(todayISO(), Math.max(settings.minLeadDays, settings.bufferDaysBefore))
+  const minStart = addDays(todayISO(), minStartOffset(settings))
+  const priceOf = (v: VariantSummary, item: CartItem) => priceLine(v, item.pieces, pieces, item.rentalDays, settings)
 
   function statusOf(item: CartItem): ItemStatus {
     const v = variants[item.variantId]
     if (!v) return 'closed'
-    if (priceLine(v, item.pieces, pieces).invalid) return 'pieces_changed'
+    if (priceOf(v, item).invalid) return 'pieces_changed'
+    if (item.rentalDays < settings.minRentalDays || item.rentalDays > settings.maxRentalDays) return 'bad_days'
     if (item.startDate < minStart) return 'too_soon'
-    if (unavailable[item.variantId]?.has(item.startDate)) return 'booked'
+    if (unavailable[unavailableKey(item.variantId, item.rentalDays)]?.has(item.startDate)) return 'booked'
     return 'ok'
   }
 
@@ -110,7 +121,7 @@ export default function CartPage() {
     (acc, i) => {
       const v = variants[i.variantId]
       if (!v) return acc
-      const p = priceLine(v, i.pieces, pieces)
+      const p = priceOf(v, i)
       return {
         rental: acc.rental + p.rental,
         deposit: acc.deposit + p.deposit,
@@ -200,8 +211,8 @@ export default function CartPage() {
                 const v = variants[item.variantId]
                 const status = statusOf(item)
                 const isSelected = selected.includes(keyOf(item)) && status === 'ok'
-                const timeline = v ? getRentalTimeline(item.startDate, v.packageDays, settings) : null
-                const line = v ? priceLine(v, item.pieces, pieces) : null
+                const timeline = v ? getRentalTimeline(item.startDate, item.rentalDays, settings) : null
+                const line = v ? priceOf(v, item) : null
 
                 return (
                   <li
@@ -271,10 +282,18 @@ export default function CartPage() {
                           </div>
                         )}
                         {v && line && (
-                          <p className="text-xl font-extrabold text-brand">
-                            {formatBaht(line.rental)}
-                            <span className="text-base font-semibold text-[#263544]/60"> / {customerHeldDays(v.packageDays)} วัน</span>
-                          </p>
+                          <div className="text-right">
+                            <p className="text-xl font-extrabold text-brand">
+                              {formatBaht(line.rental)}
+                              <span className="text-base font-semibold text-[#263544]/60"> / {line.rentalDays} วัน</span>
+                            </p>
+                            {line.rentalDays > 1 && (
+                              <p className="text-sm text-[#263544]/60">
+                                วันแรก {formatBaht(line.baseRental)} + {line.rentalDays - 1} วัน ×{' '}
+                                {formatBaht(line.dayRate)}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </div>
 
@@ -284,7 +303,7 @@ export default function CartPage() {
                           {STATUS_MESSAGE[status]}
                           {v && status !== 'closed' && (
                             <Link href={`/costumes/${v.productId}`} className="font-semibold underline">
-                              {status === 'pieces_changed' ? 'เลือกชิ้นใหม่' : 'เลือกวันใหม่'}
+                              {status === 'pieces_changed' ? 'เลือกชิ้นใหม่' : status === 'bad_days' ? 'เลือกใหม่' : 'เลือกวันใหม่'}
                             </Link>
                           )}
                         </div>
@@ -331,7 +350,6 @@ export default function CartPage() {
                 key={c.id}
                 variant="gumroad"
                 costume={c}
-                heldDays={customerHeldDays(c.minPricePackageDays)}
               />
             ))}
           </div>

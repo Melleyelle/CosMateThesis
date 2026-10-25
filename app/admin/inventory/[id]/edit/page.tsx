@@ -160,7 +160,7 @@ export default function EditCostumePage() {
         id: originalVariantIds.has(v.id) ? v.id : null,
         size: v.size,
         package_price: v.packagePrice,
-        package_days: v.packageDays,
+        package_days: v.packageDays || 1, // เลิกใช้แล้ว (v2) — คงค่าเดิมของไซส์ที่มีอยู่
         deposit_amount: v.depositAmount,
         deposit_return_hours: v.depositReturnHours,
         laundry_fee: v.laundryFee || '0',

@@ -897,6 +897,15 @@ function OrderDetails({ order, detail, openByDefault }: { order: OrderSummary; d
                     <CalendarBlankIcon size={14} className="flex-none text-muted" />
                     ใช้ {formatThaiDateWithWeekday(l.startDate)} → คืน {formatThaiDateWithWeekday(l.endDate)}
                   </p>
+                  <p className="mt-0.5 tabular-nums text-secondary">
+                    เช่า {l.rentalDays} วัน · <span className="font-semibold text-ink">{formatBaht(l.rentalPrice)}</span>
+                    {l.extraDaysFee > 0 && (
+                      <span className="text-muted">
+                        {' '}
+                        (วันแรก {formatBaht(l.baseRentalPrice)} + {l.rentalDays - 1} วัน × {formatBaht(l.extraDayRate)})
+                      </span>
+                    )}
+                  </p>
                 </li>
               ))}
             </ul>

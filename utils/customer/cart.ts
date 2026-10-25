@@ -18,20 +18,28 @@ function cartStorageKey(): string | null {
 export type CartKey = {
   variantId: string
   startDate: string
+  rentalDays: number // จำนวนวันเช่าที่ลูกค้าเลือก (ของในตะกร้าก่อน v2 ไม่มีค่านี้ = 1 วัน)
   pieces?: string[] // id ชิ้นส่วนที่เช่าแยก (เรียงแล้ว) — ไม่มี = เช่าทั้งชุด
 }
 
 export type CartItem = CartKey
 
-// ไซส์ + วัน + ชิ้นที่เลือก คือหนึ่งรายการ (ไซส์เดียวกันวันเดียวกันแต่คนละชุดชิ้น = คนละรายการ)
-export function cartKeyOf({ variantId, startDate, pieces }: CartKey): string {
+// ไซส์ + วัน + จำนวนวัน + ชิ้นที่เลือก คือหนึ่งรายการ (ต่างกันข้อใดข้อหนึ่ง = คนละรายการ)
+export function cartKeyOf({ variantId, startDate, rentalDays, pieces }: CartKey): string {
   // ใช้ "." คั่นชิ้น ไม่ใช้ "+" เพราะใน query string "+" ถูกอ่านเป็นช่องว่าง
-  return pieces && pieces.length > 0 ? `${variantId}:${startDate}:${pieces.join('.')}` : `${variantId}:${startDate}`
+  const base = `${variantId}:${startDate}:${rentalDays}`
+  return pieces && pieces.length > 0 ? `${base}:${pieces.join('.')}` : base
 }
 
 function normalizePieces(pieces: string[] | undefined): string[] | undefined {
   const clean = Array.from(new Set((pieces ?? []).filter((p) => typeof p === 'string' && p.length > 0))).sort()
   return clean.length > 0 ? clean : undefined
+}
+
+// ช่วงจริง (min–max) ตรวจในฐานข้อมูลตอนจอง ที่นี่กันแค่ค่าที่ไม่ใช่จำนวนเต็มบวก
+function normalizeDays(days: unknown): number {
+  const n = Math.floor(Number(days))
+  return Number.isFinite(n) && n >= 1 ? n : 1
 }
 
 interface CartState {
@@ -60,7 +68,9 @@ function readCart(): CartItem[] {
   try {
     const stored: unknown = JSON.parse(window.localStorage.getItem(key) ?? '[]')
     return Array.isArray(stored)
-      ? stored.filter(isCartItem).map((i) => ({ ...i, pieces: normalizePieces(i.pieces) }))
+      ? stored
+          .filter(isCartItem)
+          .map((i) => ({ ...i, rentalDays: normalizeDays(i.rentalDays), pieces: normalizePieces(i.pieces) }))
       : []
   } catch {
     return []
@@ -126,10 +136,15 @@ export function useCart(): CartState {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 }
 
-export function addToCart(variantId: string, startDate: string, pieces?: string[]): 'added' | 'exists' | 'login' {
+export function addToCart(
+  variantId: string,
+  startDate: string,
+  rentalDays: number,
+  pieces?: string[],
+): 'added' | 'exists' | 'login' {
   if (!cartStorageKey()) return 'login'
   const items = readCart()
-  const item: CartItem = { variantId, startDate, pieces: normalizePieces(pieces) }
+  const item: CartItem = { variantId, startDate, rentalDays: normalizeDays(rentalDays), pieces: normalizePieces(pieces) }
   const key = cartKeyOf(item)
   if (items.some((i) => cartKeyOf(i) === key)) return 'exists'
   writeCart([...items, item])
@@ -141,7 +156,8 @@ export function removeFromCart(itemsToRemove: CartKey[]) {
   writeCart(readCart().filter((item) => !keys.has(cartKeyOf(item))))
 }
 
-// รูปแบบใน URL: variantId:YYYY-MM-DD หรือ variantId:YYYY-MM-DD:pieceId.pieceId
+// รูปแบบใน URL: variantId:YYYY-MM-DD:วัน หรือ variantId:YYYY-MM-DD:วัน:pieceId.pieceId
+// ลิงก์ก่อน v2 ไม่มีช่องจำนวนวัน (variantId:YYYY-MM-DD[:pieceIds]) → อ่านเป็น 1 วัน
 export function encodeCheckoutItems(items: CartKey[]): string {
   return items.map(cartKeyOf).join(',')
 }
@@ -151,10 +167,17 @@ export function decodeCheckoutItems(value: string | null): CartKey[] {
 
   const unique = new Map<string, CartKey>()
   for (const entry of value.split(',')) {
-    const [variantId, startDate, pieceList] = entry.split(':')
+    const [variantId, startDate, third, fourth] = entry.split(':')
     if (!variantId || !isISODate(startDate)) continue
+    const hasDays = third !== undefined && /^\d+$/.test(third)
+    const pieceList = hasDays ? fourth : third
     // รับช่องว่าง/+ ด้วย เผื่อลิงก์เก่าที่ยังคั่นด้วย "+"
-    const item: CartKey = { variantId, startDate, pieces: normalizePieces(pieceList?.split(/[.+ ]/)) }
+    const item: CartKey = {
+      variantId,
+      startDate,
+      rentalDays: hasDays ? normalizeDays(third) : 1,
+      pieces: normalizePieces(pieceList?.split(/[.+ ]/)),
+    }
     unique.set(cartKeyOf(item), item)
   }
   return Array.from(unique.values())

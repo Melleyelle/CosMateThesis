@@ -1,7 +1,7 @@
 'use client'
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import {
@@ -11,7 +11,9 @@ import {
   CheckCircleIcon,
   ImageIcon,
   MagnifyingGlassPlusIcon,
+  MinusIcon,
   PackageIcon,
+  PlusIcon,
   RulerIcon,
   ShoppingCartSimpleIcon,
   StarIcon,
@@ -32,15 +34,17 @@ import { formatRange } from '@/utils/sizeDefaults'
 import { fetchCostumeDetail, type CostumeDetail } from '@/utils/customer/fetchCostumeDetail'
 import {
   DEFAULT_BOOKING_SETTINGS,
+  clampRentalDays,
   fetchBookingSettings,
-  customerHeldDays,
   getRentalTimeline,
+  minStartOffset,
   type BookingSettings,
 } from '@/utils/customer/bookingSettings'
 import { CATEGORY_LABEL, FRANCHISE_LABEL, GENDER_LABEL } from '@/utils/customer/labels'
 import { fetchEvents, type CalendarEvent } from '@/utils/customer/events'
-import { formatBaht, formatThaiDateWithWeekday } from '@/utils/dateUtils'
+import { addDays, formatBaht, formatThaiDateWithWeekday, todayISO } from '@/utils/dateUtils'
 import { depositForRental } from '@/utils/customer/pricing'
+import { calcRentalPrice } from '@/utils/customer/rentalPrice'
 import { createClient } from '@/utils/client'
 
 const DAYS_AHEAD = 120
@@ -57,12 +61,14 @@ export default function CostumeDetailPage() {
   const [activeImage, setActiveImage] = useState(0)
 
   const [variantId, setVariantId] = useState<string | null>(null)
-  const [unavailable, setUnavailable] = useState<Set<string>>(new Set())
-  const [datesLoading, setDatesLoading] = useState(false)
-  const [datesError, setDatesError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  // วันเริ่มเช่าไม่ได้ของทุกไซส์ (variant id → วันที่) — ปฏิทินใช้บอกว่าวันไหนไซส์อะไรถูกจอง
-  const [unavailableByVariant, setUnavailableByVariant] = useState<Map<string, Set<string>>>(new Map())
+  // จำนวนวันเช่า: rentalDays เปลี่ยนทันทีตามปุ่ม · queryDays ตามหลัง 300ms ใช้ยิง RPC (กดรัว ๆ ไม่ยิงทุกครั้ง)
+  const [rentalDays, setRentalDays] = useState(1)
+  const [queryDays, setQueryDays] = useState(1)
+  // วันเริ่มเช่าไม่ได้ ตาม (ไซส์, จำนวนวัน) — เก็บไว้ทุกค่าที่เคยโหลด สลับกลับไปมาไม่ต้องโหลดซ้ำ · 'error' = โหลดไม่สำเร็จ
+  const [unavailableCache, setUnavailableCache] = useState<Map<string, Set<string> | 'error'>>(new Map())
+  // วันที่ถูกจองจริงของทุกไซส์ (variant id → วันที่) — ไม่ขึ้นกับจำนวนวัน โหลดครั้งเดียวต่อชุด
+  const [occupiedByVariant, setOccupiedByVariant] = useState<Map<string, Set<string>>>(new Map())
   const [rating, setRating] = useState<RatingSummary | null>(null)
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [previewInclusion, setPreviewInclusion] = useState<{ url: string; name: string } | null>(null)
@@ -90,6 +96,8 @@ export default function CostumeDetailPage() {
     Promise.all([fetchCostumeDetail(productId), fetchBookingSettings()]).then(([res, s]) => {
       if (cancelled) return
       setSettings(s)
+      setRentalDays(s.minRentalDays)
+      setQueryDays(s.minRentalDays)
       if (res.error || !res.data) {
         setLoadError(res.error ?? 'ไม่พบชุดนี้')
       } else {
@@ -106,49 +114,47 @@ export default function CostumeDetailPage() {
     }
   }, [productId])
 
-  // เปลี่ยนไซส์ → โหลดวันที่ไม่ว่างของไซส์นั้นใหม่ และล้างวันที่เลือกไว้
   useEffect(() => {
-    setSelectedDate(null)
-    setUnavailable(new Set())
-    setDatesError(null)
-    if (!variantId) return
+    const t = setTimeout(() => setQueryDays(rentalDays), 300)
+    return () => clearTimeout(t)
+  }, [rentalDays])
 
+  // วันเริ่มเช่าไม่ได้ของ (ไซส์, จำนวนวัน) ที่เลือก · ผลของคำขอเก่าที่ตอบช้าก็เก็บลง cache ตาม key ของมันเอง ไม่ทับค่าปัจจุบัน
+  const cacheKey = variantId ? `${variantId}:${queryDays}` : null
+  const inflight = useRef(new Set<string>())
+  useEffect(() => {
+    const key = `${variantId}:${queryDays}`
+    if (!variantId || unavailableCache.has(key) || inflight.current.has(key)) return
     const supabase = createClient()
     if (!supabase) return
-
-    let cancelled = false
-    setDatesLoading(true)
+    inflight.current.add(key)
     supabase
-      .rpc('get_unavailable_start_dates', { p_variant_id: variantId, p_days_ahead: DAYS_AHEAD })
+      .rpc('get_unavailable_start_dates', { p_variant_id: variantId, p_days_ahead: DAYS_AHEAD, p_rental_days: queryDays })
       .then(({ data, error }) => {
-        if (cancelled) return
-        if (error) setDatesError('โหลดปฏิทินไม่สำเร็จ ลองรีเฟรชหน้าอีกครั้ง')
-        else setUnavailable(new Set(((data ?? []) as string[]).map((d) => String(d).slice(0, 10))))
-        setDatesLoading(false)
+        const value = error ? ('error' as const) : new Set(((data ?? []) as string[]).map((d) => String(d).slice(0, 10)))
+        inflight.current.delete(key)
+        setUnavailableCache((prev) => new Map(prev).set(key, value))
       })
-    return () => {
-      cancelled = true
-    }
-  }, [variantId])
+  }, [variantId, queryDays, unavailableCache])
 
-  // โหลดวันไม่ว่างของทุกไซส์ครั้งเดียวต่อชุด · ไซส์ไหนโหลดไม่สำเร็จก็แค่ไม่แสดงป้ายไซส์นั้น ปฏิทินยังใช้ได้
+  // วันที่ถูกจองจริงของทุกไซส์ ครั้งเดียวต่อชุด · ไซส์ไหนโหลดไม่สำเร็จก็แค่ไม่แสดงพื้นเทา/ป้ายไซส์นั้น ปฏิทินยังใช้ได้
   useEffect(() => {
     const supabase = createClient()
     const variantIds = detail?.variants.map((v) => v.id) ?? []
-    if (!supabase || variantIds.length < 2) return
+    if (!supabase || variantIds.length === 0) return
 
     let cancelled = false
     Promise.all(
       variantIds.map((id) =>
         supabase
-          .rpc('get_unavailable_start_dates', { p_variant_id: id, p_days_ahead: DAYS_AHEAD })
+          .rpc('get_occupied_dates', { p_variant_id: id, p_days_ahead: DAYS_AHEAD })
           .then(({ data, error }) => [id, error ? null : ((data ?? []) as string[])] as const),
       ),
     ).then((rows) => {
       if (cancelled) return
       const map = new Map<string, Set<string>>()
       for (const [id, dates] of rows) if (dates) map.set(id, new Set(dates.map((d) => String(d).slice(0, 10))))
-      setUnavailableByVariant(map)
+      setOccupiedByVariant(map)
     })
     return () => {
       cancelled = true
@@ -158,13 +164,9 @@ export default function CostumeDetailPage() {
   const sizeBookings = useMemo<SizeBooking[]>(
     () =>
       sortSizes(detail?.variants ?? [])
-        .filter((v) => unavailableByVariant.has(v.id))
-        .map((v) => ({
-          size: v.size,
-          unavailable: unavailableByVariant.get(v.id)!,
-          getTimeline: (useDate: string) => getRentalTimeline(useDate, v.packageDays, settings),
-        })),
-    [detail, unavailableByVariant, settings],
+        .filter((v) => occupiedByVariant.has(v.id))
+        .map((v) => ({ size: v.size, occupied: occupiedByVariant.get(v.id)! })),
+    [detail, occupiedByVariant],
   )
 
   const variant = useMemo(
@@ -172,15 +174,39 @@ export default function CostumeDetailPage() {
     [detail, variantId],
   )
 
+  const cached = cacheKey ? unavailableCache.get(cacheKey) : undefined
+  const datesError = cached === 'error' ? 'โหลดปฏิทินไม่สำเร็จ ลองรีเฟรชหน้าอีกครั้ง' : null
+  // ระหว่างรอ debounce หรือรอ RPC ถือว่ายังโหลดอยู่ — ห้ามใช้ผลของจำนวนวันเดิมตัดสินวันที่เลือก
+  const datesLoading = !!variantId && (rentalDays !== queryDays || cached === undefined)
+  const unavailable = useMemo(() => (cached instanceof Set ? cached : new Set<string>()), [cached])
+  const occupied = useMemo(() => (variantId && occupiedByVariant.get(variantId)) || new Set<string>(), [variantId, occupiedByVariant])
+
+  // เปลี่ยนจำนวนวันแล้ววันใส่ที่เลือกไว้ใช้ไม่ได้ → ไม่นับว่าเลือกไว้ และบอกลูกค้าให้เลือกใหม่
+  // (ไม่ลบ state ทิ้ง ถ้าเปลี่ยนจำนวนวันกลับ วันเดิมจะกลับมาเป็นที่เลือก)
+  const lastStart = addDays(todayISO(), DAYS_AHEAD - (rentalDays - 1))
+  const selectedInvalid =
+    !!selectedDate && !datesLoading && (unavailable.has(selectedDate) || selectedDate > lastStart)
+  const activeDate = selectedInvalid ? null : selectedDate
+
   const getTimeline = useCallback(
-    (useDate: string) => getRentalTimeline(useDate, variant?.packageDays ?? 1, settings),
-    [variant, settings],
+    (useDate: string) => getRentalTimeline(useDate, rentalDays, settings),
+    [rentalDays, settings],
   )
 
   const timeline = useMemo(
-    () => (variant && selectedDate ? getTimeline(selectedDate) : null),
-    [variant, selectedDate, getTimeline],
+    () => (variant && activeDate ? getTimeline(activeDate) : null),
+    [variant, activeDate, getTimeline],
   )
+
+  function selectVariant(id: string) {
+    if (id === variantId) return
+    setVariantId(id)
+    setSelectedDate(null)
+  }
+
+  function changeDays(next: number) {
+    setRentalDays(clampRentalDays(next, settings))
+  }
 
   const hasSizeChart = detail?.variants.some((v) => v.chart) ?? false
   const isShoes = detail?.sizeSystem === 'shoes'
@@ -196,16 +222,18 @@ export default function CostumeDetailPage() {
     rentMode === 'pieces' && selectedPieces.size > 0 ? Array.from(selectedPieces) : undefined
 
   function handleRent() {
-    if (!variant || !selectedDate) return
+    if (!variant || !activeDate) return
     router.push(
-      `/checkout?items=${encodeCheckoutItems([{ variantId: variant.id, startDate: selectedDate, pieces: chosenPieces()?.sort() }])}`,
+      `/checkout?items=${encodeCheckoutItems([
+        { variantId: variant.id, startDate: activeDate, rentalDays, pieces: chosenPieces()?.sort() },
+      ])}`,
     )
   }
 
   function handleAddToCart() {
-    if (!variant || !selectedDate) return
+    if (!variant || !activeDate) return
     // ยังไม่ล็อกอิน → ไปเข้าสู่ระบบก่อน แล้วกลับมาหน้านี้
-    if (addToCart(variant.id, selectedDate, chosenPieces()) === 'login') {
+    if (addToCart(variant.id, activeDate, rentalDays, chosenPieces()) === 'login') {
       router.push(loginHref(window.location.pathname + window.location.search))
     }
   }
@@ -243,10 +271,17 @@ export default function CostumeDetailPage() {
   const pieceDeposit = depositForRental(piecesTotal)
   const piecesLaundry = pricedPieces.filter((p) => selectedPieces.has(p.id)).reduce((sum, p) => sum + p.laundryFee, 0)
 
-  const rentalPrice = pieceMode ? piecesTotal : (variant?.packagePrice ?? 0)
+  // ค่าเช่า = วันแรก + วันเพิ่ม (มัดจำคิดจากราคาวันแรก ไม่ขึ้นตามจำนวนวัน)
+  const price = calcRentalPrice({
+    baseRental: pieceMode ? piecesTotal : (variant?.packagePrice ?? 0),
+    rentalDays,
+    isPieces: pieceMode,
+    settings,
+  })
   const depositAmount = pieceMode ? pieceDeposit.amount : (variant?.depositAmount ?? 0)
   const laundryFee = pieceMode ? piecesLaundry : (variant?.laundryFee ?? 0)
-  const grandTotal = variant ? rentalPrice + depositAmount + laundryFee + settings.shippingFlatRate : 0
+  const grandTotal = variant ? price.rentalPrice + depositAmount + laundryFee + settings.shippingFlatRate : 0
+  const noPiecesYet = pieceMode && selectedPieces.size === 0
 
   function togglePiece(id: string) {
     setSelectedPieces((prev) => {
@@ -258,7 +293,7 @@ export default function CostumeDetailPage() {
   }
 
   // โหมดแยกชิ้นต้องเลือกอย่างน้อย 1 ชิ้น
-  const bookingBlocked = !selectedDate || (pieceMode && selectedPieces.size === 0)
+  const bookingBlocked = !activeDate || noPiecesYet
 
   return (
     <CustomerLayout>
@@ -367,21 +402,20 @@ export default function CostumeDetailPage() {
           {detail.variants.length > 0 &&
             (variant ? (
               <div className="mt-3">
-                <p className="text-2xl font-bold text-brand">
-                  {formatBaht(variant.packagePrice)} / {customerHeldDays(variant.packageDays)} วัน
+                <p className="text-2xl font-bold text-brand">เริ่มต้น {formatBaht(variant.packagePrice)}</p>
+                <p className="mt-0.5 text-base text-[#263544]/60">
+                  ราคาเช่า 1 วัน · วันถัดไป +{formatBaht(settings.extraDayRate)}/วัน
+                  {/* บอกชัดว่าราคานี้เป็นของไซส์ไหน — ลูกค้าจะไม่เข้าใจผิดว่าทุกไซส์ราคาเดียวกัน */}
+                  {pricesVary && (
+                    <>
+                      {' '}
+                      · ราคาไซส์ {variant.size} (ไซส์อื่น {formatBaht(minPrice)}–{formatBaht(maxPrice)})
+                    </>
+                  )}
                 </p>
-                {/* บอกชัดว่าราคานี้เป็นของไซส์ไหน — ลูกค้าจะไม่เข้าใจผิดว่าทุกไซส์ราคาเดียวกัน */}
-                {pricesVary && (
-                  <p className="mt-0.5 text-base text-[#263544]/60">
-                    ราคาไซส์ {variant.size} · ไซส์อื่นราคา {formatBaht(minPrice)}–{formatBaht(maxPrice)}
-                  </p>
-                )}
               </div>
             ) : (
-              <p className="mt-3 text-2xl font-bold text-brand">
-                {pricesVary ? `เริ่มต้น ${formatBaht(minPrice)}` : formatBaht(minPrice)} /{' '}
-                {customerHeldDays(detail.variants[0].packageDays)} วัน
-              </p>
+              <p className="mt-3 text-2xl font-bold text-brand">เริ่มต้น {formatBaht(minPrice)}</p>
             ))}
 
           {/* สิ่งที่ได้รับ — ให้รู้ก่อนเลือกไซส์/วันว่าชุดนี้ครบแค่ไหน (กดรูปเพื่อดูขนาดใหญ่) */}
@@ -444,7 +478,7 @@ export default function CostumeDetailPage() {
                       key={v.id}
                       type="button"
                       // ไซส์ที่ไม่พร้อมตอนนี้ยังกดดูปฏิทินได้ — การจองถูกกันด้วยวันที่ไม่ว่างในปฏิทินอยู่แล้ว
-                      onClick={() => setVariantId(v.id)}
+                      onClick={() => selectVariant(v.id)}
                       aria-pressed={active}
                       aria-label={`ไซส์ ${v.size} ค่าเช่า ${formatBaht(v.packagePrice)}${soldOut ? ' (หมด)' : ''}`}
                       // ไซส์ที่เลือก = พื้น brand ตัวขาว (เด่นกว่า brand-soft เพราะเป็นตัวเลือกหลักของการจอง) · ยังไม่เลือก = ปุ่มรอง .lift · หมด = เส้นจาง
@@ -471,8 +505,8 @@ export default function CostumeDetailPage() {
             )}
             {variant && (
               <p className="mt-2 text-base text-[#263544]/60">
-                ไซส์ {variant.size}: ค่าเช่า {formatBaht(variant.packagePrice)} · มัดจำ {formatBaht(variant.depositAmount)}{' '}
-                (ได้คืน) · เช่า {customerHeldDays(variant.packageDays)} วัน นับจากวันใช้งานถึงวันส่งคืน
+                ไซส์ {variant.size}: ค่าเช่าวันแรก {formatBaht(variant.packagePrice)} · มัดจำ{' '}
+                {formatBaht(variant.depositAmount)} (ได้คืน)
               </p>
             )}
 
@@ -505,7 +539,7 @@ export default function CostumeDetailPage() {
                             <th className={`px-2 py-2 ${pricesVary ? '' : 'rounded-r-lg'}`}>ส่วนสูง (ซม.)</th>
                           </>
                         )}
-                        {pricesVary && <th className="rounded-r-lg px-2 py-2">ค่าเช่า</th>}
+                        {pricesVary && <th className="rounded-r-lg px-2 py-2">ค่าเช่าวันแรก</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-line-subtle tabular-nums text-[#263544]/80">
@@ -541,24 +575,82 @@ export default function CostumeDetailPage() {
             )}
           </section>
 
-          {/* ขั้นที่ 2: วันใช้งาน */}
+          {/* ขั้นที่ 2: จำนวนวันเช่า — เลือกก่อนวันใส่ เพราะวันที่ว่างขึ้นกับจำนวนวัน */}
           {variant && (
             <section className="mt-6">
-              <p className="mb-1 text-base font-semibold text-[#263544]">2. เลือกวันที่จะใส่ชุด</p>
-              <p className="mb-3 text-base text-[#263544]/60">
-                จองล่วงหน้าอย่างน้อย {settings.minLeadDays} วัน · วันที่ขีดฆ่าคือวันที่ชุดไซส์นี้ไม่ว่าง
+              <p className="mb-2 text-base font-semibold text-[#263544]">2. เช่ากี่วัน</p>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                <div className="flex items-center rounded-full border border-line bg-white">
+                  <button
+                    type="button"
+                    onClick={() => changeDays(rentalDays - 1)}
+                    disabled={rentalDays <= settings.minRentalDays}
+                    aria-label="ลดจำนวนวัน"
+                    className="focus-ring flex h-11 w-11 items-center justify-center rounded-full text-ink hover:bg-sunken disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                  >
+                    <MinusIcon size={18} weight="bold" />
+                  </button>
+                  <output aria-live="polite" className="min-w-[4.5rem] text-center text-lg font-bold tabular-nums text-ink">
+                    {rentalDays} วัน
+                  </output>
+                  <button
+                    type="button"
+                    onClick={() => changeDays(rentalDays + 1)}
+                    disabled={rentalDays >= settings.maxRentalDays}
+                    aria-label="เพิ่มจำนวนวัน"
+                    className="focus-ring flex h-11 w-11 items-center justify-center rounded-full text-ink hover:bg-sunken disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                  >
+                    <PlusIcon size={18} weight="bold" />
+                  </button>
+                </div>
+                <p className="text-base text-[#263544]/70">
+                  {noPiecesYet ? (
+                    'เลือกชิ้นที่จะเช่าด้านล่าง เพื่อดูค่าเช่า'
+                  ) : rentalDays === 1 ? (
+                    <>
+                      ค่าเช่า 1 วัน <b className="text-ink">{formatBaht(price.rentalPrice)}</b> · วันถัดไป +
+                      {formatBaht(price.dayRate)}/วัน
+                    </>
+                  ) : (
+                    <>
+                      วันแรก {formatBaht(price.baseRental)} + เพิ่ม {rentalDays - 1} วัน × {formatBaht(price.dayRate)} ={' '}
+                      <b className="text-ink">{formatBaht(price.rentalPrice)}</b>
+                    </>
+                  )}
+                </p>
+              </div>
+              <p className="mt-1.5 text-sm text-[#263544]/60">
+                นับจากวันใส่ถึงวันส่งคืน เช่าได้ {settings.minRentalDays}–{settings.maxRentalDays} วัน
               </p>
+            </section>
+          )}
+
+          {/* ขั้นที่ 3: วันใช้งาน */}
+          {variant && (
+            <section className="mt-6">
+              <p className="mb-1 text-base font-semibold text-[#263544]">3. เลือกวันที่จะใส่ชุด</p>
+              <p className="mb-3 text-base text-[#263544]/60">
+                จองล่วงหน้าอย่างน้อย {settings.minLeadDays} วัน · วันที่ขีดฆ่าคือวันที่เริ่มเช่า {rentalDays} วันไม่ได้
+              </p>
+              {selectedInvalid && (
+                <p role="status" className="mb-3 rounded-xl bg-[#FFF3B0] px-4 py-2.5 text-base text-[#263544]">
+                  ช่วงวันนี้ไม่ว่างสำหรับการเช่า {rentalDays} วัน กรุณาเลือกวันใหม่
+                </p>
+              )}
               {datesError ? (
                 <p className="rounded-xl bg-red-50 px-4 py-3 text-base text-red-600">{datesError}</p>
               ) : (
                 <BookingCalendar
                   unavailable={unavailable}
-                  selected={selectedDate}
+                  occupied={occupied}
+                  selected={activeDate}
                   onSelect={setSelectedDate}
                   daysAhead={DAYS_AHEAD}
                   loading={datesLoading}
+                  rentalDays={rentalDays}
                   getTimeline={getTimeline}
                   events={events}
+                  minStartOffset={minStartOffset(settings)}
                   sizeBookings={sizeBookings}
                 />
               )}
@@ -587,7 +679,7 @@ export default function CostumeDetailPage() {
                     date={formatThaiDateWithWeekday(timeline.returnBy)}
                   />
                   <p className="col-span-3 text-sm text-[#263544]/60">
-                    เช่า {customerHeldDays(variant.packageDays)} วัน (วันใช้งานถึงวันส่งคืน) · วันที่ชุดถึงมือคุณไม่นับเป็นวันเช่า
+                    เช่า {rentalDays} วัน (วันใช้งานถึงวันส่งคืน) · วันที่ชุดถึงมือคุณไม่นับเป็นวันเช่า
                   </p>
                 </div>
               ) : (
@@ -652,19 +744,18 @@ export default function CostumeDetailPage() {
               )}
 
               <dl className="space-y-1.5 text-base">
-                {pieceMode ? (
-                  <>
-                    <PriceRow label={`ยอดรวมค่าเช่า (${selectedPieces.size} ชิ้น)`} value={piecesTotal} />
-                    <PriceRow label="ค่ามัดจำ" value={pieceDeposit.amount} />
-                    {piecesLaundry > 0 && <PriceRow label="ค่าซักรีด" value={piecesLaundry} />}
-                  </>
-                ) : (
-                  <>
-                    <PriceRow label="ค่าเช่าชุด" value={variant.packagePrice} />
-                    <PriceRow label="ค่ามัดจำ (ได้คืนหลังตรวจชุด)" value={variant.depositAmount} />
-                    {variant.laundryFee > 0 && <PriceRow label="ค่าซักรีด" value={variant.laundryFee} />}
-                  </>
+                <PriceRow
+                  label={pieceMode ? `ค่าเช่าวันแรก (${selectedPieces.size} ชิ้น)` : 'ค่าเช่าชุดวันแรก'}
+                  value={price.baseRental}
+                />
+                {rentalDays > 1 && (
+                  <PriceRow
+                    label={`ค่าเช่าเพิ่ม ${rentalDays - 1} วัน × ${formatBaht(price.dayRate)}`}
+                    value={price.extraFee}
+                  />
                 )}
+                <PriceRow label="ค่ามัดจำ (ได้คืนหลังตรวจชุด)" value={depositAmount} />
+                {laundryFee > 0 && <PriceRow label="ค่าซักรีด" value={laundryFee} />}
                 <PriceRow label="ค่าจัดส่ง" value={settings.shippingFlatRate} />
                 <div className="flex items-center justify-between border-t border-dashed border-line-subtle pt-2">
                   <dt className="font-bold text-[#263544]">ยอดชำระทั้งหมด</dt>
@@ -688,7 +779,7 @@ export default function CostumeDetailPage() {
                   disabled={bookingBlocked}
                   className="lift focus-ring rounded-full border border-line bg-brand py-3 text-base font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {!selectedDate ? 'เลือกวันใช้งานก่อน' : pieceMode && selectedPieces.size === 0 ? 'เลือกชิ้นก่อน' : 'เช่าเลย'}
+                  {!activeDate ? 'เลือกวันใช้งานก่อน' : noPiecesYet ? 'เลือกชิ้นก่อน' : 'เช่าเลย'}
                 </button>
               </div>
               <p className="mt-2 text-center text-base text-[#263544]/50">

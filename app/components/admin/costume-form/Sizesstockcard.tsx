@@ -101,7 +101,7 @@ function emptyVariant(size: SizeOption): ProductVariant {
     id: makeId(),
     size,
     packagePrice: '',
-    packageDays: '7',
+    packageDays: '1', // เลิกใช้แล้ว (v2) — บันทึกไว้เผื่อคอลัมน์ package_days ห้ามว่าง
     depositAmount: '',
     depositReturnHours: '72',
     laundryFee: '',
@@ -322,7 +322,7 @@ export default function SizesStockCard({
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <FormField
                     id={`price-${variant.id}`}
-                    label="ราคาเช่าเหมา (บาท)"
+                    label="ราคาเช่า 1 วัน (บาท)"
                     type="number"
                     min="0"
                     step="1"
@@ -427,20 +427,12 @@ export default function SizesStockCard({
                     size={14}
                     className={`transition-transform ${expanded[variant.id] ? 'rotate-180' : ''}`}
                   />
-                  {isShoes ? 'จำนวนวันเช่า และค่าซัก (ไม่บังคับ)' : 'จำนวนวันเช่า, ค่าซัก, ความยาวชุด และส่วนสูง (ไม่บังคับ)'}
+                  {isShoes ? 'คืนมัดจำ และค่าซัก (ไม่บังคับ)' : 'คืนมัดจำ, ค่าซัก, ความยาวชุด และส่วนสูง (ไม่บังคับ)'}
                 </button>
 
                 {expanded[variant.id] && (
                   <div className="mt-3 grid grid-cols-2 gap-4 border-t border-gray-100 pt-4 sm:grid-cols-3">
-                    <FormField
-                      id={`days-${variant.id}`}
-                      label="จำนวนวันในแพ็กเกจ"
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={variant.packageDays}
-                      onChange={(e) => updateVariant(variant.id, { packageDays: e.target.value })}
-                    />
+                    {/* จำนวนวันในแพ็กเกจเลิกใช้แล้ว (v2): ลูกค้าเลือกจำนวนวันเองตอนจอง วันที่ 2 เป็นต้นไปคิดตาม extra_day_rate */}
                     <FormField
                       id={`deposit-hours-${variant.id}`}
                       label="คืนมัดจำภายใน (ชั่วโมง)"

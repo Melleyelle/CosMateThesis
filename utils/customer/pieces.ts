@@ -1,5 +1,7 @@
 import { createClient } from '@/utils/client'
 import { depositForRental } from '@/utils/customer/pricing'
+import { calcRentalPrice } from '@/utils/customer/rentalPrice'
+import type { BookingSettings } from '@/utils/customer/bookingSettings'
 import type { VariantSummary } from '@/utils/customer/fetchVariantSummaries'
 
 // ชิ้นส่วนที่เช่าแยกได้ (product_inclusions ที่ตั้ง rental_price ไว้)
@@ -38,23 +40,34 @@ export async function fetchPieces(productIds: string[]): Promise<Record<string, 
 }
 
 export type LinePrice = {
-  rental: number
+  rental: number // ค่าเช่ารวมของรายการ (วันแรก + วันเพิ่ม)
+  baseRental: number
+  dayRate: number
+  extraFee: number
+  rentalDays: number
   deposit: number
   laundry: number
   pieceNames: string[] | null // null = เช่าทั้งชุด
   invalid: boolean // ชิ้นที่เลือกไว้ถูกลบหรือปิดเช่าแยกไปแล้ว
 }
 
-// ราคาต่อรายการ: ทั้งชุดใช้ราคาไซส์ / แยกชิ้นใช้ผลรวมราคาชิ้น + มัดจำตาม tier + ค่าซักรายชิ้น
-// ต้องตรงกับที่ create_booking() คำนวณในฐานข้อมูล
+// ราคาต่อรายการ: ทั้งชุดใช้ราคาไซส์ / แยกชิ้นใช้ผลรวมราคาชิ้น + ค่าวันเพิ่ม
+// มัดจำคิดจากราคาวันแรก ไม่ขึ้นตามจำนวนวัน · ต้องตรงกับที่ create_booking() คำนวณในฐานข้อมูล
 export function priceLine(
   variant: VariantSummary,
   pieceIds: string[] | undefined,
   pieces: Record<string, PieceInfo>,
+  rentalDays: number,
+  settings: BookingSettings,
 ): LinePrice {
   if (!pieceIds || pieceIds.length === 0) {
+    const p = calcRentalPrice({ baseRental: variant.packagePrice, rentalDays, isPieces: false, settings })
     return {
-      rental: variant.packagePrice,
+      rental: p.rentalPrice,
+      baseRental: p.baseRental,
+      dayRate: p.dayRate,
+      extraFee: p.extraFee,
+      rentalDays,
       deposit: variant.depositAmount,
       laundry: variant.laundryFee,
       pieceNames: null,
@@ -65,10 +78,15 @@ export function priceLine(
   const chosen = pieceIds.map((id) => pieces[id])
   const invalid = chosen.some((p) => !p || p.productId !== variant.productId || p.price == null)
   const valid = chosen.filter((p): p is PieceInfo => !!p && p.price != null).sort((a, b) => a.displayOrder - b.displayOrder)
-  const rental = valid.reduce((sum, p) => sum + (p.price ?? 0), 0)
+  const base = valid.reduce((sum, p) => sum + (p.price ?? 0), 0)
+  const p = calcRentalPrice({ baseRental: base, rentalDays, isPieces: true, settings })
   return {
-    rental,
-    deposit: depositForRental(rental).amount,
+    rental: p.rentalPrice,
+    baseRental: p.baseRental,
+    dayRate: p.dayRate,
+    extraFee: p.extraFee,
+    rentalDays,
+    deposit: depositForRental(base).amount,
     laundry: valid.reduce((sum, p) => sum + p.laundryFee, 0),
     pieceNames: valid.map((p) => p.name),
     invalid,
