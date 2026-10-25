@@ -22,6 +22,7 @@ import {
   PhoneIcon,
   ProhibitIcon,
   ReceiptIcon,
+  StorefrontIcon,
   TShirtIcon,
   WarningCircleIcon,
   WarningIcon,
@@ -42,6 +43,7 @@ import {
   fetchOrderDetail,
   fetchPackChecklist,
   fullAddress,
+  handoverOrder,
   lateDays,
   markRefund,
   receiveAndInspect,
@@ -69,6 +71,10 @@ export default function OrderPanel({ order, settings, today, position, onDone }:
   const detail = loaded?.key === detailKey ? loaded.detail : null
   const task = taskOf(order, today)
   const badge = orderBadge(order)
+  // ลูกค้านำชุดมาคืนที่ร้าน (ยังไม่ได้กรอกเลขพัสดุคืน) → เปิดฟอร์มตรวจคืนแบบ walk_in เฉพาะออเดอร์นี้
+  const [walkInFor, setWalkInFor] = useState<string | null>(null)
+  const walkIn = walkInFor === order.id && order.status === 'active'
+  const canWalkIn = order.status === 'active' && !order.returnTrackingNo
 
   useEffect(() => {
     let alive = true
@@ -85,6 +91,12 @@ export default function OrderPanel({ order, settings, today, position, onDone }:
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="font-mono text-lg font-bold text-ink">{order.orderNumber}</h2>
             <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
+            {order.deliveryMethod === 'pickup' && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-line bg-white px-2 py-0.5 text-xs font-semibold text-ink">
+                <StorefrontIcon size={12} weight="bold" />
+                รับที่ร้าน
+              </span>
+            )}
           </div>
           <p className="mt-0.5 text-sm text-secondary">
             {order.shipName} · {order.shipPhone} · สั่งเมื่อ {formatDateTime(order.createdAt)}
@@ -95,11 +107,34 @@ export default function OrderPanel({ order, settings, today, position, onDone }:
 
       {task === 'pack' && <PackForm key={order.id} order={order} onDone={onDone} />}
       {task === 'slip' && <SlipReview key={order.id} order={order} detail={detail} onDone={onDone} />}
-      {(task === 'inspect' || task === 'lost') && (
-        <InspectForm key={order.id} order={order} detail={detail} settings={settings} today={today} lostOnly={task === 'lost'} onDone={onDone} />
+      {walkIn ? (
+        <InspectForm
+          key={`${order.id}-walkin`}
+          order={order}
+          detail={detail}
+          settings={settings}
+          today={today}
+          lostOnly={false}
+          walkIn
+          onCancelWalkIn={() => setWalkInFor(null)}
+          onDone={onDone}
+        />
+      ) : (
+        (task === 'inspect' || task === 'lost') && (
+          <InspectForm key={order.id} order={order} detail={detail} settings={settings} today={today} lostOnly={task === 'lost'} onDone={onDone} />
+        )
       )}
       {task === 'refund' && <RefundForm key={order.id} order={order} detail={detail} onDone={onDone} />}
-      {task === 'view' && <WaitingNote order={order} today={today} />}
+      {task === 'view' && !walkIn && <WaitingNote order={order} today={today} />}
+      {canWalkIn && !walkIn && (task === 'view' || task === 'lost') && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle bg-canvas px-5 py-3">
+          <p className="text-sm text-secondary">ลูกค้านำชุดมาคืนที่ร้านเอง ไม่ได้ส่งพัสดุ?</p>
+          <button type="button" onClick={() => setWalkInFor(order.id)} className={secondaryButtonClass}>
+            <StorefrontIcon size={16} />
+            รับคืนที่ร้าน
+          </button>
+        </div>
+      )}
 
       <OrderDetails order={order} detail={detail} openByDefault={task === 'view'} />
     </section>
@@ -176,6 +211,25 @@ function AddressCard({ order }: { order: OrderSummary }) {
         {copied === 'addr' ? <CheckIcon size={16} weight="bold" /> : <CopyIcon size={16} />}
         {copied === 'addr' ? 'คัดลอกแล้ว' : 'คัดลอกที่อยู่'}
       </button>
+    </div>
+  )
+}
+
+// รับเองที่ร้าน: ไม่มีที่อยู่ แสดงผู้ติดต่อแทน (ไรเดอร์ที่มารับมักแจ้งชื่อผู้จอง)
+function ContactCard({ order }: { order: OrderSummary }) {
+  return (
+    <div className="flex flex-wrap items-start gap-3 rounded-control border border-line px-4 py-3">
+      <StorefrontIcon size={22} className="mt-0.5 flex-none text-brand-strong" />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-muted">รับเองที่ร้าน · ผู้ติดต่อ</p>
+        <p className="font-bold text-ink">
+          {order.shipName} · {order.shipPhone}
+        </p>
+        <p className="text-sm text-secondary">ตรวจเลขออเดอร์ {order.orderNumber} กับผู้มารับก่อนส่งมอบ</p>
+        {order.customerNote && (
+          <p className="mt-2 rounded-control bg-warning-subtle px-3 py-1.5 text-sm text-warning">หมายเหตุจากลูกค้า: {order.customerNote}</p>
+        )}
+      </div>
     </div>
   )
 }
@@ -287,11 +341,14 @@ function PhotoPicker({
 // paid → ส่งของ
 // ---------------------------------------------------------------------------
 
+// paid → ส่งของ (จัดส่ง) หรือ ส่งมอบที่ร้าน (รับเอง) — ขั้นตอนเหมือนกัน ต่างแค่ขั้นสุดท้าย: เลขพัสดุ / ผู้มารับ
 function PackForm({ order, onDone }: { order: OrderSummary; onDone: PanelProps['onDone'] }) {
+  const pickup = order.deliveryMethod === 'pickup'
   const [items, setItems] = useState<string[] | null>(null)
   const [checked, setChecked] = useState<Record<number, boolean>>({})
   const [photos, setPhotos] = useState<string[]>([])
   const [tracking, setTracking] = useState('')
+  const [handoverTo, setHandoverTo] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -304,17 +361,19 @@ function PackForm({ order, onDone }: { order: OrderSummary; onDone: PanelProps['
   const receiveBy = order.lines.map((l) => l.startDate).sort()[0]
   const missing: string[] = []
   if (!items || done < total) missing.push(`ติ๊กเช็กลิสต์อีก ${Math.max(0, total - done)} รายการ`)
-  if (photos.length === 0) missing.push('ถ่ายรูปแพ็กอย่างน้อย 1 รูป')
-  if (trackingProblem(tracking)) missing.push('กรอกเลขพัสดุ')
+  if (photos.length === 0) missing.push(pickup ? 'ถ่ายรูปตอนส่งมอบอย่างน้อย 1 รูป' : 'ถ่ายรูปแพ็กอย่างน้อย 1 รูป')
+  if (pickup ? !handoverTo.trim() : trackingProblem(tracking)) missing.push(pickup ? 'กรอกชื่อผู้มารับ' : 'กรอกเลขพัสดุ')
 
   async function submit() {
     if (!items || missing.length) return
     setSaving(true)
     setError(null)
-    const { error: err } = await shipOrder(order.id, normalizeTracking(tracking), items, photos)
+    const { error: err } = pickup
+      ? await handoverOrder(order.id, handoverTo.trim(), items, photos)
+      : await shipOrder(order.id, normalizeTracking(tracking), items, photos)
     setSaving(false)
     if (err) return setError(translateRpcError(err))
-    onDone(`ส่งของ ${order.orderNumber} แล้ว`)
+    onDone(pickup ? `ส่งมอบ ${order.orderNumber} แล้ว` : `ส่งของ ${order.orderNumber} แล้ว`)
   }
 
   async function cancel() {
@@ -327,9 +386,19 @@ function PackForm({ order, onDone }: { order: OrderSummary; onDone: PanelProps['
   return (
     <>
       <div className="flex flex-col gap-6 p-5">
-        <AddressCard order={order} />
+        {pickup ? <ContactCard order={order} /> : <AddressCard order={order} />}
 
-        <Step n={1} title="หยิบชุดจากชั้น" hint={receiveBy ? `ลูกค้าต้องได้รับ ${formatThaiDateWithWeekday(receiveBy)}` : undefined}>
+        <Step
+          n={1}
+          title="หยิบชุดจากชั้น"
+          hint={
+            receiveBy
+              ? pickup
+                ? `ลูกค้ามารับ ${formatThaiDateWithWeekday(receiveBy)}`
+                : `ลูกค้าต้องได้รับ ${formatThaiDateWithWeekday(receiveBy)}`
+              : undefined
+          }
+        >
           <ul className="flex flex-col gap-2">
             {order.lines.map((l) => (
               <li key={l.id} className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-line-subtle px-3 py-2.5">
@@ -365,30 +434,53 @@ function PackForm({ order, onDone }: { order: OrderSummary; onDone: PanelProps['
         </Step>
 
         <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-          <Step n={3} title="รูปตอนแพ็ก" hint="ลูกค้าเห็นรูปนี้">
+          <Step n={3} title={pickup ? 'รูปตอนส่งมอบ' : 'รูปตอนแพ็ก'} hint="ลูกค้าเห็นรูปนี้">
             <PhotoPicker orderId={order.id} stage="pack" paths={photos} onChange={setPhotos} />
           </Step>
-          <Step n={4} title="เลขพัสดุ" hint={SHIP_CARRIER}>
-            <input
-              value={tracking}
-              onChange={(e) => setTracking(e.target.value)}
-              placeholder="เช่น EF123456789TH"
-              aria-label="เลขพัสดุ"
-              autoCapitalize="characters"
-              className="h-11 w-full rounded-control border border-line bg-white px-4 font-mono text-base uppercase text-ink outline-none placeholder:font-sans placeholder:normal-case placeholder:text-muted focus:ring-[3px] focus:ring-brand/25"
-            />
-            {tracking && trackingProblem(tracking) && <p className="text-sm text-danger">{trackingProblem(tracking)}</p>}
-          </Step>
+          {pickup ? (
+            <Step n={4} title="ผู้มารับ" hint="ให้แสดงเลขออเดอร์ก่อนส่งมอบ">
+              <input
+                value={handoverTo}
+                onChange={(e) => setHandoverTo(e.target.value)}
+                placeholder="เช่น คุณมิว (ลูกค้า) หรือ ไรเดอร์ Grab · กข 1234"
+                aria-label="ชื่อผู้มารับ"
+                maxLength={120}
+                className="h-11 w-full rounded-control border border-line bg-white px-4 text-base text-ink outline-none placeholder:text-muted focus:ring-[3px] focus:ring-brand/25"
+              />
+            </Step>
+          ) : (
+            <Step n={4} title="เลขพัสดุ" hint={SHIP_CARRIER}>
+              <input
+                value={tracking}
+                onChange={(e) => setTracking(e.target.value)}
+                placeholder="เช่น EF123456789TH"
+                aria-label="เลขพัสดุ"
+                autoCapitalize="characters"
+                className="h-11 w-full rounded-control border border-line bg-white px-4 font-mono text-base uppercase text-ink outline-none placeholder:font-sans placeholder:normal-case placeholder:text-muted focus:ring-[3px] focus:ring-brand/25"
+              />
+              {tracking && trackingProblem(tracking) && <p className="text-sm text-danger">{trackingProblem(tracking)}</p>}
+            </Step>
+          )}
         </div>
 
         {error && <ErrorBox>{error}</ErrorBox>}
       </div>
-      <Footer hint={missing.length ? <>ยังขาด: <b className="text-ink">{missing.join(' · ')}</b></> : 'ครบแล้ว ลูกค้าจะเห็นเลขพัสดุ รูป และเช็กลิสต์ทันที'}>
+      <Footer
+        hint={
+          missing.length ? (
+            <>ยังขาด: <b className="text-ink">{missing.join(' · ')}</b></>
+          ) : pickup ? (
+            'ครบแล้ว ออเดอร์จะเปลี่ยนเป็น "ลูกค้าได้รับชุดแล้ว" ทันที'
+          ) : (
+            'ครบแล้ว ลูกค้าจะเห็นเลขพัสดุ รูป และเช็กลิสต์ทันที'
+          )
+        }
+      >
         <button type="button" onClick={cancel} className="rounded-full px-3 py-2 text-sm font-medium text-danger hover:bg-danger-subtle">
           ยกเลิกออเดอร์
         </button>
         <button type="button" onClick={submit} disabled={saving || missing.length > 0} className={primaryButtonClass}>
-          {saving ? 'กำลังบันทึก…' : 'ยืนยันส่ง · ไปถัดไป'}
+          {saving ? 'กำลังบันทึก…' : pickup ? 'ยืนยันส่งมอบ · ไปถัดไป' : 'ยืนยันส่ง · ไปถัดไป'}
         </button>
       </Footer>
     </>
@@ -482,6 +574,8 @@ function InspectForm({
   settings,
   today,
   lostOnly,
+  walkIn = false,
+  onCancelWalkIn,
   onDone,
 }: {
   order: OrderSummary
@@ -489,6 +583,8 @@ function InspectForm({
   settings: BookingSettings
   today: string
   lostOnly: boolean
+  walkIn?: boolean // ลูกค้านำมาคืนที่ร้าน — ไม่ต้องมีเลขพัสดุคืน
+  onCancelWalkIn?: () => void
   onDone: PanelProps['onDone']
 }) {
   const packing = detail?.evidence.find((e) => e.stage === 'packing')
@@ -554,6 +650,7 @@ function InspectForm({
       deductions,
       waiveLate,
       severity,
+      returnMethod: walkIn ? 'walk_in' : 'ship',
     })
     setSaving(false)
     if (err) return setError(translateRpcError(err))
@@ -566,7 +663,17 @@ function InspectForm({
     <>
       <div className="flex flex-col gap-6 p-5">
         <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-control border border-line-subtle bg-canvas px-4 py-2.5 text-sm">
-          {order.returnTrackingNo ? (
+          {walkIn ? (
+            <span className="inline-flex items-center gap-1.5 font-semibold text-ink">
+              <StorefrontIcon size={16} />
+              ลูกค้านำมาคืนที่ร้านวันนี้
+              {onCancelWalkIn && (
+                <button type="button" onClick={onCancelWalkIn} className="ml-2 font-normal text-secondary underline">
+                  ยกเลิก
+                </button>
+              )}
+            </span>
+          ) : order.returnTrackingNo ? (
             <>
               <span>
                 ลูกค้าส่งคืน <b>{order.returnSubmittedAt ? formatDateTime(order.returnSubmittedAt) : '—'}</b>
@@ -929,7 +1036,10 @@ function OrderDetails({ order, detail, openByDefault }: { order: OrderSummary; d
 
         {/* ขวา: คนและเหตุการณ์ */}
         <div className="flex min-w-0 flex-col gap-7">
-          <DetailGroup icon={<MapPinIcon size={16} />} title="จัดส่งถึง">
+          <DetailGroup
+            icon={order.deliveryMethod === 'pickup' ? <StorefrontIcon size={16} /> : <MapPinIcon size={16} />}
+            title={order.deliveryMethod === 'pickup' ? 'รับเองที่ร้าน · ผู้ติดต่อ' : 'จัดส่งถึง'}
+          >
             <p className="font-semibold text-ink">{order.shipName}</p>
             <a
               href={`tel:${order.shipPhone}`}
@@ -938,7 +1048,14 @@ function OrderDetails({ order, detail, openByDefault }: { order: OrderSummary; d
               <PhoneIcon size={14} className="text-muted" />
               {order.shipPhone}
             </a>
-            <p className="mt-1 leading-relaxed text-secondary">{fullAddress(order)}</p>
+            {order.deliveryMethod === 'ship' && <p className="mt-1 leading-relaxed text-secondary">{fullAddress(order)}</p>}
+            {order.handoverTo && (
+              <p className="mt-1 text-secondary">
+                ส่งมอบให้ <b className="font-semibold text-ink">{order.handoverTo}</b>
+                {order.handedOverAt && <span className="tabular-nums"> · {formatDateTime(order.handedOverAt)}</span>}
+              </p>
+            )}
+            {order.returnMethod === 'walk_in' && <p className="mt-1 text-secondary">ลูกค้านำชุดมาคืนที่ร้าน</p>}
             {detail?.extras?.receiptIssueNote && (
               <p className="mt-3 flex gap-2 rounded-control bg-warning-subtle px-3 py-2 text-warning">
                 <WarningIcon size={16} weight="fill" className="mt-0.5 flex-none" />

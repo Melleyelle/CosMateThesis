@@ -1,6 +1,11 @@
 import { createClient } from '@/utils/client'
 import { fetchAllOrdersForAdmin, type OrderSummary } from '@/utils/customer/fetchOrders'
-import { fetchBookingSettings, type BookingSettings } from '@/utils/customer/bookingSettings'
+import {
+  bufferBefore,
+  fetchBookingSettings,
+  type BookingSettings,
+  type DeliveryMethod,
+} from '@/utils/customer/bookingSettings'
 import { fetchAllReviewsForAdmin, fetchRatingSummaries, type Review } from '@/utils/customer/reviews'
 import { addDays, parseISODate, todayISO, toISODate } from '@/utils/dateUtils'
 import type { OrderStatus } from '@/utils/orderStatus'
@@ -102,12 +107,14 @@ export function dayDiff(fromISO: string, toISO: string): number {
 }
 
 // วันที่ต้องส่งของออก: ลูกค้าต้องได้รับ (วันใช้งาน - buffer ก่อน) และ EMS ใช้ 1 วัน
-export function shipByDate(useDate: string, s: BookingSettings) {
-  return addDays(useDate, -s.bufferDaysBefore - 1)
+// รับเองที่ร้าน: เตรียมชุดให้พร้อมภายในวันใช้งาน (ลูกค้ามารับวันนั้น)
+export function shipByDate(useDate: string, s: BookingSettings, method: DeliveryMethod = 'ship') {
+  return method === 'pickup' ? useDate : addDays(useDate, -s.bufferDaysBefore - 1)
 }
 
-export function lockRange(startDate: string, endDate: string, s: BookingSettings) {
-  return { from: addDays(startDate, -s.bufferDaysBefore), to: addDays(endDate, s.bufferDaysAfter) }
+// ช่วงที่ชุดถูกล็อก — ตรงกับ blocked_during ใน order_items (รับเองไม่มีวันขนส่งก่อนวันใช้งาน)
+export function lockRange(startDate: string, endDate: string, s: BookingSettings, method: DeliveryMethod = 'ship') {
+  return { from: addDays(startDate, -bufferBefore(s, method)), to: addDays(endDate, s.bufferDaysAfter) }
 }
 
 // อัตราการจองชุด: วันที่ชุดถูกล็อก ÷ (จำนวนชุดที่พร้อมให้เช่า × จำนวนวัน) ในช่วงที่กำหนด
@@ -121,7 +128,7 @@ export function utilization(data: DashboardData, fromISO: string, days: number):
     if (!BLOCKING.includes(o.status)) continue
     for (const l of o.lines) {
       if (!l.itemCode || !codes.has(l.itemCode)) continue
-      const r = lockRange(l.startDate, l.endDate, data.settings)
+      const r = lockRange(l.startDate, l.endDate, data.settings, o.deliveryMethod)
       const a = r.from > fromISO ? r.from : fromISO
       const b = r.to < toISO ? r.to : toISO
       if (a <= b) locked += dayDiff(a, b) + 1

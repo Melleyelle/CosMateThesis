@@ -61,14 +61,20 @@ function buildPhases(s: BookingSettings): Phase[] {
           ),
         },
         {
-          title: 'รับชุดที่บ้าน',
-          when: `${s.bufferDaysBefore} วันก่อนวันงาน`,
+          title: s.pickupLocation ? 'รับชุดที่บ้าน หรือมารับที่ร้าน' : 'รับชุดที่บ้าน',
+          when: s.pickupLocation ? `ส่ง ${s.bufferDaysBefore} วันก่อนงาน · รับที่ร้านวันงาน` : `${s.bufferDaysBefore} วันก่อนวันงาน`,
           text: (
             <>
               ร้านแพ็กชุดส่งให้ถึงก่อนวันงาน <b className="font-semibold text-ink">ลองใส่ทันทีที่ได้รับ</b>{' '}
               ถ้าไซส์ไม่ได้หรือชุดมีปัญหา แจ้งร้านภายในวันนั้น ติดตามพัสดุได้ในหน้า &ldquo;ออเดอร์ของฉัน&rdquo;
             </>
           ),
+          tip: s.pickupLocation ? (
+            <>
+              ต้องการชุดด่วน? เลือก &ldquo;รับเองที่ร้าน&rdquo; ตอนจอง ไม่มีค่าส่ง จองก่อน {s.pickupCutoffHour}:00 รับวันนี้ได้
+              จะมารับเองหรือเรียกไรเดอร์มารับแทนก็ได้ ที่ {s.pickupLocation.name}
+            </>
+          ) : undefined,
         },
       ],
     },

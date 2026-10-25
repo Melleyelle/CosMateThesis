@@ -12,7 +12,9 @@ import {
   MAX_ITEMS_PER_ORDER,
   cartKeyOf as keyOf,
   encodeCheckoutItems,
+  parseDelivery,
   removeFromCart,
+  setCartDelivery,
   useCart,
   type CartItem,
 } from '@/utils/customer/cart'
@@ -30,6 +32,7 @@ import {
   fetchBookingSettings,
   getRentalTimeline,
   minStartOffset,
+  shippingFee,
   type BookingSettings,
 } from '@/utils/customer/bookingSettings'
 import { addDays, formatBaht, formatThaiDateLong, todayISO } from '@/utils/dateUtils'
@@ -47,7 +50,7 @@ const STATUS_MESSAGE: Record<Exclude<ItemStatus, 'ok'>, string> = {
 export default function CartPage() {
   const router = useRouter()
   const loggedIn = useRequireLogin()
-  const { items: cart, ready } = useCart()
+  const { items: cart, delivery: cartDelivery, ready } = useCart()
 
   const [variants, setVariants] = useState<Record<string, VariantSummary>>({})
   const [unavailable, setUnavailable] = useState<Record<string, Set<string>>>({})
@@ -58,18 +61,21 @@ export default function CartPage() {
   const [selectionReady, setSelectionReady] = useState(false)
   const [recommended, setRecommended] = useState<CatalogCostume[]>([])
 
-  // โหลดใหม่เมื่อชุด (ไซส์, จำนวนวัน) ในตะกร้าเปลี่ยน — วันที่ว่างขึ้นกับจำนวนวันเช่าของแต่ละรายการ
+  // ร้านปิดรับเอง (ไม่มีข้อมูลร้าน) → ถือเป็นจัดส่ง แม้ตะกร้าเคยตั้งไว้เป็นรับเอง
+  const delivery = settings.pickupLocation ? cartDelivery : 'ship'
+
+  // โหลดใหม่เมื่อ (ไซส์, จำนวนวัน, วิธีรับ) ในตะกร้าเปลี่ยน — วันที่ว่างขึ้นกับทั้งจำนวนวันและวิธีรับ
   const requestKey = useMemo(
-    () => Array.from(new Set(cart.map((i) => unavailableKey(i.variantId, i.rentalDays)))).sort().join(','),
-    [cart],
+    () => Array.from(new Set(cart.map((i) => unavailableKey(i.variantId, i.rentalDays, cartDelivery)))).sort().join(','),
+    [cart, cartDelivery],
   )
 
   useEffect(() => {
     if (!ready) return
     let cancelled = false
     const requests = (requestKey ? requestKey.split(',') : []).map((k) => {
-      const [variantId, days] = k.split(':')
-      return { variantId, rentalDays: Number(days) }
+      const [variantId, days, method] = k.split(':')
+      return { variantId, rentalDays: Number(days), delivery: parseDelivery(method) }
     })
     const ids = requests.map((r) => r.variantId)
     Promise.all([fetchVariantSummaries(ids), fetchUnavailableDates(requests), fetchBookingSettings()]).then(
@@ -81,6 +87,8 @@ export default function CartPage() {
         setPieces(p)
         setSettings(s)
         setLoading(false)
+        // ร้านปิดรับเองแล้ว แต่ตะกร้ายังตั้งเป็นรับเอง → กลับเป็นจัดส่ง (โหลดวันว่างแบบจัดส่งใหม่เอง)
+        if (!s.pickupLocation && requests.some((r) => r.delivery === 'pickup')) setCartDelivery('ship')
       },
     )
     return () => {
@@ -88,7 +96,7 @@ export default function CartPage() {
     }
   }, [ready, requestKey])
 
-  const minStart = addDays(todayISO(), minStartOffset(settings))
+  const minStart = addDays(todayISO(), minStartOffset(settings, delivery))
   const priceOf = (v: VariantSummary, item: CartItem) => priceLine(v, item.pieces, pieces, item.rentalDays, settings)
 
   function statusOf(item: CartItem): ItemStatus {
@@ -97,7 +105,7 @@ export default function CartPage() {
     if (priceOf(v, item).invalid) return 'pieces_changed'
     if (item.rentalDays < settings.minRentalDays || item.rentalDays > settings.maxRentalDays) return 'bad_days'
     if (item.startDate < minStart) return 'too_soon'
-    if (unavailable[unavailableKey(item.variantId, item.rentalDays)]?.has(item.startDate)) return 'booked'
+    if (unavailable[unavailableKey(item.variantId, item.rentalDays, delivery)]?.has(item.startDate)) return 'booked'
     return 'ok'
   }
 
@@ -130,7 +138,7 @@ export default function CartPage() {
     },
     { rental: 0, deposit: 0, laundry: 0 },
   )
-  const shipping = selectedItems.length > 0 ? settings.shippingFlatRate : 0
+  const shipping = selectedItems.length > 0 ? shippingFee(settings, delivery) : 0
   const grandTotal = totals.rental + totals.deposit + totals.laundry + shipping
 
   const selectableKeys = cart.filter((i) => statusOf(i) === 'ok').map(keyOf)
@@ -159,7 +167,7 @@ export default function CartPage() {
 
   function handleCheckout() {
     if (selectedItems.length === 0) return
-    router.push(`/checkout?items=${encodeCheckoutItems(selectedItems)}`)
+    router.push(`/checkout?items=${encodeCheckoutItems(selectedItems)}&delivery=${delivery}`)
   }
 
   const showSkeleton = !loggedIn || !ready || (cart.length > 0 && loading)
@@ -211,7 +219,7 @@ export default function CartPage() {
                 const v = variants[item.variantId]
                 const status = statusOf(item)
                 const isSelected = selected.includes(keyOf(item)) && status === 'ok'
-                const timeline = v ? getRentalTimeline(item.startDate, item.rentalDays, settings) : null
+                const timeline = v ? getRentalTimeline(item.startDate, item.rentalDays, settings, delivery) : null
                 const line = v ? priceOf(v, item) : null
 
                 return (
@@ -277,7 +285,9 @@ export default function CartPage() {
                               {formatThaiDateLong(timeline.useDate)} – {formatThaiDateLong(timeline.returnBy)}
                             </p>
                             <p className="text-sm text-[#263544]/60">
-                              ชุดถึงมือคุณ {formatThaiDateLong(timeline.receiveDate)} (ไม่นับวันเช่า)
+                              {delivery === 'pickup'
+                                ? 'รับชุดที่ร้านวันใส่'
+                                : `ชุดถึงมือคุณ ${formatThaiDateLong(timeline.receiveDate)} (ไม่นับวันเช่า)`}
                             </p>
                           </div>
                         )}
@@ -319,6 +329,38 @@ export default function CartPage() {
             <h2 className="mb-4 border-b border-line-subtle pb-4 text-2xl font-bold text-[#263544]">
               สรุปยอด <span className="text-[#E5457F]">{selectedItems.length} รายการ</span>
             </h2>
+            {settings.pickupLocation && (
+              <fieldset className="mb-5 border-b border-line-subtle pb-5">
+                <legend className="mb-2 text-base font-semibold text-[#263544]">รับชุดยังไง</legend>
+                <div role="radiogroup" aria-label="วิธีรับชุด" className="grid grid-cols-2 gap-1 rounded-xl border border-line bg-white p-1">
+                  {(
+                    [
+                      ['ship', 'จัดส่ง (EMS)'],
+                      ['pickup', 'รับเองที่ร้าน'],
+                    ] as const
+                  ).map(([method, label]) => (
+                    <button
+                      key={method}
+                      type="button"
+                      role="radio"
+                      aria-checked={delivery === method}
+                      onClick={() => setCartDelivery(method)}
+                      className={`focus-ring rounded-lg py-2 text-base transition ${
+                        delivery === method ? 'bg-brand-soft font-bold text-ink' : 'font-semibold text-ink hover:bg-sunken'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-sm text-[#263544]/60">
+                  {delivery === 'pickup'
+                    ? `รับชุดวันใส่ที่ ${settings.pickupLocation.name} · ให้ไรเดอร์มารับแทนได้`
+                    : `ได้รับชุด ${settings.bufferDaysBefore} วันก่อนวันใส่`}
+                  {' · '}ใช้วิธีเดียวกันทั้งตะกร้า
+                </p>
+              </fieldset>
+            )}
             <dl className="space-y-2 text-base">
               <Row label="ค่าเช่าชุด" value={formatBaht(totals.rental)} />
               <Row label="ค่ามัดจำ (ได้คืนหลังตรวจชุด)" value={formatBaht(totals.deposit)} />

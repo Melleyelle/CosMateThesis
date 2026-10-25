@@ -15,7 +15,7 @@ import {
 } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
 import { createClient } from '@/utils/client'
-import { cartKeyOf, decodeCheckoutItems, removeFromCart, type CartKey } from '@/utils/customer/cart'
+import { cartKeyOf, decodeCheckoutItems, parseDelivery, removeFromCart, type CartKey } from '@/utils/customer/cart'
 import { fetchPieces, priceLine, type PieceInfo } from '@/utils/customer/pieces'
 import { fetchVariantSummaries, type VariantSummary } from '@/utils/customer/fetchVariantSummaries'
 import {
@@ -23,7 +23,9 @@ import {
   fetchBookingSettings,
   getRentalTimeline,
   minStartOffset,
+  shippingFee,
   type BookingSettings,
+  type DeliveryMethod,
 } from '@/utils/customer/bookingSettings'
 import { isDateProblem, translateRpcError } from '@/utils/bookingErrors'
 import { addDays, formatBaht, formatThaiDateLong, isISODate, todayISO } from '@/utils/dateUtils'
@@ -33,6 +35,7 @@ import {
   EMPTY_BANK,
   addressProblem,
   bankProblem,
+  contactProblem,
   maskAccount,
   onlyDigits,
   saveDefaultAddress,
@@ -74,6 +77,7 @@ function CheckoutInner() {
     return decodeCheckoutItems(variantId && isISODate(date) ? `${variantId}:${date}:${searchParams.get('days') ?? 1}` : null)
   }, [searchParams])
   const fromCart = !!searchParams.get('items')
+  const requestedDelivery = parseDelivery(searchParams.get('delivery'))
 
   const [variants, setVariants] = useState<Record<string, VariantSummary>>({})
   const [pieces, setPieces] = useState<Record<string, PieceInfo>>({})
@@ -168,7 +172,8 @@ function CheckoutInner() {
         setAddress(prefilled)
         setHadDefaultAddress(!!saved)
         setSaveAsDefault(!saved)
-        setEditingAddress(addressProblem(prefilled) !== null)
+        const isPickup = !!s.pickupLocation && requestedDelivery === 'pickup'
+        setEditingAddress((isPickup ? contactProblem(prefilled) : addressProblem(prefilled)) !== null)
 
         const b = bankRes.error ? null : bankRes.data
         const r = refundRes.error ? null : refundRes.data
@@ -195,9 +200,15 @@ function CheckoutInner() {
     return () => {
       cancelled = true
     }
-  }, [requested])
+  }, [requested, requestedDelivery])
 
-  const minStart = addDays(todayISO(), minStartOffset(settings))
+  // ร้านปิดรับเอง (ไม่มีข้อมูลร้าน) → จัดส่งเท่านั้น
+  const delivery: DeliveryMethod = settings.pickupLocation ? requestedDelivery : 'ship'
+  const pickup = delivery === 'pickup' ? settings.pickupLocation : null
+  const shipping = shippingFee(settings, delivery)
+  const recipientProblem = (a: Address) => (pickup ? contactProblem(a) : addressProblem(a))
+
+  const minStart = addDays(todayISO(), minStartOffset(settings, delivery))
   const lines = requested.map((r) => {
     const v = variants[r.variantId]
     const price = v ? priceLine(v, r.pieces, pieces, r.rentalDays, settings) : null
@@ -206,7 +217,7 @@ function CheckoutInner() {
       request: r,
       variant: v,
       price,
-      timeline: v ? getRentalTimeline(r.startDate, r.rentalDays, settings) : null,
+      timeline: v ? getRentalTimeline(r.startDate, r.rentalDays, settings, delivery) : null,
       problem: !v
         ? 'ชุดหรือไซส์นี้ปิดให้เช่าแล้ว'
         : price?.invalid
@@ -214,7 +225,9 @@ function CheckoutInner() {
           : r.rentalDays < settings.minRentalDays || r.rentalDays > settings.maxRentalDays
             ? `จำนวนวันเช่าต้องอยู่ระหว่าง ${settings.minRentalDays}–${settings.maxRentalDays} วัน`
             : r.startDate < minStart
-              ? `วันใช้งานกระชั้นเกินไป (ต้องจองล่วงหน้าอย่างน้อย ${settings.minLeadDays} วัน)`
+              ? pickup
+                ? `วันใช้งานกระชั้นเกินไป (รับวันนี้ได้ถ้าจองก่อน ${settings.pickupCutoffHour}:00)`
+                : `วันใช้งานกระชั้นเกินไป (ต้องจองล่วงหน้าอย่างน้อย ${minStartOffset(settings, 'ship')} วัน)`
               : null,
     }
   })
@@ -230,7 +243,7 @@ function CheckoutInner() {
         : acc,
     { rental: 0, deposit: 0, laundry: 0 },
   )
-  const grandTotal = totals.rental + totals.deposit + totals.laundry + settings.shippingFlatRate
+  const grandTotal = totals.rental + totals.deposit + totals.laundry + shipping
   const returnHours = Math.max(...lines.map((l) => l.variant?.depositReturnHours ?? 72), 72)
   const latestReturn = lines.reduce<string | null>(
     (max, l) => (l.timeline && (!max || l.timeline.returnBy > max) ? l.timeline.returnBy : max),
@@ -239,7 +252,7 @@ function CheckoutInner() {
   const backHref = fromCart ? '/cart' : lines[0]?.variant ? `/costumes/${lines[0].variant.productId}` : '/costumes'
 
   function confirmAddress() {
-    const problem = addressProblem(address)
+    const problem = recipientProblem(address)
     setSectionError((e) => ({ ...e, address: problem ?? undefined }))
     if (!problem) setEditingAddress(false)
   }
@@ -252,7 +265,7 @@ function CheckoutInner() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    const aProblem = addressProblem(address)
+    const aProblem = recipientProblem(address)
     const rProblem = refundProblem(refund)
     setSectionError({ address: aProblem ?? undefined, refund: rProblem ?? undefined })
     if (aProblem) setEditingAddress(true)
@@ -275,12 +288,14 @@ function CheckoutInner() {
       })),
       p_ship_name: address.name.trim(),
       p_ship_phone: address.phone,
-      p_ship_address: address.line.trim(),
-      p_ship_subdistrict: address.subdistrict.trim() || null,
-      p_ship_district: address.district.trim() || null,
-      p_ship_province: address.province.trim(),
-      p_ship_postal_code: address.postalCode,
+      // รับเองที่ร้าน: เก็บแค่ชื่อ/เบอร์ผู้ติดต่อ ไม่ส่งที่อยู่
+      p_ship_address: pickup ? null : address.line.trim(),
+      p_ship_subdistrict: pickup ? null : address.subdistrict.trim() || null,
+      p_ship_district: pickup ? null : address.district.trim() || null,
+      p_ship_province: pickup ? null : address.province.trim(),
+      p_ship_postal_code: pickup ? null : address.postalCode,
       p_note: note.trim() || null,
+      p_delivery_method: delivery,
     })
 
     if (error) {
@@ -301,7 +316,7 @@ function CheckoutInner() {
     })
     if (refundError) console.warn('บันทึกบัญชีคืนมัดจำไม่สำเร็จ:', refundError.message)
 
-    if (saveAsDefault) {
+    if (saveAsDefault && !pickup) {
       const err = await saveDefaultAddress(address)
       if (err) console.warn('บันทึกที่อยู่หลักไม่สำเร็จ:', err)
     }
@@ -353,13 +368,68 @@ function CheckoutInner() {
               <MapPinIcon size={26} weight="fill" className="flex-shrink-0 text-[#E5457F]" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-lg font-bold text-[#263544]">ที่อยู่สำหรับจัดส่ง</h2>
+                  <h2 className="text-lg font-bold text-[#263544]">{pickup ? 'รับชุดที่ร้าน' : 'ที่อยู่สำหรับจัดส่ง'}</h2>
                   {!editingAddress && (
-                    <EditButton onClick={() => setEditingAddress(true)} label="แก้ไขที่อยู่" />
+                    <EditButton
+                      onClick={() => setEditingAddress(true)}
+                      label={pickup ? 'แก้ไขผู้ติดต่อ' : 'แก้ไขที่อยู่'}
+                    />
                   )}
                 </div>
 
-                {!editingAddress ? (
+                {pickup && (
+                  <div className="mt-2 rounded-xl bg-[#F7F7F8] px-4 py-3 text-base">
+                    <p className="font-semibold text-[#263544]">{pickup.name}</p>
+                    <p className="text-[#263544]/70">{pickup.address}</p>
+                    {(pickup.hours || pickup.phone) && (
+                      <p className="text-[#263544]/70">{[pickup.hours, pickup.phone && `โทร ${pickup.phone}`].filter(Boolean).join(' · ')}</p>
+                    )}
+                    {pickup.mapUrl && (
+                      <a href={pickup.mapUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#E5457F] underline">
+                        ดูแผนที่
+                      </a>
+                    )}
+                    <p className="mt-1 text-sm text-[#263544]/60">
+                      มารับได้ในวันใส่ แสดงเลขออเดอร์ให้พนักงาน · ให้ไรเดอร์มารับแทนได้
+                    </p>
+                  </div>
+                )}
+
+                {pickup && !editingAddress ? (
+                  <p className="mt-3 text-base">
+                    <span className="text-[#263544]/70">ผู้ติดต่อ: </span>
+                    <span className="font-semibold text-[#263544]">
+                      {address.name} ({address.phone})
+                    </span>
+                  </p>
+                ) : pickup ? (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <Field label="ชื่อผู้ติดต่อ">
+                      <input
+                        value={address.name}
+                        onChange={(e) => setAddress({ ...address, name: e.target.value })}
+                        autoComplete="name"
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field label="เบอร์โทร">
+                      <input
+                        inputMode="numeric"
+                        maxLength={10}
+                        value={address.phone}
+                        onChange={(e) => setAddress({ ...address, phone: onlyDigits(e.target.value) })}
+                        autoComplete="tel"
+                        className={inputClass}
+                      />
+                    </Field>
+                    {sectionError.address && <ErrorText>{sectionError.address}</ErrorText>}
+                    <div className="sm:col-span-2">
+                      <button type="button" onClick={confirmAddress} className={primaryButtonClass}>
+                        ใช้ข้อมูลนี้
+                      </button>
+                    </div>
+                  </div>
+                ) : !editingAddress ? (
                   <div className="mt-2 text-base">
                     <p className="font-semibold text-[#263544]">
                       {address.name} ({address.phone})
@@ -459,7 +529,7 @@ function CheckoutInner() {
           <div className="grid gap-6 sm:grid-cols-2">
             <div>
               <h2 className="mb-3 text-lg font-bold text-[#263544]">การจัดส่ง</h2>
-              <FixedChoice label="ไปรษณีย์ไทย (ส่งด่วน EMS)" />
+              <FixedChoice label={pickup ? 'รับเองที่ร้าน' : 'ไปรษณีย์ไทย (ส่งด่วน EMS)'} />
             </div>
             <div>
               <h2 className="mb-3 text-lg font-bold text-[#263544]">วิธีการชำระ</h2>
@@ -556,7 +626,11 @@ function CheckoutInner() {
               rows={2}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="เช่น ใช้ไปงาน Comic Con อยากได้ของก่อนเที่ยง"
+              placeholder={
+                pickup
+                  ? 'ถ้าให้ไรเดอร์มารับ แจ้งชื่อไรเดอร์หรือเวลาที่จะมาถึง'
+                  : 'เช่น ใช้ไปงาน Comic Con อยากได้ของก่อนเที่ยง'
+              }
               className={inputClass}
             />
           </div>
@@ -606,7 +680,9 @@ function CheckoutInner() {
                         {formatThaiDateLong(l.timeline.useDate)} ถึง {formatThaiDateLong(l.timeline.returnBy)}
                       </p>
                       <p className="text-base text-[#263544]/60">
-                        ชุดถึงมือคุณ {formatThaiDateLong(l.timeline.receiveDate)} (ไม่นับวันเช่า)
+                        {pickup
+                          ? `รับชุดที่ร้าน ${formatThaiDateLong(l.timeline.receiveDate)}`
+                          : `ชุดถึงมือคุณ ${formatThaiDateLong(l.timeline.receiveDate)} (ไม่นับวันเช่า)`}
                       </p>
                     </div>
                   )}
@@ -626,7 +702,7 @@ function CheckoutInner() {
             <PriceRow label="ค่าเช่าชุด" value={totals.rental} />
             <PriceRow label="ค่ามัดจำ (ได้คืนหลังตรวจชุด)" value={totals.deposit} />
             <PriceRow label="ค่าซักรีด" value={totals.laundry} />
-            <PriceRow label="ค่าจัดส่ง" value={settings.shippingFlatRate} />
+            <PriceRow label={pickup ? 'ค่าจัดส่ง (รับเองที่ร้าน)' : 'ค่าจัดส่ง'} value={shipping} />
             <div className="flex items-center justify-between border-t border-dashed border-line-subtle pt-3">
               <dt className="font-bold text-[#263544]">ยอดชำระทั้งหมด</dt>
               <dd className="text-3xl font-extrabold text-brand">{formatBaht(grandTotal)}</dd>

@@ -289,7 +289,14 @@ function AdminOrdersInner() {
                           </span>
                         )}
                       </span>
-                      <span className="font-semibold text-ink">{o.shipName}</span>
+                      <span className="font-semibold text-ink">
+                        {o.shipName}
+                        {o.deliveryMethod === 'pickup' && (
+                          <span className="ml-2 rounded-full border border-line px-1.5 py-px text-[11px] font-semibold text-secondary">
+                            รับที่ร้าน
+                          </span>
+                        )}
+                      </span>
                       <span className="truncate text-sm text-secondary">
                         {first ? `${first.productName}${first.size ? ` · ${first.size}` : ''}` : '—'}
                         {o.lines.length > 1 && ` +${o.lines.length - 1}`}

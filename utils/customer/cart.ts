@@ -3,16 +3,38 @@
 import { useSyncExternalStore } from 'react'
 import { isISODate } from '@/utils/dateUtils'
 import { getAuthState, subscribeAuthUser } from '@/utils/customer/authUser'
+import type { DeliveryMethod } from '@/utils/customer/bookingSettings'
 
 export const MAX_ITEMS_PER_ORDER = 10
 
 // แยกตะกร้าตามผู้ใช้ — key เดิม 'cosmate:cart' ใช้ร่วมกันทุกบัญชีในเบราว์เซอร์เดียวกัน จึงลบทิ้ง
 const LEGACY_CART_STORAGE_KEY = 'cosmate:cart'
 const CART_STORAGE_PREFIX = 'cosmate:cart:'
+// วิธีรับชุดเป็นของทั้งตะกร้า (ค่าส่งคิดต่อออเดอร์) — เก็บแยกจากรายการ
+const DELIVERY_STORAGE_PREFIX = 'cosmate:cart-delivery:'
 
 function cartStorageKey(): string | null {
   const { userId } = getAuthState()
   return userId ? CART_STORAGE_PREFIX + userId : null
+}
+
+function deliveryStorageKey(): string | null {
+  const { userId } = getAuthState()
+  return userId ? DELIVERY_STORAGE_PREFIX + userId : null
+}
+
+export function parseDelivery(value: unknown): DeliveryMethod {
+  return value === 'pickup' ? 'pickup' : 'ship'
+}
+
+function readDelivery(): DeliveryMethod {
+  const key = deliveryStorageKey()
+  if (!key) return 'ship'
+  try {
+    return parseDelivery(window.localStorage.getItem(key))
+  } catch {
+    return 'ship'
+  }
 }
 
 export type CartKey = {
@@ -44,10 +66,11 @@ function normalizeDays(days: unknown): number {
 
 interface CartState {
   items: CartItem[]
+  delivery: DeliveryMethod
   ready: boolean
 }
 
-const SERVER_CART_STATE: CartState = { items: [], ready: false }
+const SERVER_CART_STATE: CartState = { items: [], delivery: 'ship', ready: false }
 const subscribers = new Set<() => void>()
 let cartSnapshot: { userId: string | null; state: CartState } | null = null
 
@@ -88,14 +111,22 @@ function writeCart(items: CartItem[]) {
   publish(items)
 }
 
+function writeDelivery(delivery: DeliveryMethod) {
+  const key = deliveryStorageKey()
+  if (!key) return
+  try {
+    window.localStorage.setItem(key, delivery)
+  } catch {}
+}
+
 function publish(items: CartItem[] = readCart()) {
   const { userId, ready } = getAuthState()
-  cartSnapshot = { userId, state: { items, ready } }
+  cartSnapshot = { userId, state: { items, delivery: readDelivery(), ready } }
   subscribers.forEach((notify) => notify())
 }
 
 function handleStorage(event: StorageEvent) {
-  if (event.key === null || event.key === cartStorageKey()) publish()
+  if (event.key === null || event.key === cartStorageKey() || event.key === deliveryStorageKey()) publish()
 }
 
 let unsubscribeAuth: (() => void) | null = null
@@ -123,7 +154,7 @@ function subscribe(notify: () => void) {
 function getSnapshot(): CartState {
   const { userId, ready } = getAuthState()
   if (!cartSnapshot || cartSnapshot.userId !== userId || cartSnapshot.state.ready !== ready) {
-    cartSnapshot = { userId, state: { items: readCart(), ready } }
+    cartSnapshot = { userId, state: { items: readCart(), delivery: readDelivery(), ready } }
   }
   return cartSnapshot.state
 }
@@ -136,19 +167,29 @@ export function useCart(): CartState {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 }
 
+// 'mismatch' = ตะกร้ามีของอยู่แล้วและใช้วิธีรับชุดอื่น → ให้หน้าถามลูกค้าก่อน แล้วเรียก setCartDelivery() แล้วเพิ่มใหม่
 export function addToCart(
   variantId: string,
   startDate: string,
   rentalDays: number,
+  delivery: DeliveryMethod,
   pieces?: string[],
-): 'added' | 'exists' | 'login' {
+): 'added' | 'exists' | 'login' | 'mismatch' {
   if (!cartStorageKey()) return 'login'
   const items = readCart()
+  if (items.length > 0 && readDelivery() !== delivery) return 'mismatch'
   const item: CartItem = { variantId, startDate, rentalDays: normalizeDays(rentalDays), pieces: normalizePieces(pieces) }
   const key = cartKeyOf(item)
   if (items.some((i) => cartKeyOf(i) === key)) return 'exists'
+  writeDelivery(delivery)
   writeCart([...items, item])
   return 'added'
+}
+
+// เปลี่ยนวิธีรับของทั้งตะกร้า (หน้าตะกร้าตรวจวันว่างของทุกรายการใหม่เอง)
+export function setCartDelivery(delivery: DeliveryMethod) {
+  writeDelivery(delivery)
+  publish()
 }
 
 export function removeFromCart(itemsToRemove: CartKey[]) {

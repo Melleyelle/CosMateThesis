@@ -86,6 +86,13 @@ export function addressProblem(a: Address): string | null {
   return null
 }
 
+// รับเองที่ร้าน: ต้องการแค่ชื่อและเบอร์ผู้ติดต่อ
+export function contactProblem(a: Pick<Address, 'name' | 'phone'>): string | null {
+  if (!a.name.trim()) return 'กรอกชื่อผู้ติดต่อ'
+  if (!/^0\d{8,9}$/.test(a.phone)) return 'เบอร์โทรต้องเป็นตัวเลข 9–10 หลัก ขึ้นต้นด้วย 0'
+  return null
+}
+
 export function bankProblem(b: BankAccount): string | null {
   if (!b.accountName.trim() || !b.bank) return 'กรอกชื่อเจ้าของบัญชีและเลือกธนาคารให้ครบ'
   const n = onlyDigits(b.accountNumber).length

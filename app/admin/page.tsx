@@ -79,10 +79,12 @@ export default function AdminDashboardPage() {
     const ship: Task[] = data.orders
       .filter((o) => o.status === 'paid' && o.lines.length > 0)
       .map((o) => {
-        const shipBy = o.lines.map((l) => shipByDate(l.startDate, s)).sort()[0]
+        const shipBy = o.lines.map((l) => shipByDate(l.startDate, s, o.deliveryMethod)).sort()[0]
         const diff = dayDiff(today, shipBy)
         const when =
-          diff < 0 ? `เลยกำหนดส่ง ${-diff} วัน` : diff === 0 ? 'ต้องส่งวันนี้' : diff === 1 ? 'ส่งพรุ่งนี้' : `ส่งภายใน ${formatThaiDateWithWeekday(shipBy)}`
+          o.deliveryMethod === 'pickup'
+            ? diff < 0 ? `ลูกค้ายังไม่มารับ ${-diff} วัน` : diff === 0 ? 'ลูกค้ามารับวันนี้' : `รับที่ร้าน ${formatThaiDateWithWeekday(shipBy)}`
+            : diff < 0 ? `เลยกำหนดส่ง ${-diff} วัน` : diff === 0 ? 'ต้องส่งวันนี้' : diff === 1 ? 'ส่งพรุ่งนี้' : `ส่งภายใน ${formatThaiDateWithWeekday(shipBy)}`
         return { order: o, tone: (diff < 0 ? 'problem' : diff === 0 ? 'action' : 'waiting') as Tone, when, sort: diff }
       })
       .sort((a, b) => a.sort - b.sort)
@@ -212,7 +214,7 @@ export default function AdminDashboardPage() {
           <QueueColumn
             icon={<PackageIcon size={18} />}
             title="แพ็กและส่งออก"
-            hint="ส่ง EMS ก่อนวันรับชุด 1 วัน"
+            hint="ส่ง EMS ก่อนวันรับชุด 1 วัน · รับเองที่ร้าน เตรียมไว้ภายในวันใส่"
             tasks={queues?.ship}
             href="/admin/orders?tab=to_ship"
           />

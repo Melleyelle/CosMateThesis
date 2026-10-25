@@ -45,10 +45,13 @@ export function dueOf(
   }
   if (task === 'slip') return { text: 'ตรวจสลิป', tone: 'urgent', sortKey: order.createdAt }
   if (task === 'pack') {
-    const shipBy = order.lines.map((l) => shipByDate(l.startDate, s)).sort()[0] ?? today
+    const pickup = order.deliveryMethod === 'pickup'
+    const shipBy = order.lines.map((l) => shipByDate(l.startDate, s, order.deliveryMethod)).sort()[0] ?? today
     const diff = dayDiff(today, shipBy)
     return {
-      text: diff < 0 ? `ส่งช้าแล้ว ${-diff} วัน` : diff === 0 ? 'ต้องส่งวันนี้' : `ส่งภายใน ${diff} วัน`,
+      text: pickup
+        ? diff < 0 ? `ยังไม่มารับ ${-diff} วัน` : diff === 0 ? 'มารับวันนี้' : `มารับใน ${diff} วัน`
+        : diff < 0 ? `ส่งช้าแล้ว ${-diff} วัน` : diff === 0 ? 'ต้องส่งวันนี้' : `ส่งภายใน ${diff} วัน`,
       tone: diff < 0 ? 'late' : diff === 0 ? 'urgent' : 'normal',
       sortKey: shipBy,
     }
@@ -229,7 +232,20 @@ export async function shipOrder(orderId: string, trackingNo: string, checklist: 
   return { error: error?.message ?? null }
 }
 
-export type DeductionInput = { type: 'damage' | 'missing_part' | 'special_cleaning' | 'lost'; amount: number; note: string; orderItemId: string | null }
+// รับเองที่ร้าน: ส่งมอบให้ลูกค้า/ไรเดอร์ → paid → active (ไม่ผ่าน shipped)
+export async function handoverOrder(orderId: string, handoverTo: string, checklist: string[], imagePaths: string[]) {
+  const supabase = createClient()
+  if (!supabase) return { error: 'Supabase ยังไม่ได้ตั้งค่า' }
+  const { error } = await supabase.rpc('admin_handover_order', {
+    p_order_id: orderId,
+    p_handover_to: handoverTo,
+    p_checklist: checklist.map((name) => ({ name, checked: true })),
+    p_image_paths: imagePaths,
+  })
+  return { error: error?.message ?? null }
+}
+
+export type DeductionInput ={ type: 'damage' | 'missing_part' | 'special_cleaning' | 'lost'; amount: number; note: string; orderItemId: string | null }
 
 export async function receiveAndInspect(args: {
   orderId: string
@@ -238,6 +254,7 @@ export async function receiveAndInspect(args: {
   deductions: DeductionInput[]
   waiveLate: boolean
   severity: 'minor' | 'major'
+  returnMethod: 'ship' | 'walk_in' // walk_in = ลูกค้านำมาคืนที่ร้าน ไม่ต้องมีเลขพัสดุ
 }) {
   const supabase = createClient()
   if (!supabase) return { error: 'Supabase ยังไม่ได้ตั้งค่า' }
@@ -248,6 +265,7 @@ export async function receiveAndInspect(args: {
     p_deductions: args.deductions.map((d) => ({ type: d.type, amount: d.amount, note: d.note || null, order_item_id: d.orderItemId })),
     p_waive_late: args.waiveLate,
     p_severity: args.severity,
+    p_return_method: args.returnMethod,
   })
   return { error: error?.message ?? null }
 }

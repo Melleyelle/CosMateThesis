@@ -13,6 +13,7 @@ import {
   MagnifyingGlassIcon,
   PackageIcon,
   StarIcon,
+  StorefrontIcon,
   TruckIcon,
   UploadSimpleIcon,
   XCircleIcon,
@@ -31,7 +32,7 @@ import {
   customerStepIndex,
 } from '@/utils/orderStatus'
 import { addDays, formatBaht, formatDateTime, formatThaiDateWithWeekday } from '@/utils/dateUtils'
-import { DEFAULT_BOOKING_SETTINGS, fetchBookingSettings } from '@/utils/customer/bookingSettings'
+import { DEFAULT_BOOKING_SETTINGS, fetchBookingSettings, type PickupLocation } from '@/utils/customer/bookingSettings'
 import { RETURN_CARRIERS, SHIP_CARRIER, normalizeTracking, trackingProblem, trackingUrl } from '@/utils/tracking'
 import { submitSlip } from '@/utils/submitSlip'
 
@@ -44,7 +45,8 @@ export default function OrderPage() {
   const [order, setOrder] = useState<OrderSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [bufferBefore, setBufferBefore] = useState(DEFAULT_BOOKING_SETTINGS.bufferDaysBefore)
+  const [shipBufferBefore, setBufferBefore] = useState(DEFAULT_BOOKING_SETTINGS.bufferDaysBefore)
+  const [pickupLocation, setPickupLocation] = useState<PickupLocation | null>(null)
   const [acting, setActing] = useState<'pay' | 'cancel' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [myReviews, setMyReviews] = useState<Record<string, Review>>({})
@@ -78,6 +80,7 @@ export default function OrderPage() {
 
   const apply = useCallback(({ res, settings, reviews }: Awaited<ReturnType<typeof fetchPageData>>) => {
     setBufferBefore(settings.bufferDaysBefore)
+    setPickupLocation(settings.pickupLocation)
     if (res.error || !res.data) setLoadError(res.error ?? 'ไม่พบออเดอร์นี้')
     else {
       setOrder(res.data)
@@ -124,6 +127,9 @@ export default function OrderPage() {
 
   const stepIndex = order ? customerStepIndex(order.status) : -1
   const firstUseDate = useMemo(() => order?.lines[0]?.startDate ?? null, [order])
+  // รับเองที่ร้าน: ไม่มีวันขนส่ง วันรับชุด = วันใส่
+  const isPickup = order?.deliveryMethod === 'pickup'
+  const bufferBefore = isPickup ? 0 : shipBufferBefore
 
   if (loading) {
     return (
@@ -366,15 +372,51 @@ export default function OrderPage() {
               <div>
                 <h2 className="font-bold text-[#263544]">ได้รับแจ้งชำระเงินแล้ว</h2>
                 <p className="mt-1 text-base text-[#263544]/70">
-                  ร้านกำลังตรวจสอบยอดเงิน เมื่อยืนยันแล้วสถานะจะเปลี่ยนเป็น &quot;ชำระแล้ว รอจัดส่ง&quot;
-                  {firstUseDate && ` และชุดจะถึงมือคุณภายใน ${formatThaiDateWithWeekday(addDays(firstUseDate, -bufferBefore))}`}
+                  {isPickup
+                    ? `ร้านกำลังตรวจสอบยอดเงิน เมื่อยืนยันแล้วมารับชุดที่ร้านได้${firstUseDate ? `ในวันที่ ${formatThaiDateWithWeekday(firstUseDate)}` : ''}`
+                    : <>
+                        ร้านกำลังตรวจสอบยอดเงิน เมื่อยืนยันแล้วสถานะจะเปลี่ยนเป็น &quot;ชำระแล้ว รอจัดส่ง&quot;
+                        {firstUseDate && ` และชุดจะถึงมือคุณภายใน ${formatThaiDateWithWeekday(addDays(firstUseDate, -bufferBefore))}`}
+                      </>}
                 </p>
               </div>
             </section>
           )}
 
+          {/* รับเองที่ร้าน: จ่ายแล้ว รอมารับ — บอกวัน เวลา ที่ร้าน และสิ่งที่ต้องแสดง */}
+          {isPickup && (order.status === 'paid' || order.status === 'manual_review') && (
+            <section className="flex gap-4 rounded-card border border-line bg-[#FFF3B0] p-6">
+              <StorefrontIcon size={32} className="flex-shrink-0 text-[#263544]" />
+              <div className="min-w-0 text-base">
+                <h2 className="font-bold text-[#263544]">
+                  มารับชุดได้{firstUseDate ? `วันที่ ${formatThaiDateWithWeekday(firstUseDate)}` : 'ในวันใส่'}
+                </h2>
+                {pickupLocation ? (
+                  <p className="mt-1 text-[#263544]/80">
+                    ที่ <b>{pickupLocation.name}</b> · {pickupLocation.address}
+                    {pickupLocation.hours && ` · ${pickupLocation.hours}`}
+                    {pickupLocation.phone && ` · โทร ${pickupLocation.phone}`}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[#263544]/80">ติดต่อร้านเพื่อนัดเวลารับชุด</p>
+                )}
+                <p className="mt-2 text-[#263544]/80">
+                  แสดงเลขออเดอร์ <b className="font-mono">{order.orderNumber}</b> ให้พนักงาน และตรวจชุดต่อหน้าพนักงานก่อนรับ
+                </p>
+                <p className="mt-1 text-[#263544]/60">
+                  ให้ไรเดอร์มารับแทน: ส่งเลขออเดอร์และชื่อผู้จอง ({order.shipName}) ให้ไรเดอร์
+                </p>
+                {pickupLocation?.mapUrl && (
+                  <a href={pickupLocation.mapUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block font-semibold text-[#E5457F] underline">
+                    ดูแผนที่
+                  </a>
+                )}
+              </div>
+            </section>
+          )}
+
           {(order.status === 'shipped' || order.status === 'active') && (
-            <TrackingSection key={order.status} order={order} onSaved={load} />
+            <TrackingSection key={order.status} order={order} onSaved={load} canWalkIn={!!pickupLocation} />
           )}
 
           {PACKING_VISIBLE.includes(order.status) && <PackingProof orderId={order.id} returning={order.status === 'active'} />}
@@ -441,7 +483,7 @@ export default function OrderPage() {
                         ` (วันแรก ${formatBaht(line.baseRentalPrice)} + ${line.rentalDays - 1} วัน × ${formatBaht(line.extraDayRate)})`}
                     </p>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
-                      <DateChip label="ได้รับชุด" date={addDays(line.startDate, -bufferBefore)} />
+                      <DateChip label={isPickup ? 'รับที่ร้าน' : 'ได้รับชุด'} date={addDays(line.startDate, -bufferBefore)} />
                       <DateChip label="วันใช้งาน" date={line.startDate} highlight />
                       <DateChip label="ส่งคืนภายใน" date={line.endDate} />
                     </div>
@@ -487,7 +529,7 @@ export default function OrderPage() {
               <PriceRow label="ค่าเช่าชุด" value={order.rentalTotal} />
               <PriceRow label="ค่ามัดจำ (ได้คืน)" value={order.depositTotal} />
               {order.laundryTotal > 0 && <PriceRow label="ค่าซักรีด" value={order.laundryTotal} />}
-              <PriceRow label="ค่าจัดส่ง" value={order.shippingFee} />
+              <PriceRow label={isPickup ? 'ค่าจัดส่ง (รับเองที่ร้าน)' : 'ค่าจัดส่ง'} value={order.shippingFee} />
               <div className="flex items-center justify-between border-t border-dashed border-line-subtle pt-2">
                 <dt className="font-bold text-[#263544]">รวมทั้งหมด</dt>
                 <dd className="text-lg font-extrabold text-brand">{formatBaht(order.grandTotal)}</dd>
@@ -496,15 +538,26 @@ export default function OrderPage() {
           </section>
 
           <section className="rounded-3xl bg-[#F7F7F8] p-5 text-base">
-            <h2 className="mb-2 font-bold text-[#263544]">จัดส่งถึง</h2>
+            <h2 className="mb-2 font-bold text-[#263544]">{isPickup ? 'รับเองที่ร้าน' : 'จัดส่งถึง'}</h2>
             <p className="font-semibold text-[#263544]">
+              {isPickup && <span className="font-normal text-[#263544]/60">ผู้ติดต่อ: </span>}
               {order.shipName} · {order.shipPhone}
             </p>
             <p className="mt-1 text-[#263544]/70">
-              {[order.shipAddress, order.shipSubdistrict, order.shipDistrict, order.shipProvince, order.shipPostalCode]
-                .filter(Boolean)
-                .join(' ')}
+              {isPickup
+                ? pickupLocation
+                  ? `${pickupLocation.name} · ${pickupLocation.address}`
+                  : ''
+                : [order.shipAddress, order.shipSubdistrict, order.shipDistrict, order.shipProvince, order.shipPostalCode]
+                    .filter(Boolean)
+                    .join(' ')}
             </p>
+            {order.handoverTo && (
+              <p className="mt-1 text-[#263544]/70">
+                ส่งมอบให้ {order.handoverTo}
+                {order.handedOverAt && ` · ${formatDateTime(order.handedOverAt)}`}
+              </p>
+            )}
             {order.customerNote && (
               <p className="mt-2 rounded-xl bg-[#FFFAFC] px-3 py-2 text-base text-[#263544]/70">
                 หมายเหตุ: {order.customerNote}
@@ -607,7 +660,15 @@ function PackingProof({ orderId, returning }: { orderId: string; returning: bool
 }
 
 // shipped = แสดงเลขพัสดุที่ร้านส่งมา / active = ให้ลูกค้ากรอกเลขพัสดุส่งคืน (ก่อนร้านจะยืนยันรับคืนได้)
-function TrackingSection({ order, onSaved }: { order: OrderSummary; onSaved: () => Promise<void> }) {
+function TrackingSection({
+  order,
+  onSaved,
+  canWalkIn,
+}: {
+  order: OrderSummary
+  onSaved: () => Promise<void>
+  canWalkIn: boolean // ร้านเปิดหน้าร้าน → นำชุดมาคืนเองได้ ไม่ต้องกรอกเลขพัสดุ
+}) {
   const [editing, setEditing] = useState(!order.returnTrackingNo)
   const [carrier, setCarrier] = useState(order.returnCarrier ?? RETURN_CARRIERS[0])
   const [trackingNo, setTrackingNo] = useState(order.returnTrackingNo ?? '')
@@ -673,6 +734,7 @@ function TrackingSection({ order, onSaved }: { order: OrderSummary; onSaved: () 
         <div className="space-y-3">
           <p className="text-base text-[#263544]/60">
             ส่งชุดคืนแล้วกรอกเลขพัสดุที่นี่ ร้านจะยืนยันรับชุดคืนได้หลังคุณกรอกเลขพัสดุแล้วเท่านั้น
+            {canWalkIn && ' · หรือนำชุดมาคืนที่ร้านภายในวันคืน ไม่ต้องกรอกอะไร'}
           </p>
           <div className="grid gap-3 sm:grid-cols-[200px_1fr]">
             <select

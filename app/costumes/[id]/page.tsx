@@ -27,7 +27,7 @@ import MeasureGuideButton from '@/app/components/customer/MeasureGuide'
 import ProductReviews from '@/app/components/customer/ProductReviews'
 import { StarDisplay } from '@/app/components/customer/StarRating'
 import { fetchRatingSummaries, type RatingSummary } from '@/utils/customer/reviews'
-import { addToCart, encodeCheckoutItems } from '@/utils/customer/cart'
+import { addToCart, encodeCheckoutItems, setCartDelivery } from '@/utils/customer/cart'
 import { loginHref } from '@/utils/customer/authUser'
 import { COLOR_HEX, colorKeysOf } from '@/utils/customer/filterOptions'
 import { formatRange } from '@/utils/sizeDefaults'
@@ -38,7 +38,9 @@ import {
   fetchBookingSettings,
   getRentalTimeline,
   minStartOffset,
+  shippingFee,
   type BookingSettings,
+  type DeliveryMethod,
 } from '@/utils/customer/bookingSettings'
 import { CATEGORY_LABEL, FRANCHISE_LABEL, GENDER_LABEL } from '@/utils/customer/labels'
 import { fetchEvents, type CalendarEvent } from '@/utils/customer/events'
@@ -74,6 +76,9 @@ export default function CostumeDetailPage() {
   const [previewInclusion, setPreviewInclusion] = useState<{ url: string; name: string } | null>(null)
   const [rentMode, setRentMode] = useState<'set' | 'pieces'>('set')
   const [selectedPieces, setSelectedPieces] = useState<Set<string>>(new Set())
+  const [deliveryChoice, setDeliveryChoice] = useState<DeliveryMethod>('ship')
+  // ร้านไม่ได้ตั้งข้อมูลรับเอง → มีแค่จัดส่ง
+  const delivery: DeliveryMethod = settings.pickupLocation ? deliveryChoice : 'ship'
 
   // กด Esc ปิดหน้าต่างดูรูป
   useEffect(() => {
@@ -119,23 +124,28 @@ export default function CostumeDetailPage() {
     return () => clearTimeout(t)
   }, [rentalDays])
 
-  // วันเริ่มเช่าไม่ได้ของ (ไซส์, จำนวนวัน) ที่เลือก · ผลของคำขอเก่าที่ตอบช้าก็เก็บลง cache ตาม key ของมันเอง ไม่ทับค่าปัจจุบัน
-  const cacheKey = variantId ? `${variantId}:${queryDays}` : null
+  // วันเริ่มเช่าไม่ได้ของ (ไซส์, จำนวนวัน, วิธีรับ) ที่เลือก · ผลของคำขอเก่าที่ตอบช้าก็เก็บลง cache ตาม key ของมันเอง ไม่ทับค่าปัจจุบัน
+  const cacheKey = variantId ? `${variantId}:${queryDays}:${delivery}` : null
   const inflight = useRef(new Set<string>())
   useEffect(() => {
-    const key = `${variantId}:${queryDays}`
+    const key = `${variantId}:${queryDays}:${delivery}`
     if (!variantId || unavailableCache.has(key) || inflight.current.has(key)) return
     const supabase = createClient()
     if (!supabase) return
     inflight.current.add(key)
     supabase
-      .rpc('get_unavailable_start_dates', { p_variant_id: variantId, p_days_ahead: DAYS_AHEAD, p_rental_days: queryDays })
+      .rpc('get_unavailable_start_dates', {
+        p_variant_id: variantId,
+        p_days_ahead: DAYS_AHEAD,
+        p_rental_days: queryDays,
+        p_delivery_method: delivery,
+      })
       .then(({ data, error }) => {
         const value = error ? ('error' as const) : new Set(((data ?? []) as string[]).map((d) => String(d).slice(0, 10)))
         inflight.current.delete(key)
         setUnavailableCache((prev) => new Map(prev).set(key, value))
       })
-  }, [variantId, queryDays, unavailableCache])
+  }, [variantId, queryDays, delivery, unavailableCache])
 
   // วันที่ถูกจองจริงของทุกไซส์ ครั้งเดียวต่อชุด · ไซส์ไหนโหลดไม่สำเร็จก็แค่ไม่แสดงพื้นเทา/ป้ายไซส์นั้น ปฏิทินยังใช้ได้
   useEffect(() => {
@@ -181,16 +191,16 @@ export default function CostumeDetailPage() {
   const unavailable = useMemo(() => (cached instanceof Set ? cached : new Set<string>()), [cached])
   const occupied = useMemo(() => (variantId && occupiedByVariant.get(variantId)) || new Set<string>(), [variantId, occupiedByVariant])
 
-  // เปลี่ยนจำนวนวันแล้ววันใส่ที่เลือกไว้ใช้ไม่ได้ → ไม่นับว่าเลือกไว้ และบอกลูกค้าให้เลือกใหม่
-  // (ไม่ลบ state ทิ้ง ถ้าเปลี่ยนจำนวนวันกลับ วันเดิมจะกลับมาเป็นที่เลือก)
+  // เปลี่ยนจำนวนวัน/วิธีรับแล้ววันใส่ที่เลือกไว้ใช้ไม่ได้ → ไม่นับว่าเลือกไว้ และบอกลูกค้าให้เลือกใหม่
+  // (ไม่ลบ state ทิ้ง ถ้าเปลี่ยนกลับ วันเดิมจะกลับมาเป็นที่เลือก)
   const lastStart = addDays(todayISO(), DAYS_AHEAD - (rentalDays - 1))
   const selectedInvalid =
     !!selectedDate && !datesLoading && (unavailable.has(selectedDate) || selectedDate > lastStart)
   const activeDate = selectedInvalid ? null : selectedDate
 
   const getTimeline = useCallback(
-    (useDate: string) => getRentalTimeline(useDate, rentalDays, settings),
-    [rentalDays, settings],
+    (useDate: string) => getRentalTimeline(useDate, rentalDays, settings, delivery),
+    [rentalDays, settings, delivery],
   )
 
   const timeline = useMemo(
@@ -226,14 +236,23 @@ export default function CostumeDetailPage() {
     router.push(
       `/checkout?items=${encodeCheckoutItems([
         { variantId: variant.id, startDate: activeDate, rentalDays, pieces: chosenPieces()?.sort() },
-      ])}`,
+      ])}&delivery=${delivery}`,
     )
   }
 
   function handleAddToCart() {
     if (!variant || !activeDate) return
+    let result = addToCart(variant.id, activeDate, rentalDays, delivery, chosenPieces())
+    // ตะกร้าใช้วิธีรับเดียวทั้งตะกร้า → ถามก่อนเปลี่ยน (ยกเลิก = ไม่เพิ่ม)
+    if (result === 'mismatch') {
+      const label = delivery === 'pickup' ? 'รับเองที่ร้าน' : 'จัดส่ง'
+      const current = delivery === 'pickup' ? 'จัดส่ง' : 'รับเองที่ร้าน'
+      if (!confirm(`ตะกร้าของคุณเป็นแบบ "${current}"\nเปลี่ยนทั้งตะกร้าเป็น "${label}" ไหม?`)) return
+      setCartDelivery(delivery)
+      result = addToCart(variant.id, activeDate, rentalDays, delivery, chosenPieces())
+    }
     // ยังไม่ล็อกอิน → ไปเข้าสู่ระบบก่อน แล้วกลับมาหน้านี้
-    if (addToCart(variant.id, activeDate, rentalDays, chosenPieces()) === 'login') {
+    if (result === 'login') {
       router.push(loginHref(window.location.pathname + window.location.search))
     }
   }
@@ -280,7 +299,7 @@ export default function CostumeDetailPage() {
   })
   const depositAmount = pieceMode ? pieceDeposit.amount : (variant?.depositAmount ?? 0)
   const laundryFee = pieceMode ? piecesLaundry : (variant?.laundryFee ?? 0)
-  const grandTotal = variant ? price.rentalPrice + depositAmount + laundryFee + settings.shippingFlatRate : 0
+  const grandTotal = variant ? price.rentalPrice + depositAmount + laundryFee + shippingFee(settings, delivery) : 0
   const noPiecesYet = pieceMode && selectedPieces.size === 0
 
   function togglePiece(id: string) {
@@ -625,16 +644,61 @@ export default function CostumeDetailPage() {
             </section>
           )}
 
-          {/* ขั้นที่ 3: วันใช้งาน */}
+          {/* ขั้นที่ 3: วิธีรับชุด — ก่อนปฏิทิน เพราะวันที่ว่างขึ้นกับวิธีรับ (รับเองไม่ต้องกันวันขนส่ง) */}
+          {variant && settings.pickupLocation && (
+            <section className="mt-6">
+              <p className="mb-2 text-base font-semibold text-[#263544]">3. รับชุดยังไง</p>
+              <div role="radiogroup" aria-label="วิธีรับชุด" className="grid gap-2 sm:grid-cols-2">
+                <DeliveryOption
+                  checked={delivery === 'ship'}
+                  onSelect={() => setDeliveryChoice('ship')}
+                  title="จัดส่งถึงบ้าน (EMS)"
+                  lines={[
+                    `ค่าส่ง ${formatBaht(settings.shippingFlatRate)}`,
+                    `ได้รับชุด ${settings.bufferDaysBefore} วันก่อนวันใส่`,
+                    `จองล่วงหน้าอย่างน้อย ${minStartOffset(settings, 'ship')} วัน`,
+                  ]}
+                />
+                <DeliveryOption
+                  checked={delivery === 'pickup'}
+                  onSelect={() => setDeliveryChoice('pickup')}
+                  title="รับเองที่ร้าน"
+                  lines={[
+                    'ไม่มีค่าส่ง · รับชุดวันใส่',
+                    settings.pickupLeadDays === 0
+                      ? `จองก่อน ${settings.pickupCutoffHour}:00 รับวันนี้ได้`
+                      : `จองล่วงหน้าอย่างน้อย ${settings.pickupLeadDays} วัน`,
+                    'ให้ไรเดอร์มารับแทนได้',
+                  ]}
+                />
+              </div>
+              {delivery === 'pickup' && (
+                <p className="mt-2 text-sm text-[#263544]/60">
+                  {settings.pickupLocation.name} · {settings.pickupLocation.address}
+                  {settings.pickupLocation.hours && ` · ${settings.pickupLocation.hours}`}
+                </p>
+              )}
+            </section>
+          )}
+
+          {/* ขั้นที่ 4 (หรือ 3 ถ้าร้านไม่เปิดรับเอง): วันใช้งาน */}
           {variant && (
             <section className="mt-6">
-              <p className="mb-1 text-base font-semibold text-[#263544]">3. เลือกวันที่จะใส่ชุด</p>
+              <p className="mb-1 text-base font-semibold text-[#263544]">
+                {settings.pickupLocation ? 4 : 3}. เลือกวันที่จะใส่ชุด
+              </p>
               <p className="mb-3 text-base text-[#263544]/60">
-                จองล่วงหน้าอย่างน้อย {settings.minLeadDays} วัน · วันที่ขีดฆ่าคือวันที่เริ่มเช่า {rentalDays} วันไม่ได้
+                {delivery === 'pickup'
+                  ? minStartOffset(settings, 'pickup') === 0
+                    ? 'รับเองที่ร้าน ใส่วันนี้ได้'
+                    : `รับเองที่ร้าน จองได้ตั้งแต่ ${formatThaiDateWithWeekday(addDays(todayISO(), minStartOffset(settings, 'pickup')))}`
+                  : `จองล่วงหน้าอย่างน้อย ${minStartOffset(settings, 'ship')} วัน`}{' '}
+                · วันที่ขีดฆ่าคือวันที่เริ่มเช่า {rentalDays} วันไม่ได้
               </p>
               {selectedInvalid && (
                 <p role="status" className="mb-3 rounded-xl bg-[#FFF3B0] px-4 py-2.5 text-base text-[#263544]">
-                  ช่วงวันนี้ไม่ว่างสำหรับการเช่า {rentalDays} วัน กรุณาเลือกวันใหม่
+                  ช่วงวันนี้ไม่ว่างสำหรับการเช่า {rentalDays} วัน
+                  {settings.pickupLocation && (delivery === 'pickup' ? ' แบบรับเองที่ร้าน' : ' แบบจัดส่ง')} กรุณาเลือกวันใหม่
                 </p>
               )}
               {datesError ? (
@@ -650,8 +714,9 @@ export default function CostumeDetailPage() {
                   rentalDays={rentalDays}
                   getTimeline={getTimeline}
                   events={events}
-                  minStartOffset={minStartOffset(settings)}
+                  minStartOffset={minStartOffset(settings, delivery)}
                   sizeBookings={sizeBookings}
+                  pickup={delivery === 'pickup'}
                 />
               )}
             </section>
@@ -664,7 +729,7 @@ export default function CostumeDetailPage() {
                 <div className="mb-4 grid grid-cols-3 gap-2 text-center">
                   <TimelineStep
                     icon={<PackageIcon size={18} />}
-                    label="ได้รับชุด"
+                    label={delivery === 'pickup' ? 'รับที่ร้าน' : 'ได้รับชุด'}
                     date={formatThaiDateWithWeekday(timeline.receiveDate)}
                   />
                   <TimelineStep
@@ -756,7 +821,7 @@ export default function CostumeDetailPage() {
                 )}
                 <PriceRow label="ค่ามัดจำ (ได้คืนหลังตรวจชุด)" value={depositAmount} />
                 {laundryFee > 0 && <PriceRow label="ค่าซักรีด" value={laundryFee} />}
-                <PriceRow label="ค่าจัดส่ง" value={settings.shippingFlatRate} />
+                <PriceRow label={delivery === 'pickup' ? 'ค่าจัดส่ง (รับเองที่ร้าน)' : 'ค่าจัดส่ง'} value={shippingFee(settings, delivery)} />
                 <div className="flex items-center justify-between border-t border-dashed border-line-subtle pt-2">
                   <dt className="font-bold text-[#263544]">ยอดชำระทั้งหมด</dt>
                   <dd className="text-xl font-extrabold text-brand">{formatBaht(grandTotal)}</dd>
@@ -843,6 +908,48 @@ function TimelineStep({
       <p className={`mt-1 text-sm ${highlight ? 'text-white/80' : 'text-[#263544]/60'}`}>{label}</p>
       <p className="text-base font-bold">{date}</p>
     </div>
+  )
+}
+
+// การ์ดตัวเลือกวิธีรับชุด — เลือกอยู่ = พื้น brand-soft เส้นเข้ม (สถานะที่เลือกแบบเดียวกับปุ่มรูปแบบการเช่า)
+function DeliveryOption({
+  checked,
+  onSelect,
+  title,
+  lines,
+}: {
+  checked: boolean
+  onSelect: () => void
+  title: string
+  lines: string[]
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      onClick={onSelect}
+      className={`focus-ring flex gap-3 rounded-xl border px-4 py-3 text-left transition ${
+        checked ? 'border-line bg-brand-soft' : 'border-line-subtle bg-white hover:border-line'
+      }`}
+    >
+      <span
+        aria-hidden
+        className={`mt-1 flex h-4 w-4 flex-none items-center justify-center rounded-full border ${
+          checked ? 'border-ink' : 'border-line'
+        }`}
+      >
+        {checked && <span className="h-2 w-2 rounded-full bg-ink" />}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-base font-bold text-ink">{title}</span>
+        {lines.map((l) => (
+          <span key={l} className="block text-sm text-[#263544]/70">
+            {l}
+          </span>
+        ))}
+      </span>
+    </button>
   )
 }
 

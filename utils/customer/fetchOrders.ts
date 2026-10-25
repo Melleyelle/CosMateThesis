@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/client'
 import type { OrderStatus } from '@/utils/orderStatus'
+import type { DeliveryMethod } from '@/utils/customer/bookingSettings'
 
 export type OrderLine = {
   id: string
@@ -53,6 +54,11 @@ export type OrderSummary = {
   returnCarrier: string | null
   returnTrackingNo: string | null
   returnSubmittedAt: string | null
+  // วิธีรับชุด (v3): ship = จัดส่ง / pickup = รับเองที่ร้าน (ที่อยู่ ship_* ว่างได้)
+  deliveryMethod: DeliveryMethod
+  handoverTo: string | null
+  handedOverAt: string | null
+  returnMethod: 'ship' | 'walk_in' | null
   lines: OrderLine[]
 }
 
@@ -64,11 +70,11 @@ type OrderRow = {
   updated_at: string
   ship_name: string
   ship_phone: string
-  ship_address: string
+  ship_address: string | null
   ship_subdistrict: string | null
   ship_district: string | null
-  ship_province: string
-  ship_postal_code: string
+  ship_province: string | null
+  ship_postal_code: string | null
   customer_note: string | null
   rental_total: number | string
   deposit_total: number | string
@@ -86,6 +92,10 @@ type OrderRow = {
   return_carrier?: string | null
   return_tracking_no?: string | null
   return_submitted_at?: string | null
+  delivery_method?: string | null
+  handover_to?: string | null
+  handed_over_at?: string | null
+  return_method?: 'ship' | 'walk_in' | null
   order_items:
     | {
         id: string
@@ -114,7 +124,8 @@ const ORDER_COLUMNS = `
   customer_note, rental_total, deposit_total, laundry_total, shipping_fee, grand_total,
   refund_account_name, refund_bank, refund_account_number,
   cancel_reason, refund_status, refund_amount, refunded_at,
-  ship_tracking_no, return_carrier, return_tracking_no, return_submitted_at
+  ship_tracking_no, return_carrier, return_tracking_no, return_submitted_at,
+  delivery_method, handover_to, handed_over_at, return_method
 `
 
 const LINE_COLUMNS = `
@@ -143,11 +154,11 @@ function mapOrder(o: OrderRow): OrderSummary {
     updatedAt: o.updated_at,
     shipName: o.ship_name,
     shipPhone: o.ship_phone,
-    shipAddress: o.ship_address,
+    shipAddress: o.ship_address ?? '',
     shipSubdistrict: o.ship_subdistrict,
     shipDistrict: o.ship_district,
-    shipProvince: o.ship_province,
-    shipPostalCode: o.ship_postal_code,
+    shipProvince: o.ship_province ?? '',
+    shipPostalCode: o.ship_postal_code ?? '',
     customerNote: o.customer_note,
     rentalTotal: Number(o.rental_total),
     depositTotal: Number(o.deposit_total),
@@ -165,6 +176,10 @@ function mapOrder(o: OrderRow): OrderSummary {
     returnCarrier: o.return_carrier ?? null,
     returnTrackingNo: o.return_tracking_no ?? null,
     returnSubmittedAt: o.return_submitted_at ?? null,
+    deliveryMethod: o.delivery_method === 'pickup' ? 'pickup' : 'ship',
+    handoverTo: o.handover_to ?? null,
+    handedOverAt: o.handed_over_at ?? null,
+    returnMethod: o.return_method ?? null,
     lines: (o.order_items ?? [])
       .map((i) => ({
         id: i.id,

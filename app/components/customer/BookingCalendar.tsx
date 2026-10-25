@@ -25,6 +25,8 @@ interface BookingCalendarProps {
   minStartOffset?: number
   /** วันที่ถูกจองของทุกไซส์ในชุดนี้ (เรียงไซส์แล้ว) — ใช้บอกใต้วันที่ว่าไซส์ไหนถูกจองวันนั้น */
   sizeBookings?: SizeBooking[]
+  /** รับเองที่ร้าน — วันรับชุด = วันใส่ เปลี่ยนแค่ถ้อยคำ */
+  pickup?: boolean
 }
 
 export type SizeBooking = {
@@ -61,6 +63,7 @@ export default function BookingCalendar({
   events = [],
   minStartOffset = 0,
   sizeBookings = [],
+  pickup = false,
 }: BookingCalendarProps) {
   const today = todayISO()
   const firstBookable = addDays(today, minStartOffset)
@@ -220,7 +223,11 @@ export default function BookingCalendar({
         ) : range ? (
           <>
             ใส่วัน <b className="text-brand-strong">{formatThaiDateWithWeekday(range.useDate)}</b>
-            {' → '}ได้รับชุด <b className="text-ink">{formatThaiDateWithWeekday(range.receiveDate)}</b>
+            {pickup ? ' · รับชุดที่ร้านวันเดียวกัน' : (
+              <>
+                {' → '}ได้รับชุด <b className="text-ink">{formatThaiDateWithWeekday(range.receiveDate)}</b>
+              </>
+            )}
             {' · '}ส่งคืนภายใน <b className="text-ink">{formatThaiDateWithWeekday(range.returnBy)}</b>
           </>
         ) : (
@@ -230,7 +237,7 @@ export default function BookingCalendar({
 
       {/* คำอธิบายสี */}
       <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-body-sm text-secondary">
-        <Legend swatch="bg-brand-soft" label="วันรับชุด / ส่งคืน" />
+        <Legend swatch="bg-brand-soft" label={pickup ? 'วันส่งคืน' : 'วันรับชุด / ส่งคืน'} />
         <Legend swatch="bg-brand" label="วันใส่ชุด" />
         {events.length > 0 && <Legend swatch="bg-info" label="มีงานอีเวนต์" dot />}
         <Legend swatch="bg-sunken ring-1 ring-inset ring-line-subtle" label="ไซส์ที่เลือกถูกจองแล้ว" />

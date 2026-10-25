@@ -69,7 +69,7 @@ export default function OccupancyBoard({ data }: { data: DashboardData }) {
       if (!BLOCKING.includes(o.status)) continue
       for (const l of o.lines) {
         if (!l.itemCode) continue
-        const r = lockRange(l.startDate, l.endDate, s)
+        const r = lockRange(l.startDate, l.endDate, s, o.deliveryMethod)
         if (r.to < start || r.from > end) continue
         const useDays = Math.max(1, dayDiff(l.startDate, l.endDate))
         const all: Booking['segments'] = [
