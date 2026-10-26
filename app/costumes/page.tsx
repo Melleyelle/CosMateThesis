@@ -28,7 +28,7 @@ import ExploreFilters, {
   type ExploreFilterState,
 } from '@/app/components/customer/ExploreFilters'
 import { fetchCatalog, fetchUnavailableStartDates, type CatalogCostume } from '@/utils/customer/fetchCatalog'
-import { formatThaiDate } from '@/utils/dateUtils'
+import { formatThaiDate, isISODate } from '@/utils/dateUtils'
 import { COLOR_OPTIONS, THEME_OPTIONS } from '@/utils/customer/filterOptions'
 import { fetchSizeStock, type SizeStock } from '@/utils/sizeStock'
 
@@ -71,7 +71,13 @@ function ExploreInner() {
   const [search, setSearch] = useState(searchParams.get('q') ?? '')
   const [filters, setFilters] = useState<ExploreFilterState>(() => {
     const cat = searchParams.get('category')
-    return cat && CATEGORY_LABEL[cat] ? { ...EMPTY_FILTERS, categories: [cat] } : EMPTY_FILTERS
+    // ?date=YYYY-MM-DD มาจากปุ่ม "หาชุดที่ว่างวันงาน" ในหน้าอีเวนต์
+    const date = searchParams.get('date')
+    return {
+      ...EMPTY_FILTERS,
+      ...(cat && CATEGORY_LABEL[cat] ? { categories: [cat] } : {}),
+      ...(isISODate(date) ? { useDate: date } : {}),
+    }
   })
   const [sort, setSort] = useState<SortValue>('newest')
   const [page, setPage] = useState(1)

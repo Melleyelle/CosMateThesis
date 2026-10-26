@@ -25,6 +25,7 @@ const LINK_GROUPS = [
     title: 'ช่วยเหลือ',
     links: [
       { href: '/how-it-works', label: 'วิธีการเช่า' },
+      { href: '/events', label: 'อีเวนต์คอสเพลย์' },
       { href: '/orders', label: 'ติดตามออเดอร์' },
       { href: '/favorites', label: 'รายการโปรด' },
       { href: '/account', label: 'บัญชีของฉัน' },

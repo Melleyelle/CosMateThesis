@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
+  CalendarStarIcon,
   CaretRightIcon,
   ClipboardIcon,
   DressIcon,
@@ -34,6 +35,7 @@ const NAV: NavItem[] = [
   { href: '/admin', label: 'ภาพรวม', icon: SquaresFourIcon, exact: true },
   { href: '/admin/orders', label: 'ออเดอร์', icon: ClipboardIcon, badgeKey: 'orders' },
   { href: '/admin/inventory', label: 'คลังชุด', icon: DressIcon },
+  { href: '/admin/events', label: 'อีเวนต์', icon: CalendarStarIcon },
   { href: '/admin/members', label: 'สมาชิก', icon: UsersThreeIcon },
   { href: '/admin/size-defaults', label: 'ไซส์มาตรฐาน', icon: RulerIcon },
 ]

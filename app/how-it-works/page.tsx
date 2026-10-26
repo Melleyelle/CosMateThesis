@@ -2,11 +2,25 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { ArrowRightIcon, CaretDownIcon } from '@phosphor-icons/react'
+import {
+  ArrowRightIcon,
+  ArrowUUpLeftIcon,
+  CalendarCheckIcon,
+  CaretDownIcon,
+  CheckIcon,
+  DressIcon,
+  HandCoinsIcon,
+  PackageIcon,
+  QrCodeIcon,
+  SparkleIcon,
+  XIcon,
+  type Icon,
+} from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
 import {
   DEFAULT_BOOKING_SETTINGS,
   fetchBookingSettings,
+  minStartOffset,
   type BookingSettings,
 } from '@/utils/customer/bookingSettings'
 import { formatBaht } from '@/utils/dateUtils'
@@ -19,38 +33,72 @@ const CANCEL_FREE_DAYS_BEFORE = 3
 const PENDING_EXPIRE_MINUTES = 30
 const DEPOSIT_REFUND_HOURS = 72
 
-type Step = { title: string; when: string; text: ReactNode; tip?: ReactNode }
+type Step = { title: string; when: string; icon: Icon; text: ReactNode; tip?: ReactNode }
 type Phase = { name: string; steps: Step[] }
 
+// จองล่วงหน้าขั้นต่ำแบบจัดส่ง — ไม่ขึ้นกับเวลา จึงใช้ minStartOffset ได้ตรง ๆ
+function shipLeadDays(s: BookingSettings) {
+  return minStartOffset(s, 'ship')
+}
+
+// รับเองที่ร้าน: ไม่เรียก minStartOffset เพราะผลขึ้นกับเวลาปัจจุบัน แสดงเป็นกติกาแทน
+function pickupLeadText(s: BookingSettings) {
+  return s.pickupLeadDays === 0
+    ? `จองก่อน ${s.pickupCutoffHour}:00 รับได้วันนี้`
+    : `จองล่วงหน้าอย่างน้อย ${s.pickupLeadDays} วัน`
+}
+
+// ตัวอย่างราคาบนหน้านี้เท่านั้น: ทั้งชุดราคา 1 วัน ฿500 / ชิ้นเดี่ยว ฿120 เช่า 3 วัน
+const EXAMPLE_FULL_PRICE = 500
+const EXAMPLE_PIECE_PRICE = 120
+const EXAMPLE_PRICE_DAYS = 3
+
+function exampleFullTotal(s: BookingSettings) {
+  return EXAMPLE_FULL_PRICE + (EXAMPLE_PRICE_DAYS - 1) * s.extraDayRate
+}
+
+function examplePieceDayRate(s: BookingSettings) {
+  return Math.ceil(Math.min((EXAMPLE_PIECE_PRICE * s.pieceExtraDayPercent) / 100, s.extraDayRate))
+}
+
 function buildPhases(s: BookingSettings): Phase[] {
+  const pickup = s.pickupLocation
   return [
     {
       name: 'ก่อนวันงาน',
       steps: [
         {
           title: 'เลือกชุด',
+          icon: DressIcon,
           when: 'ตามสบาย',
           text: 'ค้นตามชื่อตัวละคร ชื่อเรื่อง สี หรือไซส์ ในหน้าชุดมีรูป ตารางไซส์ และรีวิวจากคนที่เช่าไปแล้ว',
           tip: 'กดหัวใจเก็บชุดที่ชอบไว้ แล้วค่อยกลับมาเทียบทีหลัง',
         },
         {
-          title: 'เลือกไซส์ จำนวนวัน และวันที่จะใส่',
-          when: `ล่วงหน้าอย่างน้อย ${s.minLeadDays} วัน`,
+          icon: CalendarCheckIcon,
+          title: pickup ? 'เลือกไซส์ จำนวนวัน วิธีรับชุด และวันที่จะใส่' : 'เลือกไซส์ จำนวนวัน และวันที่จะใส่',
+          when: `ล่วงหน้าอย่างน้อย ${shipLeadDays(s)} วัน`,
           text: (
             <>
-              เลือกว่าจะเช่ากี่วัน ({s.minRentalDays}–{s.maxRentalDays} วัน) แล้วเลือก
-              <b className="font-semibold text-ink">วันที่จะใส่ชุด</b> ปฏิทินให้กดได้เฉพาะวันที่ไซส์นั้นว่างตลอดช่วงที่เช่า
+              เลือกว่าจะเช่ากี่วัน ({s.minRentalDays}–{s.maxRentalDays} วัน)
+              {pickup && <> แล้วเลือกว่าจะให้ร้านจัดส่งหรือมารับเองที่ร้าน</>} จากนั้นเลือก
+              <b className="font-semibold text-brand-strong">วันที่จะใส่ชุด</b> ปฏิทินให้กดได้เฉพาะวันที่ไซส์นั้นว่างตลอดช่วงที่เช่า
               ระบบคำนวณวันรับชุดและวันส่งคืนให้เอง
             </>
           ),
+          tip: pickup ? (
+            <>ปฏิทินเปลี่ยนตามวิธีรับชุด แบบจัดส่งต้องเผื่อวันขนส่ง ส่วนรับเองที่ร้าน{pickupLeadText(s)}</>
+          ) : undefined,
         },
         {
           title: 'จ่ายเงินและแนบสลิป',
+          icon: QrCodeIcon,
           when: `จ่ายภายใน ${PENDING_EXPIRE_MINUTES} นาที`,
           text: (
             <>
-              เข้าสู่ระบบ (สมัครด้วยอีเมลอย่างเดียว) กรอกที่อยู่รับชุดและบัญชีสำหรับรับมัดจำคืน แล้วสแกน QR จ่ายเงิน
-              ระบบ<b className="font-semibold text-ink">ตรวจสลิปอัตโนมัติภายในไม่กี่นาที</b>
+              เข้าสู่ระบบ (สมัครด้วยอีเมลอย่างเดียว) กรอกที่อยู่รับชุด
+              {pickup && <> (รับเองที่ร้านกรอกแค่ชื่อและเบอร์โทร)</>} และบัญชีสำหรับรับมัดจำคืน แล้วสแกน QR จ่ายเงิน
+              ระบบ<b className="font-semibold text-brand-strong">ตรวจสลิปอัตโนมัติภายในไม่กี่นาที</b>
             </>
           ),
           tip: (
@@ -61,18 +109,21 @@ function buildPhases(s: BookingSettings): Phase[] {
           ),
         },
         {
-          title: s.pickupLocation ? 'รับชุดที่บ้าน หรือมารับที่ร้าน' : 'รับชุดที่บ้าน',
-          when: s.pickupLocation ? `ส่ง ${s.bufferDaysBefore} วันก่อนงาน · รับที่ร้านวันงาน` : `${s.bufferDaysBefore} วันก่อนวันงาน`,
+          icon: PackageIcon,
+          title: pickup ? 'รับชุดที่บ้าน หรือมารับที่ร้าน' : 'รับชุดที่บ้าน',
+          when: pickup ? `ส่ง ${s.bufferDaysBefore} วันก่อนงาน · รับที่ร้านวันงาน` : `${s.bufferDaysBefore} วันก่อนวันงาน`,
           text: (
             <>
-              ร้านแพ็กชุดส่งให้ถึงก่อนวันงาน <b className="font-semibold text-ink">ลองใส่ทันทีที่ได้รับ</b>{' '}
-              ถ้าไซส์ไม่ได้หรือชุดมีปัญหา แจ้งร้านภายในวันนั้น ติดตามพัสดุได้ในหน้า &ldquo;ออเดอร์ของฉัน&rdquo;
+              ร้านแพ็กชุดส่งให้ถึงก่อนวันงาน ติดตามพัสดุได้ในหน้า &ldquo;ออเดอร์ของฉัน&rdquo;
+              {pickup && <> ถ้าเลือกรับเองที่ร้าน มารับได้ในวันใส่ชุดตามเวลาเปิดร้าน แจ้งชื่อผู้มารับกับพนักงาน</>}{' '}
+              <b className="font-semibold text-brand-strong">ลองใส่ทันทีที่ได้รับ</b> ถ้าไซส์ไม่ได้หรือชุดมีปัญหา แจ้งร้านภายในวันนั้น
             </>
           ),
-          tip: s.pickupLocation ? (
+          tip: pickup ? (
             <>
-              ต้องการชุดด่วน? เลือก &ldquo;รับเองที่ร้าน&rdquo; ตอนจอง ไม่มีค่าส่ง จองก่อน {s.pickupCutoffHour}:00 รับวันนี้ได้
-              จะมารับเองหรือเรียกไรเดอร์มารับแทนก็ได้ ที่ {s.pickupLocation.name}
+              ต้องการชุดด่วน? เลือก &ldquo;รับเองที่ร้าน&rdquo; ตอนจอง ไม่มีค่าส่ง {pickupLeadText(s)}
+              จะมารับเองหรือเรียกไรเดอร์มารับแทนก็ได้ ที่ {pickup.name}
+              {pickup.hours && <> (เปิด {pickup.hours})</>}
             </>
           ) : undefined,
         },
@@ -83,6 +134,7 @@ function buildPhases(s: BookingSettings): Phase[] {
       steps: [
         {
           title: 'ใส่ชุดไปงาน',
+          icon: SparkleIcon,
           when: `ใช้ได้ ${EXAMPLE_RENTAL_DAYS} วัน*`,
           text: 'ใส่ไปงานคอสเพลย์ ปาร์ตี้ หรือถ่ายรูปได้เต็มที่ ระวังแค่สีทาตัวที่ล้างไม่ออก ของมีคมที่เกี่ยวผ้าขาด และการเปียกน้ำนาน ๆ',
           tip: `*ตัวอย่าง เลือกได้ ${s.minRentalDays}–${s.maxRentalDays} วันตอนจอง`,
@@ -93,18 +145,21 @@ function buildPhases(s: BookingSettings): Phase[] {
       name: 'หลังวันงาน',
       steps: [
         {
-          title: 'ส่งชุดคืน',
+          icon: ArrowUUpLeftIcon,
+          title: pickup ? 'ส่งชุดคืน หรือนำมาคืนที่ร้าน' : 'ส่งชุดคืน',
           when: 'ภายในวันส่งคืน',
           text: (
             <>
-              พับชุดและอุปกรณ์ทั้งหมดใส่ถุงหรือกล่องเดิม ส่งกลับภายในวันที่ระบุในออเดอร์{' '}
-              <b className="font-semibold text-ink">ไม่ต้องซักเอง</b> ร้านทำความสะอาดให้
+              พับชุดและอุปกรณ์ทั้งหมดใส่ถุงหรือกล่องเดิม ส่งพัสดุกลับแล้วกรอกเลขพัสดุในหน้าออเดอร์
+              ภายในวันที่ระบุในออเดอร์{pickup && <> หรือนำมาคืนที่ร้านเองก็ได้ ไม่ต้องกรอกอะไร</>}{' '}
+              <b className="font-semibold text-brand-strong">ไม่ต้องซักเอง</b> ร้านทำความสะอาดให้
             </>
           ),
-          tip: 'ถ่ายรูปชุดก่อนแพ็ก และเก็บเลขพัสดุไว้จนกว่าจะได้มัดจำคืน',
+          tip: 'ถ่ายรูปชุดก่อนคืน และเก็บเลขพัสดุไว้จนกว่าจะได้มัดจำคืน',
         },
         {
           title: 'ได้มัดจำคืน',
+          icon: HandCoinsIcon,
           when: `ภายใน ${DEPOSIT_REFUND_HOURS} ชม.`,
           text: (
             <>
@@ -123,18 +178,52 @@ const FAQS: { q: string; a: (s: BookingSettings) => ReactNode }[] = [
     q: 'ทำไมจองวันใกล้ ๆ ไม่ได้',
     a: (s) => (
       <>
-        ร้านต้องใช้เวลาเตรียม ทำความสะอาด และจัดส่งชุด จึงต้องจองล่วงหน้าอย่างน้อย{' '}
-        <b className="font-semibold text-ink">{s.minLeadDays} วัน</b> ก่อนวันใช้งาน วันที่ใกล้กว่านั้นจะกดเลือกในปฏิทินไม่ได้
+        แบบจัดส่ง ร้านต้องเตรียม แพ็ก และส่งชุดให้ถึงมือคุณก่อน จึงต้องจองล่วงหน้าอย่างน้อย{' '}
+        <b className="font-semibold text-brand-strong">{shipLeadDays(s)} วัน</b> ก่อนวันใช้งาน วันที่ใกล้กว่านั้นจะกดเลือกในปฏิทินไม่ได้
+        {s.pickupLocation && (
+          <>
+            {' '}ถ้าต้องการชุดด่วน เลือก &ldquo;รับเองที่ร้าน&rdquo; ได้{' '}
+            <b className="font-semibold text-brand-strong">{pickupLeadText(s)}</b>
+          </>
+        )}
       </>
     ),
+  },
+  {
+    q: 'เช่าหลายวันคิดราคายังไง',
+    a: (s) => (
+      <>
+        ราคาบนหน้าชุดคือ<b className="font-semibold text-brand-strong">ค่าเช่า 1 วัน</b> ตั้งแต่วันที่ 2 เช่าทั้งชุดบวกเพิ่มวันละ{' '}
+        {formatBaht(s.extraDayRate)} เช่น ชุด {formatBaht(EXAMPLE_FULL_PRICE)} เช่า {EXAMPLE_PRICE_DAYS} วัน ={' '}
+        <b className="font-semibold text-brand-strong">{formatBaht(exampleFullTotal(s))}</b> ส่วนเช่าแยกชิ้น วันถัดไปคิด{' '}
+        {s.pieceExtraDayPercent}% ของราคาชิ้นที่เลือก แต่ไม่เกินวันละ {formatBaht(s.extraDayRate)} เช่น ชิ้นราคา{' '}
+        {formatBaht(EXAMPLE_PIECE_PRICE)} วันถัดไป +{formatBaht(examplePieceDayRate(s))}/วัน
+        เงินมัดจำเท่าเดิมไม่ว่าจะเช่ากี่วัน
+      </>
+    ),
+  },
+  {
+    q: 'มารับเองที่ร้าน หรือให้ไรเดอร์มารับแทนได้ไหม',
+    a: (s) =>
+      s.pickupLocation ? (
+        <>
+          ได้ เลือก &ldquo;รับเองที่ร้าน&rdquo; ตอนจอง ไม่มีค่าส่ง และ{pickupLeadText(s)} มารับที่{' '}
+          {s.pickupLocation.name} {s.pickupLocation.address}
+          {s.pickupLocation.hours && <> เวลา {s.pickupLocation.hours}</>} ถ้าเรียกไรเดอร์มารับแทน
+          ให้ไรเดอร์แจ้งเลขออเดอร์และชื่อผู้จอง ค่าไรเดอร์ลูกค้าจ่ายเอง ชุดทั้งตะกร้าต้องใช้วิธีรับเดียวกัน
+        </>
+      ) : (
+        <>ตอนนี้ร้านยังไม่เปิดให้รับชุดเองที่ร้าน ทุกออเดอร์จัดส่งถึงบ้าน</>
+      ),
   },
   {
     q: 'ทำไมบางวันในปฏิทินถึงเป็นสีเทา ทั้งที่ไม่เห็นมีใครใช้วันนั้น',
     a: (s) => (
       <>
-        การเช่าหนึ่งครั้งไม่ได้ใช้ชุดแค่วันงาน ชุดต้องเดินทางไปถึงคุณก่อน {s.bufferDaysBefore} วัน
+        การเช่าหนึ่งครั้งไม่ได้ใช้ชุดแค่วันที่เช่า แบบจัดส่งชุดต้องเดินทางไปถึงคุณก่อน {s.bufferDaysBefore} วัน
         และหลังวันส่งคืนร้านต้องใช้อีก {s.bufferDaysAfter} วันเพื่อรับคืน ตรวจสภาพ และทำความสะอาด
-        วันรอบ ๆ การจองของคนอื่นจึงถูกกันไว้ด้วย ลองเลือกไซส์อื่นของชุดเดียวกัน อาจว่างในวันที่คุณต้องการ
+        วันรอบ ๆ การจองของคนอื่นจึงถูกกันไว้ด้วย อีกเรื่องคือชุดต้องว่างครบทุกวันตามจำนวนวันที่คุณเลือกเช่า
+        ลองลดจำนวนวัน หรือเลือกไซส์อื่นของชุดเดียวกัน อาจว่างในวันที่คุณต้องการ
       </>
     ),
   },
@@ -142,7 +231,7 @@ const FAQS: { q: string; a: (s: BookingSettings) => ReactNode }[] = [
     q: 'เงินมัดจำจะได้คืนเมื่อไร',
     a: () => (
       <>
-        ภายใน <b className="font-semibold text-ink">{DEPOSIT_REFUND_HOURS} ชั่วโมง</b> หลังร้านได้รับชุดคืนและตรวจสภาพเรียบร้อย
+        ภายใน <b className="font-semibold text-brand-strong">{DEPOSIT_REFUND_HOURS} ชั่วโมง</b> หลังร้านได้รับชุดคืนและตรวจสภาพเรียบร้อย
         โอนเข้าบัญชีที่คุณระบุไว้ตอนชำระเงิน (หรือบัญชีใน &ldquo;บัญชีของฉัน&rdquo;)
       </>
     ),
@@ -151,7 +240,7 @@ const FAQS: { q: string; a: (s: BookingSettings) => ReactNode }[] = [
     q: 'ถ้าส่งชุดคืนช้าจะเป็นอย่างไร',
     a: (s) => (
       <>
-        มีค่าปรับ <b className="font-semibold text-ink">{formatBaht(s.lateFeePerDay)} ต่อวัน</b> ต่อออเดอร์ หักจากเงินมัดจำ
+        มีค่าปรับ <b className="font-semibold text-brand-strong">{formatBaht(s.lateFeePerDay)} ต่อวัน</b> ต่อออเดอร์ หักจากเงินมัดจำ
         เพราะคิวเช่าถัดไปของชุดนั้นอาจได้รับผลกระทบ ถ้ามีเหตุจำเป็น แจ้งร้านก่อนถึงวันส่งคืน
       </>
     ),
@@ -181,13 +270,14 @@ const FAQS: { q: string; a: (s: BookingSettings) => ReactNode }[] = [
         มีออเดอร์ที่ยังไม่ได้ชำระเงินค้างได้{' '}
         {s.maxPendingOrders ? (
           <>
-            สูงสุด <b className="font-semibold text-ink">{s.maxPendingOrders} ออเดอร์</b> พร้อมกัน
+            สูงสุด <b className="font-semibold text-brand-strong">{s.maxPendingOrders} ออเดอร์</b> พร้อมกัน
           </>
         ) : (
           <>จำนวนจำกัด</>
         )}{' '}
         และแต่ละออเดอร์หมดอายุใน {PENDING_EXPIRE_MINUTES} นาทีถ้ายังไม่จ่าย ถ้าต้องการหลายชุด
-        ใส่ตะกร้าแล้วชำระรวมในออเดอร์เดียวได้ จ่ายค่าส่งครั้งเดียว
+        ใส่ตะกร้าแล้วชำระรวมในออเดอร์เดียวได้ จ่ายค่าส่งครั้งเดียว แต่ละชุดเลือกจำนวนวันเช่าต่างกันได้
+        ส่วนวิธีรับชุดใช้แบบเดียวกันทั้งตะกร้า
       </>
     ),
   },
@@ -221,7 +311,7 @@ export default function HowItWorksPage() {
               <span className="relative inline-block">
                 <span
                   aria-hidden
-                  className="absolute inset-x-[-0.12em] bottom-[0.14em] h-[0.4em] -rotate-1 bg-deco-yellow"
+                  className="absolute inset-x-[-0.12em] bottom-[0.14em] h-[0.4em] -rotate-1 bg-brand-soft"
                 />
                 <span className="relative">ครั้งแรก</span>
               </span>
@@ -230,8 +320,9 @@ export default function HowItWorksPage() {
               อ่านหน้านี้จบ แล้วจองเองได้เลย
             </h1>
             <p className="mt-4 max-w-[34em] text-body text-secondary">
-              สมัครด้วย<b className="font-semibold text-ink">อีเมลอย่างเดียว</b> ไม่ต้องใช้บัตรประชาชน
-              เลือกวันที่จะใส่ชุด จ่ายเงิน แล้วรอรับชุดที่บ้าน ด้านล่างคือทุกเรื่องที่ควรรู้ก่อนจ่าย
+              สมัครด้วย<b className="font-semibold text-brand-strong">อีเมลอย่างเดียว</b> ไม่ต้องใช้บัตรประชาชน
+              เลือกจำนวนวันและวันที่จะใส่ชุด จ่ายเงิน แล้วรอรับชุดที่บ้าน
+              {settings.pickupLocation && <> หรือมารับเองที่ร้าน</>} ด้านล่างคือทุกเรื่องที่ควรรู้ก่อนจ่าย
               ทั้งเงินมัดจำ วันส่งคืน และเงื่อนไขยกเลิก
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
@@ -247,9 +338,17 @@ export default function HowItWorksPage() {
             </div>
           </div>
 
-          <dl className="mt-10 grid grid-cols-2 border-y border-line lg:col-span-5 lg:mt-0">
-            <Fact label="จองล่วงหน้าอย่างน้อย" value={settings.minLeadDays} unit="วัน" />
-            <Fact label="ค่าส่งต่อออเดอร์" value={formatBaht(settings.shippingFlatRate)} />
+          <dl className="mt-10 grid grid-cols-2 rounded-card border border-brand-soft bg-brand-subtle px-4 lg:col-span-5 lg:mt-0">
+            <Fact
+              label="จองล่วงหน้าอย่างน้อย"
+              value={shipLeadDays(settings)}
+              unit={settings.pickupLocation ? 'วัน (จัดส่ง)' : 'วัน'}
+            />
+            <Fact
+              label="ค่าส่งต่อออเดอร์"
+              value={formatBaht(settings.shippingFlatRate)}
+              unit={settings.pickupLocation ? 'รับที่ร้านฟรี' : undefined}
+            />
             <Fact label="ยกเลิกได้ถึง" value={CANCEL_FREE_DAYS_BEFORE} unit="วันก่อนงาน" />
             <Fact label="มัดจำคืนภายใน" value={DEPOSIT_REFUND_HOURS} unit="ชั่วโมง" />
           </dl>
@@ -269,27 +368,43 @@ export default function HowItWorksPage() {
             </div>
           </div>
 
-          <ol className="relative mt-8 before:absolute before:bottom-3 before:left-[0.9rem] before:top-3 before:w-px before:bg-line-subtle lg:col-span-8 lg:mt-1">
+          {/* เส้นชมพูอ่อนวิ่งผ่านกลางวงไอคอน (2.5rem → กึ่งกลาง 1.25rem) */}
+          <ol className="relative mt-8 before:absolute before:bottom-5 before:left-[1.25rem] before:top-3 before:w-0.5 before:-translate-x-1/2 before:bg-brand-soft lg:col-span-8 lg:mt-1">
             {phases.map((phase, pi) => (
               <li key={phase.name} className="mb-6 last:mb-0">
-                <div className="relative grid grid-cols-[1.8rem_1fr] items-center gap-x-4">
-                  <span aria-hidden className="mx-auto h-2.5 w-2.5 bg-ink" />
-                  <h3 className="text-body-sm font-bold text-ink">{phase.name}</h3>
+                <div className="relative grid grid-cols-[2.5rem_1fr] items-center gap-x-4">
+                  <span aria-hidden className="mx-auto h-3 w-3 rotate-45 bg-brand ring-4 ring-surface" />
+                  <h3 className="justify-self-start rounded-full bg-brand-subtle px-3 py-0.5 text-body-sm font-bold text-brand-strong">
+                    {phase.name}
+                  </h3>
                 </div>
                 <ol>
                   {phase.steps.map((step, si) => {
+                    const StepIcon = step.icon
                     return (
-                      <li key={step.title} className="relative grid grid-cols-[1.8rem_1fr] gap-x-4 pt-5">
-                        <span className="relative bg-surface py-0.5 text-center text-body font-bold tabular-nums text-muted">
-                          {phaseStart[pi] + si + 1}
+                      <li key={step.title} className="relative grid grid-cols-[2.5rem_1fr] gap-x-4 pt-5">
+                        <span
+                          aria-hidden
+                          className="relative flex h-10 w-10 items-center justify-center rounded-full bg-brand text-white ring-4 ring-surface"
+                        >
+                          <StepIcon size={20} weight="bold" />
                         </span>
                         <div className="border-b border-line-subtle pb-5">
-                          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
-                            <h4 className="text-[18px] font-bold leading-snug">{step.title}</h4>
-                            <span className="text-body-sm font-semibold tabular-nums text-ink">{step.when}</span>
+                          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1.5">
+                            <h4 className="text-[18px] font-bold leading-snug">
+                              <span className="mr-1.5 tabular-nums text-brand-strong">{phaseStart[pi] + si + 1}.</span>
+                              {step.title}
+                            </h4>
+                            <span className="rounded-full bg-brand-subtle px-2.5 py-0.5 text-body-sm font-semibold tabular-nums text-brand-strong">
+                              {step.when}
+                            </span>
                           </div>
                           <p className="mt-1.5 max-w-[38em] text-body text-secondary">{step.text}</p>
-                          {step.tip && <p className="mt-2 max-w-[38em] text-body-sm text-muted">{step.tip}</p>}
+                          {step.tip && (
+                            <p className="mt-3 max-w-[38em] rounded-control border-l-4 border-brand bg-brand-subtle px-3 py-2 text-body-sm text-secondary">
+                              {step.tip}
+                            </p>
+                          )}
                         </div>
                       </li>
                     )
@@ -310,14 +425,26 @@ export default function HowItWorksPage() {
               <ReceiptRow
                 label="ค่าเช่า"
                 value={`วันแรกตามชุด · วันถัดไป +${formatBaht(settings.extraDayRate)}/วัน`}
-                note={`เช่าแยกชิ้น วันถัดไปคิด ${settings.pieceExtraDayPercent}% ของราคาชิ้น แต่ไม่เกิน ${formatBaht(settings.extraDayRate)}/วัน`}
+                note={`เช่น ชุด ${formatBaht(EXAMPLE_FULL_PRICE)} เช่า ${EXAMPLE_PRICE_DAYS} วัน = ${formatBaht(
+                  exampleFullTotal(settings),
+                )} · เช่าแยกชิ้น วันถัดไปคิด ${settings.pieceExtraDayPercent}% ของราคาชิ้น แต่ไม่เกิน ${formatBaht(
+                  settings.extraDayRate,
+                )}/วัน`}
               />
               <ReceiptRow label="ค่าซักทำความสะอาด" value="บางชุด" />
-              <ReceiptRow label="เงินมัดจำ" value="ตามชุด · ได้คืน" note="ดูยอดมัดจำของแต่ละชุดในหน้ารายละเอียดชุด" />
+              <ReceiptRow
+                label="เงินมัดจำ"
+                value="ตามชุด · ได้คืน"
+                note="ไม่เพิ่มตามจำนวนวันเช่า ดูยอดมัดจำของแต่ละชุดในหน้ารายละเอียดชุด"
+              />
               <ReceiptRow
                 label="ค่าจัดส่ง"
                 value={`${formatBaht(settings.shippingFlatRate)} / ออเดอร์`}
-                note="เช่าหลายชุดในออเดอร์เดียว จ่ายค่าส่งครั้งเดียว"
+                note={
+                  settings.pickupLocation
+                    ? 'เช่าหลายชุดในออเดอร์เดียว จ่ายค่าส่งครั้งเดียว · รับเองที่ร้านไม่มีค่าส่ง'
+                    : 'เช่าหลายชุดในออเดอร์เดียว จ่ายค่าส่งครั้งเดียว'
+                }
               />
             </dl>
 
@@ -329,14 +456,17 @@ export default function HowItWorksPage() {
             </dl>
           </div>
 
-          <aside className="mt-12 rounded-card bg-sunken p-5 sm:p-6 lg:col-span-5 lg:mt-0 lg:self-start">
+          <aside className="mt-12 rounded-card border border-brand-soft bg-brand-subtle p-5 sm:p-6 lg:col-span-5 lg:mt-0 lg:self-start">
             <h2 className="text-h2 font-bold">ต้องเตรียมอะไรบ้าง</h2>
             <p className="mt-1 text-body text-secondary">
-              <b className="font-semibold text-ink">ไม่ต้องใช้บัตรประชาชน</b> หรือสำเนาเอกสารใด ๆ แค่มีสี่อย่างนี้
+              <b className="font-semibold text-brand-strong">ไม่ต้องใช้บัตรประชาชน</b> หรือสำเนาเอกสารใด ๆ แค่มีสี่อย่างนี้
             </p>
-            <ul className="mt-4 divide-y divide-line-subtle border-t border-line-subtle">
+            <ul className="mt-4 divide-y divide-brand-soft border-t border-brand-soft">
               <Need title="อีเมล" text="ใช้สมัครสมาชิก" />
-              <Need title="ที่อยู่รับชุด" text="กรอกตอนจ่ายเงิน" />
+              <Need
+                title="ที่อยู่รับชุด"
+                text={settings.pickupLocation ? 'กรอกตอนจ่ายเงิน (รับที่ร้านใช้แค่ชื่อและเบอร์โทร)' : 'กรอกตอนจ่ายเงิน'}
+              />
               <Need title="บัญชีธนาคาร" text={'สำหรับรับมัดจำคืน บันทึกไว้ใน "บัญชีของฉัน" ได้'} />
               <Need title="แอปธนาคาร" text="ใช้สแกน QR จ่ายเงิน" />
             </ul>
@@ -354,11 +484,11 @@ export default function HowItWorksPage() {
 
           <div className="mt-8 lg:col-span-8 lg:mt-1">
             <div className="grid grid-cols-[2fr_1fr] text-body-sm" aria-hidden>
-              <div className="border-t-2 border-ink pr-3 pt-2">
-                <p className="font-bold">ได้ค่าเช่าและมัดจำคืน</p>
+              <div className="rounded-tl-control border-t-4 border-brand bg-brand-subtle px-3 py-2">
+                <p className="font-bold text-brand-strong">ได้ค่าเช่าและมัดจำคืน</p>
                 <p className="text-muted">จ่ายเงินแล้ว ถึง {CANCEL_FREE_DAYS_BEFORE} วันก่อนวันงาน</p>
               </div>
-              <div className="border-l border-t-2 border-l-line-subtle border-t-line-subtle pl-3 pt-2">
+              <div className="rounded-tr-control border-t-4 border-line-subtle bg-sunken px-3 py-2">
                 <p className="font-bold">ยึดมัดจำ</p>
                 <p className="text-muted">ค่าเช่ายังได้คืน</p>
               </div>
@@ -367,17 +497,17 @@ export default function HowItWorksPage() {
             <ul className="mt-8 divide-y divide-line-subtle border-y border-line-subtle text-body">
               <Rule when="ยังไม่ได้จ่ายเงิน">
                 กด &ldquo;ยกเลิกออเดอร์&rdquo; ในหน้าออเดอร์ได้ทันที หรือปล่อยไว้ ออเดอร์จะหมดอายุเองใน{' '}
-                {PENDING_EXPIRE_MINUTES} นาที <b className="font-semibold text-ink">ไม่เสียอะไรเลย</b>
+                {PENDING_EXPIRE_MINUTES} นาที <b className="font-semibold text-brand-strong">ไม่เสียอะไรเลย</b>
               </Rule>
               <Rule when={`จ่ายแล้ว เหลือ ${CANCEL_FREE_DAYS_BEFORE} วันขึ้นไป`}>
-                ยกเลิกได้ <b className="font-semibold text-ink">ได้ทั้งค่าเช่าและมัดจำคืน</b>
+                ยกเลิกได้ <b className="font-semibold text-brand-strong">ได้ทั้งค่าเช่าและมัดจำคืน</b>
               </Rule>
               <Rule when={`จ่ายแล้ว เหลือน้อยกว่า ${CANCEL_FREE_DAYS_BEFORE} วัน`}>
-                ร้าน<b className="font-semibold text-ink">ยึดเงินมัดจำ</b> เพราะชุดถูกกันไว้ให้คุณจนรับคนอื่นไม่ทันแล้ว
-                ส่วน<b className="font-semibold text-ink">ค่าเช่าได้คืน</b>
+                ร้าน<b className="font-semibold text-brand-strong">ยึดเงินมัดจำ</b> เพราะชุดถูกกันไว้ให้คุณจนรับคนอื่นไม่ทันแล้ว
+                ส่วน<b className="font-semibold text-brand-strong">ค่าเช่าได้คืน</b>
               </Rule>
               <Rule when="ร้านส่งชุดให้ไม่ได้">
-                ร้านเปลี่ยนเป็นตัวสำรองให้ ถ้าไม่มีจะยกเลิกและ<b className="font-semibold text-ink">คืนเงินเต็มจำนวน</b>
+                ร้านเปลี่ยนเป็นตัวสำรองให้ ถ้าไม่มีจะยกเลิกและ<b className="font-semibold text-brand-strong">คืนเงินเต็มจำนวน</b>
               </Rule>
             </ul>
           </div>
@@ -388,35 +518,35 @@ export default function HowItWorksPage() {
           <h2 className="text-h1 font-bold">ดูแลชุดยังไงให้ได้มัดจำคืนครบ</h2>
           <div className="mt-6 grid gap-x-12 gap-y-8 md:grid-cols-2">
             <div>
-              <h3 className="border-b border-line pb-2 text-h3 font-bold">ควรทำ</h3>
+              <h3 className="border-b-2 border-brand pb-2 text-h3 font-bold text-brand-strong">ควรทำ</h3>
               <ul className="divide-y divide-line-subtle text-body text-secondary">
-                <ListItem>
-                  <b className="font-semibold text-ink">ลองใส่ทันที</b>ที่ได้รับ เจอปัญหาแจ้งร้านภายในวันนั้น
+                <ListItem kind="do">
+                  <b className="font-semibold text-brand-strong">ลองใส่ทันที</b>ที่ได้รับ เจอปัญหาแจ้งร้านภายในวันนั้น
                 </ListItem>
-                <ListItem>
-                  <b className="font-semibold text-ink">ถ่ายรูปชุด</b>ก่อนแพ็กส่งคืน เก็บไว้เป็นหลักฐาน
+                <ListItem kind="do">
+                  <b className="font-semibold text-brand-strong">ถ่ายรูปชุด</b>ก่อนแพ็กส่งคืน เก็บไว้เป็นหลักฐาน
                 </ListItem>
-                <ListItem>
-                  ส่งคืน<b className="font-semibold text-ink">อุปกรณ์ให้ครบทุกชิ้น</b> ทั้งวิก พร็อพ และเครื่องประดับ
+                <ListItem kind="do">
+                  ส่งคืน<b className="font-semibold text-brand-strong">อุปกรณ์ให้ครบทุกชิ้น</b> ทั้งวิก พร็อพ และเครื่องประดับ
                 </ListItem>
-                <ListItem>
-                  <b className="font-semibold text-ink">เก็บเลขพัสดุ</b>ตอนส่งคืนไว้จนกว่าจะได้มัดจำ
+                <ListItem kind="do">
+                  <b className="font-semibold text-brand-strong">เก็บเลขพัสดุ</b>ตอนส่งคืนไว้จนกว่าจะได้มัดจำ
                 </ListItem>
               </ul>
             </div>
             <div>
-              <h3 className="border-b border-line pb-2 text-h3 font-bold">อย่าทำ</h3>
+              <h3 className="border-b-2 border-line pb-2 text-h3 font-bold">อย่าทำ</h3>
               <ul className="divide-y divide-line-subtle text-body text-secondary">
-                <ListItem>
+                <ListItem kind="dont">
                   <b className="font-semibold text-ink">ซักหรือรีดเอง</b> ร้านทำความสะอาดให้ตามชนิดผ้า
                 </ListItem>
-                <ListItem>
+                <ListItem kind="dont">
                   <b className="font-semibold text-ink">ตัด เย็บ ติดกาว</b> หรือดัดแปลงชุดและวิก
                 </ListItem>
-                <ListItem>
+                <ListItem kind="dont">
                   ใช้<b className="font-semibold text-ink">สีทาตัวหรือสเปรย์สี</b>ที่อาจเปื้อนชุดถาวร
                 </ListItem>
-                <ListItem>
+                <ListItem kind="dont">
                   <b className="font-semibold text-ink">ให้คนอื่นยืมใส่</b>หรือเช่าต่อ
                 </ListItem>
               </ul>
@@ -432,12 +562,12 @@ export default function HowItWorksPage() {
           <div className="mt-6 divide-y divide-line-subtle border-y border-line-subtle lg:col-span-8 lg:mt-0">
             {FAQS.map((f) => (
               <details key={f.q} className="group">
-                <summary className="focus-ring flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 py-4 text-body font-semibold text-ink transition-colors hover:bg-sunken [&::-webkit-details-marker]:hidden">
+                <summary className="focus-ring flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 py-4 text-body font-semibold text-ink transition-colors hover:bg-brand-subtle group-open:text-brand-strong [&::-webkit-details-marker]:hidden">
                   {f.q}
                   <CaretDownIcon
                     size={18}
                     weight="bold"
-                    className="flex-shrink-0 text-muted transition-transform group-open:rotate-180 group-open:text-ink"
+                    className="flex-shrink-0 text-muted transition-transform group-open:rotate-180 group-open:text-brand-strong"
                   />
                 </summary>
                 <p className="max-w-[40em] pb-5 text-body text-secondary">{f.a(settings)}</p>
@@ -468,10 +598,10 @@ export default function HowItWorksPage() {
 
 function Fact({ label, value, unit }: { label: string; value: ReactNode; unit?: string }) {
   return (
-    <div className="border-line-subtle py-4 odd:border-r odd:pr-4 even:pl-4 [&:nth-child(-n+2)]:border-b">
+    <div className="border-brand-soft py-4 odd:border-r odd:pr-4 even:pl-4 [&:nth-child(-n+2)]:border-b">
       <dt className="text-body-sm text-secondary">{label}</dt>
       <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5">
-        <span className="text-h1 font-bold tabular-nums">{value}</span>
+        <span className="text-h1 font-bold tabular-nums text-brand-strong">{value}</span>
         {unit && <span className="text-body-sm font-semibold">{unit}</span>}
       </dd>
     </div>
@@ -484,7 +614,7 @@ function ReceiptRow({ label, value, note }: { label: string; value: string; note
       <div className="flex items-baseline gap-2">
         <dt className="text-body font-semibold">{label}</dt>
         <span aria-hidden className="min-w-4 flex-1 border-b border-dotted border-ink/30" />
-        <dd className="text-right text-body tabular-nums">{value}</dd>
+        <dd className="text-right text-body font-semibold tabular-nums text-brand-strong">{value}</dd>
       </div>
       {note && <p className="mt-0.5 text-body-sm text-muted">{note}</p>}
     </div>
@@ -503,14 +633,27 @@ function Need({ title, text }: { title: string; text: string }) {
 function Rule({ when, children }: { when: string; children: ReactNode }) {
   return (
     <li className="grid gap-1 py-4 sm:grid-cols-[14rem_1fr] sm:gap-6">
-      <span className="font-bold text-ink">{when}</span>
+      <span className="font-bold text-brand-strong">{when}</span>
       <span className="text-secondary">{children}</span>
     </li>
   )
 }
 
-function ListItem({ children }: { children: ReactNode }) {
-  return <li className="py-3">{children}</li>
+function ListItem({ kind, children }: { kind: 'do' | 'dont'; children: ReactNode }) {
+  const ItemIcon = kind === 'do' ? CheckIcon : XIcon
+  return (
+    <li className="flex gap-3 py-3">
+      <span
+        aria-hidden
+        className={`mt-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full ${
+          kind === 'do' ? 'bg-brand text-white' : 'bg-sunken text-muted'
+        }`}
+      >
+        <ItemIcon size={12} weight="bold" />
+      </span>
+      <span>{children}</span>
+    </li>
+  )
 }
 
 // ไทม์ไลน์ตัวอย่าง: คำนวณจากค่าตั้งค่าจริง แบบเดียวกับ create_booking()
@@ -543,8 +686,8 @@ function RentalTimelineExample({ settings }: { settings: BookingSettings }) {
   // สีเน้นมีที่เดียวคือวันใช้งาน ที่เหลือแยกด้วยน้ำหนักตัวอักษรและลายเส้น
   const style: Record<Day['kind'], string> = {
     receive: 'bg-surface text-ink font-semibold',
-    use: 'bg-brand-soft text-ink font-bold',
-    return: 'bg-surface text-ink font-bold',
+    use: 'bg-brand-soft text-brand-strong font-bold',
+    return: 'bg-brand-subtle text-brand-strong font-bold',
     buffer:
       'text-muted font-medium bg-[repeating-linear-gradient(135deg,var(--color-sunken)_0_6px,var(--color-surface)_6px_12px)]',
   }
@@ -554,8 +697,8 @@ function RentalTimelineExample({ settings }: { settings: BookingSettings }) {
       <div className="lg:col-span-4">
         <h2 className="text-h1 font-bold">เช่า {EXAMPLE_RENTAL_DAYS} วัน นับยังไง</h2>
         <p className="mt-2 max-w-[30em] text-body text-secondary">
-          คุณเลือกแค่<b className="font-semibold text-ink">วันใช้งาน</b> วันเช่านับจากวันใช้งานถึงวันส่งคืน
-          ส่วนวันที่ชุดเดินทางมาถึงคุณ<b className="font-semibold text-ink">ไม่นับ</b>เป็นวันเช่า
+          คุณเลือกแค่<b className="font-semibold text-brand-strong">วันใช้งาน</b> วันเช่านับจากวันใช้งานถึงวันส่งคืน
+          ส่วนวันที่ชุดเดินทางมาถึงคุณ<b className="font-semibold text-brand-strong">ไม่นับ</b>เป็นวันเช่า
         </p>
       </div>
 
@@ -571,7 +714,7 @@ function RentalTimelineExample({ settings }: { settings: BookingSettings }) {
                 <div key={d.key} className="flex-1 border-l border-line first:border-l-0">
                   <p
                     className={`border-b border-line-subtle py-1.5 text-center text-caption font-semibold tabular-nums ${
-                      offset === 0 ? 'bg-brand-soft text-ink' : 'text-muted'
+                      offset === 0 ? 'bg-brand-strong text-white' : 'text-muted'
                     }`}
                   >
                     {offset === 0 ? 'วันงาน' : offset > 0 ? `+${offset}` : `−${-offset}`}
@@ -586,16 +729,22 @@ function RentalTimelineExample({ settings }: { settings: BookingSettings }) {
         </div>
 
         <dl className="mt-5 grid gap-x-8 gap-y-2 text-body-sm sm:grid-cols-2">
-          <TimelineNote term="รับชุด" text="ชุดถึงมือคุณ ไม่นับเป็นวันเช่า" />
+          <TimelineNote term="รับชุด" text="พัสดุถึงมือคุณ ไม่นับเป็นวันเช่า" />
           <TimelineNote term="วันใช้งาน" text="วันที่คุณเลือกในปฏิทิน" />
           <TimelineNote term="ส่งคืน" text="ส่งพัสดุกลับภายในวันนี้" />
           <TimelineNote term="ร้านตรวจ/ซัก" text="ร้านรับคืน ตรวจสภาพ ทำความสะอาด" />
         </dl>
 
         <p className="mt-6 max-w-[40em] border-t border-line-subtle pt-4 text-body text-secondary">
-          เพราะแบบนี้ ชุดหนึ่งตัวจึง<b className="font-semibold text-ink">ไม่ว่างรวม {days.length} วัน</b>ต่อการเช่าหนึ่งครั้ง
-          ถ้าวันที่อยากได้ไม่ว่าง ลองเปลี่ยนไซส์ หรือเลือกชุดอื่นของตัวละครเดียวกัน
+          เพราะแบบนี้ ชุดหนึ่งตัวจึง<b className="font-semibold text-brand-strong">ไม่ว่างรวม {days.length} วัน</b>ต่อการเช่าหนึ่งครั้ง
+          ถ้าวันที่อยากได้ไม่ว่าง ลองเปลี่ยนไซส์ ลดจำนวนวันเช่า หรือเลือกชุดอื่นของตัวละครเดียวกัน
         </p>
+        {settings.pickupLocation && (
+          <p className="mt-3 max-w-[40em] text-body text-secondary">
+            ถ้า<b className="font-semibold text-brand-strong">รับเองที่ร้าน</b> ไม่มีวันชุดเดินทาง รับชุดได้ในวันใช้งานเลย
+            ชุดจึงไม่ว่างแค่ {EXAMPLE_RENTAL_DAYS + settings.bufferDaysAfter} วัน
+          </p>
+        )}
       </div>
     </section>
   )
@@ -604,7 +753,7 @@ function RentalTimelineExample({ settings }: { settings: BookingSettings }) {
 function TimelineNote({ term, text }: { term: string; text: string }) {
   return (
     <div className="flex gap-2">
-      <dt className="font-bold text-ink">{term}</dt>
+      <dt className="font-bold text-brand-strong">{term}</dt>
       <dd className="text-secondary">{text}</dd>
     </div>
   )

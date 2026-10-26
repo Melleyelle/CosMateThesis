@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { CaretLeftIcon, CaretRightIcon, MapPinIcon } from '@phosphor-icons/react'
 import { addDays, formatThaiDateWithWeekday, todayISO, toISODate } from '@/utils/dateUtils'
 import { eventsByDate, type CalendarEvent } from '@/utils/customer/events'
@@ -270,7 +271,14 @@ export default function BookingCalendar({
                     )}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-body font-semibold text-ink">{ev.name}</p>
+                    {/* เปิดแท็บใหม่ ไม่ให้วันที่/ไซส์ที่เลือกไว้ในหน้าชุดหาย */}
+                    <Link
+                      href={`/events/${ev.id}`}
+                      target="_blank"
+                      className="block truncate text-body font-semibold text-ink underline-offset-2 hover:underline"
+                    >
+                      {ev.name}
+                    </Link>
                     <p className="flex items-center gap-1 truncate text-body-sm text-muted">
                       <MapPinIcon size={12} className="shrink-0" />
                       {ev.location}

@@ -245,6 +245,13 @@ export default function HomePage() {
                   <FacebookLogoIcon size={22} weight="fill" className="text-[#1877F2]" />
                   ติดตามอีเวนต์บน Facebook
                 </button>
+                <Link
+                  href="/events"
+                  className="group inline-flex items-center gap-1 text-base font-semibold text-[#E5457F]"
+                >
+                  ดูอีเวนต์ทั้งหมด
+                  <ArrowRightIcon size={18} className="transition group-hover:translate-x-0.5" />
+                </Link>
               </div>
             </Reveal>
 
@@ -407,7 +414,10 @@ function EventCard({ event }: { event: CalendarEvent }) {
   const end = new Date(`${event.endDate}T00:00:00`)
   const sameDay = event.startDate === event.endDate
   return (
-    <article className="flex h-full items-center gap-4 rounded-card border border-line bg-white p-4">
+    <Link
+      href={`/events/${event.id}`}
+      className="lift focus-ring flex h-full items-center gap-4 rounded-card border border-line bg-white p-4"
+    >
       <span
         className={`flex h-20 w-20 flex-shrink-0 flex-col items-center justify-center rounded-xl border border-line ${EVENT_BG[event.tone]}`}
       >
@@ -432,6 +442,6 @@ function EventCard({ event }: { event: CalendarEvent }) {
           {!sameDay && ` – ${end.toLocaleDateString('th-TH', { weekday: 'long' })}`}
         </p>
       </div>
-    </article>
+    </Link>
   )
 }
