@@ -49,6 +49,7 @@ import {
   receiveAndInspect,
   returnByDate,
   setOrderStatus,
+  notifyShipped,
   shipOrder,
   taskOf,
   uploadEvidence,
@@ -371,9 +372,22 @@ function PackForm({ order, onDone }: { order: OrderSummary; onDone: PanelProps['
     const { error: err } = pickup
       ? await handoverOrder(order.id, handoverTo.trim(), items, photos)
       : await shipOrder(order.id, normalizeTracking(tracking), items, photos)
+    if (err) {
+      setSaving(false)
+      return setError(translateRpcError(err))
+    }
+    if (pickup) {
+      setSaving(false)
+      return onDone(`ส่งมอบ ${order.orderNumber} แล้ว`)
+    }
+    // จัดส่งสำเร็จแล้ว อีเมลล้มก็ไม่ย้อนสถานะ แค่บอกแอดมินให้แจ้งลูกค้าเอง
+    const { error: mailErr } = await notifyShipped(order.id)
     setSaving(false)
-    if (err) return setError(translateRpcError(err))
-    onDone(pickup ? `ส่งมอบ ${order.orderNumber} แล้ว` : `ส่งของ ${order.orderNumber} แล้ว`)
+    onDone(
+      mailErr
+        ? `ส่งของ ${order.orderNumber} แล้ว แต่ส่งอีเมลแจ้งลูกค้าไม่สำเร็จ (${mailErr})`
+        : `ส่งของ ${order.orderNumber} แล้ว · ส่งอีเมลแจ้งลูกค้าแล้ว`,
+    )
   }
 
   async function cancel() {

@@ -232,6 +232,18 @@ export async function shipOrder(orderId: string, trackingNo: string, checklist: 
   return { error: error?.message ?? null }
 }
 
+// อีเมลแจ้งลูกค้าว่าจัดส่งแล้ว (ส่งฝั่งเซิร์ฟเวอร์) — เรียกหลัง shipOrder สำเร็จ ถ้าล้มไม่กระทบสถานะออเดอร์
+export async function notifyShipped(orderId: string): Promise<{ error: string | null }> {
+  try {
+    const res = await fetch(`/api/orders/${orderId}/notify-shipped`, { method: 'POST' })
+    if (res.ok) return { error: null }
+    const body = (await res.json().catch(() => null)) as { error?: string } | null
+    return { error: body?.error ?? `HTTP ${res.status}` }
+  } catch {
+    return { error: 'NETWORK_ERROR' }
+  }
+}
+
 // รับเองที่ร้าน: ส่งมอบให้ลูกค้า/ไรเดอร์ → paid → active (ไม่ผ่าน shipped)
 export async function handoverOrder(orderId: string, handoverTo: string, checklist: string[], imagePaths: string[]) {
   const supabase = createClient()
