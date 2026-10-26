@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import CustomerNavbar from './CustomerNavbar'
 import CustomerFooter from './CustomerFooter'
+import LineContactButton from './LineContactButton'
 
 interface CustomerLayoutProps {
   children: ReactNode
@@ -15,6 +16,7 @@ export default function CustomerLayout({ children, width = 'default' }: Customer
         {children}
       </main>
       <CustomerFooter />
+      <LineContactButton />
     </>
   )
 }
