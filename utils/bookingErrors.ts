@@ -22,6 +22,10 @@ const MESSAGES: Record<string, string> = {
   NO_REFUND_DUE: 'ออเดอร์นี้ไม่มียอดที่ต้องคืนเงิน',
   INVALID_REFUND_STATUS: 'สถานะการคืนเงินไม่ถูกต้อง',
   INVALID_PIECES: 'บางชิ้นที่เลือกไม่เปิดให้เช่าแยกแล้ว กรุณากลับไปเลือกชิ้นใหม่',
+  // Step 19 · รองเท้าที่มากับชุด
+  SHOE_UNAVAILABLE: 'รองเท้าไซส์ที่เลือกเพิ่งถูกจองไปในช่วงนี้ กรุณาเลือกไซส์รองเท้าหรือวันใหม่',
+  SHOE_SIZE_REQUIRED: 'กรุณาเลือกไซส์รองเท้าก่อน',
+  INVALID_SHOE: 'รองเท้าที่เลือกไม่เปิดให้เช่าแล้ว กรุณากลับไปเลือกใหม่',
   INVALID_TRACKING: 'เลขพัสดุหรือขนส่งไม่ถูกต้อง',
   SHIP_TRACKING_REQUIRED: 'กรุณากรอกเลขพัสดุก่อนกดจัดส่งแล้ว',
   RETURN_TRACKING_REQUIRED: 'ลูกค้ายังไม่ได้กรอกเลขพัสดุส่งคืน จึงยังยืนยันรับชุดคืนไม่ได้',
@@ -49,6 +53,7 @@ export function isDateProblem(message: string | null | undefined): boolean {
   return (
     !!message &&
     (message.includes('DATE_UNAVAILABLE') ||
+      message.includes('SHOE_UNAVAILABLE') ||
       message.includes('START_DATE_TOO_SOON') ||
       message.includes('INVALID_RENTAL_DAYS'))
   )

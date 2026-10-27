@@ -477,18 +477,24 @@ export default function OrderPage() {
                     {line.pieceNames && (
                       <p className="text-[#263544]/60">เช่าแยกชิ้น: {line.pieceNames.join(', ')}</p>
                     )}
-                    <p className="text-[#263544]/60">
-                      เช่า {line.rentalDays} วัน · ค่าเช่า {formatBaht(line.rentalPrice)}
-                      {line.extraDaysFee > 0 &&
-                        ` (วันแรก ${formatBaht(line.baseRentalPrice)} + ${line.rentalDays - 1} วัน × ${formatBaht(line.extraDayRate)})`}
-                    </p>
+                    {line.bundledWith ? (
+                      <p className="text-[#263544]/60">รองเท้าที่มากับ {line.bundledWith} · รวมในค่าเช่าชุดแล้ว</p>
+                    ) : (
+                      <p className="text-[#263544]/60">
+                        เช่า {line.rentalDays} วัน · ค่าเช่า {formatBaht(line.rentalPrice)}
+                        {line.extraDaysFee > 0 &&
+                          ` (วันแรก ${formatBaht(line.baseRentalPrice)} + ${line.rentalDays - 1} วัน × ${formatBaht(line.extraDayRate)})`}
+                      </p>
+                    )}
                     <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
                       <DateChip label={isPickup ? 'รับที่ร้าน' : 'ได้รับชุด'} date={addDays(line.startDate, -bufferBefore)} />
                       <DateChip label="วันใช้งาน" date={line.startDate} highlight />
                       <DateChip label="ส่งคืนภายใน" date={line.endDate} />
                     </div>
 
+                    {/* รองเท้าที่มากับชุดรีวิวรวมกับชุด ไม่แยกรีวิว */}
                     {order.status === 'completed' &&
+                      !line.bundledWith &&
                       (myReviews[line.id] ? (
                         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-white px-3 py-2">
                           <StarDisplay value={myReviews[line.id].rating} size={14} />

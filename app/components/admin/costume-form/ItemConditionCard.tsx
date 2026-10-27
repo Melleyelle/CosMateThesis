@@ -52,6 +52,41 @@ function translate(message: string) {
   return message
 }
 
+// ดึงชุดจริงทุกตัวของชุดนี้ พร้อมคิวจองที่ยังไม่จบ (ไม่แตะ state — ให้ผู้เรียกเอาผลไปใส่เอง)
+async function fetchUnits(productId: string, today: string): Promise<{ units: Unit[] } | { error: string } | null> {
+  const supabase = createClient()
+  if (!supabase) return null
+  const { data, error } = await supabase
+    .from('product_variants')
+    .select(
+      'size, product_items ( id, item_code, condition_status, order_items ( start_date, end_date, is_blocking, orders ( order_number, status ) ) )',
+    )
+    .eq('product_id', productId)
+
+  if (error) return { error: error.message }
+
+  const units: Unit[] = ((data ?? []) as unknown as Row[])
+    .flatMap((v) =>
+      (v.product_items ?? []).map((pi) => ({
+        id: pi.id,
+        code: pi.item_code,
+        size: v.size,
+        condition: pi.condition_status,
+        bookings: (pi.order_items ?? [])
+          .filter((oi) => oi.is_blocking && oi.end_date >= today && oi.orders)
+          .map((oi) => ({
+            orderNumber: oi.orders!.order_number,
+            status: oi.orders!.status,
+            startDate: oi.start_date,
+            endDate: oi.end_date,
+          }))
+          .sort((a, b) => a.startDate.localeCompare(b.startDate)),
+      })),
+    )
+    .sort((a, b) => compareSize(a.size, b.size) || a.code.localeCompare(b.code))
+  return { units }
+}
+
 export default function ItemConditionCard({ productId, refreshKey = 0 }: { productId: string; refreshKey?: number }) {
   const [units, setUnits] = useState<Unit[]>([])
   const [loading, setLoading] = useState(true)
@@ -59,49 +94,24 @@ export default function ItemConditionCard({ productId, refreshKey = 0 }: { produ
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const today = todayISO()
 
-  const load = useCallback(async () => {
-    const supabase = createClient()
-    if (!supabase) return
-    const { data, error } = await supabase
-      .from('product_variants')
-      .select(
-        'size, product_items ( id, item_code, condition_status, order_items ( start_date, end_date, is_blocking, orders ( order_number, status ) ) )',
-      )
-      .eq('product_id', productId)
-
-    if (error) {
-      setNotice({ tone: 'error', text: error.message })
-      setLoading(false)
-      return
-    }
-
-    const list: Unit[] = ((data ?? []) as unknown as Row[])
-      .flatMap((v) =>
-        (v.product_items ?? []).map((pi) => ({
-          id: pi.id,
-          code: pi.item_code,
-          size: v.size,
-          condition: pi.condition_status,
-          bookings: (pi.order_items ?? [])
-            .filter((oi) => oi.is_blocking && oi.end_date >= today && oi.orders)
-            .map((oi) => ({
-              orderNumber: oi.orders!.order_number,
-              status: oi.orders!.status,
-              startDate: oi.start_date,
-              endDate: oi.end_date,
-            }))
-            .sort((a, b) => a.startDate.localeCompare(b.startDate)),
-        })),
-      )
-      .sort((a, b) => compareSize(a.size, b.size) || a.code.localeCompare(b.code))
-
-    setUnits(list)
+  const apply = useCallback((res: Awaited<ReturnType<typeof fetchUnits>>) => {
+    if (!res) return
+    if ('error' in res) setNotice({ tone: 'error', text: res.error })
+    else setUnits(res.units)
     setLoading(false)
-  }, [productId, today])
+  }, [])
+
+  const load = useCallback(async () => apply(await fetchUnits(productId, today)), [apply, productId, today])
 
   useEffect(() => {
-    load()
-  }, [load, refreshKey])
+    let cancelled = false
+    fetchUnits(productId, today).then((res) => {
+      if (!cancelled) apply(res)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [apply, productId, today, refreshKey])
 
   async function change(unit: Unit, next: Condition) {
     if (next === unit.condition) return

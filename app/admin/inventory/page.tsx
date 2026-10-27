@@ -78,10 +78,16 @@ export default function InventoryPage() {
   const [dateRange, setDateRange] = useState<DateRange>({ from: '', to: '' })
   const [view, setView] = useState<'grid' | 'list'>('grid')
 
-  useEffect(() => {
-    let cancelled = false
+  // เปลี่ยนช่วงวัน → กลับเป็นสถานะกำลังโหลด (ปรับ state ระหว่าง render ตามแนวทางของ React แทนการใช้ effect)
+  const [loadedRange, setLoadedRange] = useState(dateRange)
+  if (loadedRange !== dateRange) {
+    setLoadedRange(dateRange)
     setLoading(true)
     setLoadError(null)
+  }
+
+  useEffect(() => {
+    let cancelled = false
 
     fetchInventoryCostumes(dateRange).then(({ data, error }) => {
       if (cancelled) return

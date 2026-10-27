@@ -118,7 +118,8 @@ function CheckoutInner() {
       }
 
       const [variantRes, s, userRes] = await Promise.all([
-        fetchVariantSummaries(requested.map((r) => r.variantId)),
+        // ไซส์รองเท้าที่มากับชุดโหลดมาด้วย เพื่อแสดงไซส์และรู้ว่ารองเท้ายังเปิดให้เช่าอยู่ไหม
+        fetchVariantSummaries(requested.flatMap((r) => (r.shoeVariantId ? [r.variantId, r.shoeVariantId] : [r.variantId]))),
         fetchBookingSettings(),
         supabase.auth.getUser(),
       ])
@@ -211,17 +212,19 @@ function CheckoutInner() {
   const minStart = addDays(todayISO(), minStartOffset(settings, delivery))
   const lines = requested.map((r) => {
     const v = variants[r.variantId]
-    const price = v ? priceLine(v, r.pieces, pieces, r.rentalDays, settings) : null
+    const price = v ? priceLine(v, r.pieces, pieces, r.rentalDays, settings, r.shoeVariantId) : null
+    const shoe = r.shoeVariantId ? variants[r.shoeVariantId] : undefined
     return {
       key: cartKeyOf(r),
       request: r,
       variant: v,
+      shoe,
       price,
       timeline: v ? getRentalTimeline(r.startDate, r.rentalDays, settings, delivery) : null,
       problem: !v
         ? 'ชุดหรือไซส์นี้ปิดให้เช่าแล้ว'
-        : price?.invalid
-          ? 'บางชิ้นที่เลือกไม่เปิดให้เช่าแยกแล้ว'
+        : price?.invalid || (r.shoeVariantId && !shoe)
+          ? 'ชิ้นหรือรองเท้าที่เลือกไม่เปิดให้เช่าแล้ว'
           : r.rentalDays < settings.minRentalDays || r.rentalDays > settings.maxRentalDays
             ? `จำนวนวันเช่าต้องอยู่ระหว่าง ${settings.minRentalDays}–${settings.maxRentalDays} วัน`
             : r.startDate < minStart
@@ -285,6 +288,7 @@ function CheckoutInner() {
         start_date: r.startDate,
         rental_days: r.rentalDays,
         ...(r.pieces ? { pieces: r.pieces } : {}),
+        ...(r.shoeVariantId ? { shoe_variant_id: r.shoeVariantId } : {}),
       })),
       p_ship_name: address.name.trim(),
       p_ship_phone: address.phone,
@@ -659,6 +663,10 @@ function CheckoutInner() {
                     {l.variant?.productName ?? 'ชุดที่ปิดให้เช่าแล้ว'}
                   </p>
                   {l.variant && <p className="text-[#263544]/80">ไซส์: {l.variant.size}</p>}
+                  {l.shoe && <p className="text-[#263544]/80">รองเท้า: EU {l.shoe.size}</p>}
+                  {!!l.price?.shoeDiscount && (
+                    <p className="text-[#263544]/80">ไม่รับรองเท้า (−{formatBaht(l.price.shoeDiscount)})</p>
+                  )}
                   {l.price?.pieceNames && (
                     <p className="text-[#263544]/80">เช่าแยกชิ้น: {l.price.pieceNames.join(', ')}</p>
                   )}

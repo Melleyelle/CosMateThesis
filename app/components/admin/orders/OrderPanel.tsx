@@ -420,6 +420,7 @@ function PackForm({ order, onDone }: { order: OrderSummary; onDone: PanelProps['
                   <span className="font-semibold">{l.productName}</span>
                   {l.size && <span className="text-secondary"> · ไซส์ {l.size}</span>}
                   {l.pieceNames && <span className="block text-sm text-warning">แยกชิ้น: {l.pieceNames.join(', ')}</span>}
+                  {l.bundledWith && <span className="block text-sm text-secondary">รองเท้าที่มากับ {l.bundledWith}</span>}
                 </span>
                 {l.itemCode && (
                   <span className="whitespace-nowrap rounded-lg border border-dashed border-line px-3 py-1 font-mono text-[15px] font-bold text-ink">
@@ -1014,6 +1015,7 @@ function OrderDetails({ order, detail, openByDefault }: { order: OrderSummary; d
                     {l.size && <span className="font-normal text-secondary"> · {l.size}</span>}
                   </p>
                   {l.itemCode && <p className="font-mono text-xs text-muted">{l.itemCode}</p>}
+                  {l.bundledWith && <p className="text-secondary">รองเท้าที่มากับ {l.bundledWith} · รวมในค่าเช่าชุด</p>}
                   <p className="mt-1 flex items-center gap-1.5 text-secondary">
                     <CalendarBlankIcon size={14} className="flex-none text-muted" />
                     ใช้ {formatThaiDateWithWeekday(l.startDate)} → คืน {formatThaiDateWithWeekday(l.endDate)}

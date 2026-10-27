@@ -76,6 +76,9 @@ export default function CostumeDetailPage() {
   const [previewInclusion, setPreviewInclusion] = useState<{ url: string; name: string } | null>(null)
   const [rentMode, setRentMode] = useState<'set' | 'pieces'>('set')
   const [selectedPieces, setSelectedPieces] = useState<Set<string>>(new Set())
+  // รองเท้าที่มากับชุด: id ไซส์รองเท้า / 'none' = ไม่รับรองเท้า / null = ยังไม่ได้เลือก
+  const [shoeChoice, setShoeChoice] = useState<string | null>(null)
+  const [chartTab, setChartTab] = useState<'clothing' | 'shoes'>('clothing')
   const [deliveryChoice, setDeliveryChoice] = useState<DeliveryMethod>('ship')
   // ร้านไม่ได้ตั้งข้อมูลรับเอง → มีแค่จัดส่ง
   const delivery: DeliveryMethod = settings.pickupLocation ? deliveryChoice : 'ship'
@@ -111,6 +114,8 @@ export default function CostumeDetailPage() {
         // ไม่มีไซส์ไหนพร้อมเลย (เช่น ชุดไซส์เดียวที่เพิ่งคืนมาและอยู่ระหว่างซัก/ซ่อม) ก็ยังเลือกไซส์แรก ให้ปฏิทินแสดงวันที่ไม่ว่างตามเดิม
         const firstAvailable = res.data.variants.find((v) => v.availableUnits > 0) ?? res.data.variants[0]
         setVariantId(firstAvailable?.id ?? null)
+        // รองเท้าปิดขายอยู่ → เลือกได้แค่ไม่รับรองเท้า เลือกไว้ให้เลย
+        if (res.data.shoes && res.data.shoes.variants.length === 0) setShoeChoice('none')
       }
       setLoading(false)
     })
@@ -124,11 +129,17 @@ export default function CostumeDetailPage() {
     return () => clearTimeout(t)
   }, [rentalDays])
 
-  // วันเริ่มเช่าไม่ได้ของ (ไซส์, จำนวนวัน, วิธีรับ) ที่เลือก · ผลของคำขอเก่าที่ตอบช้าก็เก็บลง cache ตาม key ของมันเอง ไม่ทับค่าปัจจุบัน
-  const cacheKey = variantId ? `${variantId}:${queryDays}:${delivery}` : null
+  // รองเท้าที่จะจองไปด้วย: ทั้งชุด = ไซส์ที่เลือก (ไม่ใช่ 'none') · แยกชิ้น = เฉพาะตอนติ๊กชิ้นรองเท้า
+  const setShoes = detail?.shoes ?? null
+  const shoePieceTicked = !!setShoes && rentMode === 'pieces' && selectedPieces.has(setShoes.inclusionId)
+  const wantsShoe = !!setShoes && (rentMode === 'set' || shoePieceTicked)
+  const shoeVariantId = wantsShoe && shoeChoice && shoeChoice !== 'none' ? shoeChoice : null
+
+  // วันเริ่มเช่าไม่ได้ของ (ไซส์, รองเท้า, จำนวนวัน, วิธีรับ) ที่เลือก · ผลของคำขอเก่าที่ตอบช้าก็เก็บลง cache ตาม key ของมันเอง ไม่ทับค่าปัจจุบัน
+  const cacheKey = variantId ? `${variantId}:${shoeVariantId ?? ''}:${queryDays}:${delivery}` : null
   const inflight = useRef(new Set<string>())
   useEffect(() => {
-    const key = `${variantId}:${queryDays}:${delivery}`
+    const key = `${variantId}:${shoeVariantId ?? ''}:${queryDays}:${delivery}`
     if (!variantId || unavailableCache.has(key) || inflight.current.has(key)) return
     const supabase = createClient()
     if (!supabase) return
@@ -139,13 +150,15 @@ export default function CostumeDetailPage() {
         p_days_ahead: DAYS_AHEAD,
         p_rental_days: queryDays,
         p_delivery_method: delivery,
+        // ส่งเฉพาะตอนเลือกรองเท้า — ชุดทั่วไปยังเรียกได้แม้ยังไม่ได้รัน Step 19
+        ...(shoeVariantId ? { p_shoe_variant_id: shoeVariantId } : {}),
       })
       .then(({ data, error }) => {
         const value = error ? ('error' as const) : new Set(((data ?? []) as string[]).map((d) => String(d).slice(0, 10)))
         inflight.current.delete(key)
         setUnavailableCache((prev) => new Map(prev).set(key, value))
       })
-  }, [variantId, queryDays, delivery, unavailableCache])
+  }, [variantId, shoeVariantId, queryDays, delivery, unavailableCache])
 
   // วันที่ถูกจองจริงของทุกไซส์ ครั้งเดียวต่อชุด · ไซส์ไหนโหลดไม่สำเร็จก็แค่ไม่แสดงพื้นเทา/ป้ายไซส์นั้น ปฏิทินยังใช้ได้
   useEffect(() => {
@@ -235,21 +248,27 @@ export default function CostumeDetailPage() {
     if (!variant || !activeDate) return
     router.push(
       `/checkout?items=${encodeCheckoutItems([
-        { variantId: variant.id, startDate: activeDate, rentalDays, pieces: chosenPieces()?.sort() },
+        {
+          variantId: variant.id,
+          startDate: activeDate,
+          rentalDays,
+          pieces: chosenPieces()?.sort(),
+          shoeVariantId: shoeVariantId ?? undefined,
+        },
       ])}&delivery=${delivery}`,
     )
   }
 
   function handleAddToCart() {
     if (!variant || !activeDate) return
-    let result = addToCart(variant.id, activeDate, rentalDays, delivery, chosenPieces())
+    let result = addToCart(variant.id, activeDate, rentalDays, delivery, chosenPieces(), shoeVariantId ?? undefined)
     // ตะกร้าใช้วิธีรับเดียวทั้งตะกร้า → ถามก่อนเปลี่ยน (ยกเลิก = ไม่เพิ่ม)
     if (result === 'mismatch') {
       const label = delivery === 'pickup' ? 'รับเองที่ร้าน' : 'จัดส่ง'
       const current = delivery === 'pickup' ? 'จัดส่ง' : 'รับเองที่ร้าน'
       if (!confirm(`ตะกร้าของคุณเป็นแบบ "${current}"\nเปลี่ยนทั้งตะกร้าเป็น "${label}" ไหม?`)) return
       setCartDelivery(delivery)
-      result = addToCart(variant.id, activeDate, rentalDays, delivery, chosenPieces())
+      result = addToCart(variant.id, activeDate, rentalDays, delivery, chosenPieces(), shoeVariantId ?? undefined)
     }
     // ยังไม่ล็อกอิน → ไปเข้าสู่ระบบก่อน แล้วกลับมาหน้านี้
     if (result === 'login') {
@@ -290,9 +309,18 @@ export default function CostumeDetailPage() {
   const pieceDeposit = depositForRental(piecesTotal)
   const piecesLaundry = pricedPieces.filter((p) => selectedPieces.has(p.id)).reduce((sum, p) => sum + p.laundryFee, 0)
 
+  // ทั้งชุดแต่ไม่รับรองเท้า → หักราคาแยกชิ้นของรองเท้าออกจากค่าเช่าวันแรก (มัดจำเท่าเดิม) · ต้องตรงกับ create_booking()
+  const shoeDiscount =
+    setShoes && !pieceMode && shoeChoice === 'none' ? Math.min(setShoes.price, variant?.packagePrice ?? 0) : 0
+  // ยังไม่ได้เลือกไซส์รองเท้า (หรือไม่รับ) — แยกชิ้นต้องเลือกไซส์เฉพาะตอนติ๊กรองเท้า
+  const shoeMissing = !!setShoes && (pieceMode ? shoePieceTicked && !shoeVariantId : shoeChoice === null)
+  const shoeVariants = sortSizes(setShoes?.variants ?? [])
+  const hasShoeChart = shoeVariants.some((v) => v.footMinCm != null || v.footMaxCm != null)
+  const showShoeChart = hasShoeChart && (chartTab === 'shoes' || !hasSizeChart)
+
   // ค่าเช่า = วันแรก + วันเพิ่ม (มัดจำคิดจากราคาวันแรก ไม่ขึ้นตามจำนวนวัน)
   const price = calcRentalPrice({
-    baseRental: pieceMode ? piecesTotal : (variant?.packagePrice ?? 0),
+    baseRental: pieceMode ? piecesTotal : (variant?.packagePrice ?? 0) - shoeDiscount,
     rentalDays,
     isPieces: pieceMode,
     settings,
@@ -311,8 +339,8 @@ export default function CostumeDetailPage() {
     })
   }
 
-  // โหมดแยกชิ้นต้องเลือกอย่างน้อย 1 ชิ้น
-  const bookingBlocked = !activeDate || noPiecesYet
+  // โหมดแยกชิ้นต้องเลือกอย่างน้อย 1 ชิ้น · ชุดที่มีรองเท้าต้องเลือกไซส์รองเท้าหรือไม่รับก่อน
+  const bookingBlocked = !activeDate || noPiecesYet || shoeMissing
 
   return (
     <CustomerLayout>
@@ -423,7 +451,7 @@ export default function CostumeDetailPage() {
               <div className="mt-3">
                 <p className="text-2xl font-bold text-brand">เริ่มต้น {formatBaht(variant.packagePrice)}</p>
                 <p className="mt-0.5 text-base text-[#263544]/60">
-                  ราคาเช่า 1 วัน · วันถัดไป +{formatBaht(settings.extraDayRate)}/วัน
+                  ราคาเช่า 1 วัน{setShoes && ' ครบเซ็ตรวมรองเท้า'} · วันถัดไป +{formatBaht(settings.extraDayRate)}/วัน
                   {/* บอกชัดว่าราคานี้เป็นของไซส์ไหน — ลูกค้าจะไม่เข้าใจผิดว่าทุกไซส์ราคาเดียวกัน */}
                   {pricesVary && (
                     <>
@@ -529,15 +557,122 @@ export default function CostumeDetailPage() {
               </p>
             )}
 
+            {/* รองเท้าที่มากับชุด: เลือกไซส์รองเท้าแยกจากไซส์ชุด หรือไม่รับแล้วหักราคารองเท้า */}
+            {setShoes && variant && (
+              <div className="mt-4">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                  <p className="text-base font-semibold text-[#263544]">ไซส์รองเท้า</p>
+                  <MeasureGuideButton kind="shoes" />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {shoeVariants.map((s) => {
+                    const soldOut = s.availableUnits === 0
+                    const active = shoeChoice === s.id
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setShoeChoice(s.id)}
+                        aria-pressed={active}
+                        aria-label={`รองเท้าไซส์ ${s.size}${soldOut ? ' (หมด)' : ''}`}
+                        className={`focus-ring flex min-w-[56px] flex-col items-center rounded-xl border px-3 py-2 ${
+                          active
+                            ? 'border-line bg-brand text-white'
+                            : soldOut
+                              ? 'border-line-subtle bg-canvas text-muted'
+                              : 'lift border-line bg-white text-ink'
+                        }`}
+                      >
+                        <span className={`text-base font-bold ${soldOut && !active ? 'line-through' : ''}`}>{s.size}</span>
+                      </button>
+                    )
+                  })}
+                  {/* แยกชิ้น: ไม่เอารองเท้า = ไม่ติ๊กชิ้นรองเท้า จึงไม่ต้องมีปุ่มนี้ */}
+                  {!pieceMode && (
+                    <button
+                      type="button"
+                      onClick={() => setShoeChoice('none')}
+                      aria-pressed={shoeChoice === 'none'}
+                      className={`focus-ring rounded-xl border px-4 py-2 text-base ${
+                        shoeChoice === 'none' ? 'border-line bg-brand-soft font-bold text-ink' : 'lift border-line bg-white font-semibold text-ink'
+                      }`}
+                    >
+                      ไม่รับรองเท้า
+                      <span className="ml-1 text-sm font-normal text-[#263544]/60">−{formatBaht(setShoes.price)}</span>
+                    </button>
+                  )}
+                </div>
+                <p className="mt-2 text-base text-[#263544]/60">
+                  {setShoes.variants.length === 0
+                    ? 'รองเท้าของชุดนี้ยังไม่พร้อมให้เช่า เช่าได้เฉพาะชุดแบบไม่รับรองเท้า'
+                    : pieceMode && !shoePieceTicked
+                      ? `เช่าแยกชิ้น: ติ๊ก "${detail.inclusions.find((i) => i.id === setShoes.inclusionId)?.name ?? 'รองเท้า'}" ด้านล่างถ้าต้องการรองเท้า`
+                      : `${setShoes.productName} · วันที่ว่างในปฏิทินเช็คทั้งชุดและรองเท้าไซส์ที่เลือก`}
+                </p>
+              </div>
+            )}
+
             {/* ตารางไซส์อยู่ติดกับปุ่มไซส์ ดูประกอบตอนเลือกได้ทันที — ตัวเลขเป็นช่วงสัดส่วนร่างกายที่ใส่ได้ */}
-            {hasSizeChart && (
+            {(hasSizeChart || hasShoeChart) && (
               <details className="group mt-3 rounded-card border border-line bg-white" open>
                 <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-base font-semibold text-[#263544]">
                   <RulerIcon size={18} />
-                  {isShoes ? 'ตารางไซส์รองเท้า (ซม.)' : 'ตารางไซส์ (นิ้ว)'}
+                  {hasSizeChart && hasShoeChart
+                    ? 'ตารางไซส์'
+                    : isShoes || showShoeChart
+                      ? 'ตารางไซส์รองเท้า (ซม.)'
+                      : 'ตารางไซส์ (นิ้ว)'}
                   <CaretDownIcon size={14} className="ml-auto transition group-open:rotate-180" />
                 </summary>
                 <div className="overflow-x-auto px-4 pb-4">
+                  {/* ชุดที่มีรองเท้า: สลับดูตารางไซส์ชุด (นิ้ว) กับไซส์รองเท้า (ซม.) */}
+                  {hasSizeChart && hasShoeChart && (
+                    <div role="tablist" aria-label="ประเภทตารางไซส์" className="mb-3 inline-grid grid-cols-2 gap-1 rounded-xl border border-line bg-white p-1">
+                      {(
+                        [
+                          ['clothing', 'ไซส์ชุด (นิ้ว)'],
+                          ['shoes', 'ไซส์รองเท้า (ซม.)'],
+                        ] as const
+                      ).map(([tab, label]) => (
+                        <button
+                          key={tab}
+                          type="button"
+                          role="tab"
+                          aria-selected={chartTab === tab}
+                          onClick={() => setChartTab(tab)}
+                          className={`focus-ring rounded-lg px-4 py-2 text-sm transition ${
+                            chartTab === tab ? 'bg-brand-soft font-bold text-ink' : 'font-semibold text-ink hover:bg-sunken'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {showShoeChart ? (
+                    <>
+                      <p className="mb-2 text-sm text-[#5B6472]">
+                        วัดความยาวเท้าจากส้นถึงปลายนิ้วที่ยาวที่สุด แล้วเลือกไซส์ที่ช่วงครอบความยาวเท้าคุณ
+                      </p>
+                      <table className="w-full min-w-[280px] text-center text-base">
+                        <thead className="bg-[#FDE3EE] text-[#263544]">
+                          <tr>
+                            <th className="rounded-l-lg px-2 py-2">ไซส์ (EU)</th>
+                            <th className="rounded-r-lg px-2 py-2">ความยาวเท้า</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-line-subtle tabular-nums text-[#263544]/80">
+                          {shoeVariants.map((s) => (
+                            <tr key={s.id} className={s.id === shoeChoice ? 'bg-[#FFFAFC] font-semibold' : ''}>
+                              <td className="px-2 py-2 font-bold text-[#263544]">{s.size}</td>
+                              <td className="px-2 py-2">{formatRange(s.footMinCm, s.footMaxCm) ?? '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  ) : (
+                  <>
                   <p className="mb-2 text-sm text-[#5B6472]">
                     {isShoes
                       ? 'วัดความยาวเท้าจากส้นถึงปลายนิ้วที่ยาวที่สุด แล้วเลือกไซส์ที่ช่วงครอบความยาวเท้าคุณ'
@@ -589,6 +724,8 @@ export default function CostumeDetailPage() {
                         ))}
                     </tbody>
                   </table>
+                  </>
+                  )}
                 </div>
               </details>
             )}
@@ -810,7 +947,13 @@ export default function CostumeDetailPage() {
 
               <dl className="space-y-1.5 text-base">
                 <PriceRow
-                  label={pieceMode ? `ค่าเช่าวันแรก (${selectedPieces.size} ชิ้น)` : 'ค่าเช่าชุดวันแรก'}
+                  label={
+                    pieceMode
+                      ? `ค่าเช่าวันแรก (${selectedPieces.size} ชิ้น)`
+                      : shoeDiscount > 0
+                        ? `ค่าเช่าชุดวันแรก (ไม่รับรองเท้า −${formatBaht(shoeDiscount)})`
+                        : 'ค่าเช่าชุดวันแรก'
+                  }
                   value={price.baseRental}
                 />
                 {rentalDays > 1 && (
@@ -844,7 +987,13 @@ export default function CostumeDetailPage() {
                   disabled={bookingBlocked}
                   className="lift focus-ring rounded-full border border-line bg-brand py-3 text-base font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {!activeDate ? 'เลือกวันใช้งานก่อน' : noPiecesYet ? 'เลือกชิ้นก่อน' : 'เช่าเลย'}
+                  {!activeDate
+                    ? 'เลือกวันใช้งานก่อน'
+                    : noPiecesYet
+                      ? 'เลือกชิ้นก่อน'
+                      : shoeMissing
+                        ? 'เลือกไซส์รองเท้าก่อน'
+                        : 'เช่าเลย'}
                 </button>
               </div>
               <p className="mt-2 text-center text-base text-[#263544]/50">

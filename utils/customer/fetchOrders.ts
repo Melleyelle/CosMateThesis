@@ -19,6 +19,9 @@ export type OrderLine = {
   productName: string
   coverImageUrl: string | null
   pieceNames: string[] | null // เช่าแยกชิ้น: ชื่อชิ้นที่เช่า / null = เช่าทั้งชุด
+  // รองเท้าที่มากับชุด (Step 19): id รายการชุดที่รองเท้านี้ติดมาด้วย และชื่อชุดนั้น · null = รายการปกติ
+  parentLineId: string | null
+  bundledWith: string | null
 }
 
 export type OrderSummary = {
@@ -99,6 +102,7 @@ type OrderRow = {
   order_items:
     | {
         id: string
+        parent_item_id?: string | null
         start_date: string
         end_date: string
         rental_price: number | string
@@ -128,14 +132,15 @@ const ORDER_COLUMNS = `
   delivery_method, handover_to, handed_over_at, return_method
 `
 
+// parent_item_id ต้องรัน SQL Step 19 ก่อน
 const LINE_COLUMNS = `
-  id, start_date, end_date, rental_price, rental_days, base_rental_price, extra_day_rate, extra_days_fee,
+  id, parent_item_id, start_date, end_date, rental_price, rental_days, base_rental_price, extra_day_rate, extra_days_fee,
   deposit_amount, laundry_fee, pieces,
   product_variants ( size, products ( id, name, cover_image_url ) )
 `
 
 const LINE_COLUMNS_ADMIN = `
-  id, start_date, end_date, rental_price, rental_days, base_rental_price, extra_day_rate, extra_days_fee,
+  id, parent_item_id, start_date, end_date, rental_price, rental_days, base_rental_price, extra_day_rate, extra_days_fee,
   deposit_amount, laundry_fee, pieces,
   product_items ( item_code ),
   product_variants ( size, products ( id, name, cover_image_url ) )
@@ -180,8 +185,14 @@ function mapOrder(o: OrderRow): OrderSummary {
     handoverTo: o.handover_to ?? null,
     handedOverAt: o.handed_over_at ?? null,
     returnMethod: o.return_method ?? null,
-    lines: (o.order_items ?? [])
-      .map((i) => ({
+    lines: orderLines(o.order_items ?? []),
+  }
+}
+
+// รองเท้าที่มากับชุดเรียงต่อจากรายการชุดของมันเสมอ (ไม่ปนกับรายการอื่นที่วันเริ่มเดียวกัน)
+function orderLines(items: NonNullable<OrderRow['order_items']>): OrderLine[] {
+  const nameById = new Map(items.map((i) => [i.id, i.product_variants?.products?.name ?? null]))
+  const lines = items.map((i) => ({
         id: i.id,
         startDate: i.start_date,
         endDate: i.end_date,
@@ -198,9 +209,11 @@ function mapOrder(o: OrderRow): OrderSummary {
         productName: i.product_variants?.products?.name ?? 'ชุดที่ถูกลบออกจากคลัง',
         coverImageUrl: i.product_variants?.products?.cover_image_url ?? null,
         pieceNames: i.pieces && i.pieces.length > 0 ? i.pieces.map((p) => p.name) : null,
+        parentLineId: i.parent_item_id ?? null,
+        bundledWith: i.parent_item_id ? (nameById.get(i.parent_item_id) ?? 'ชุด') : null,
       }))
-      .sort((a, b) => a.startDate.localeCompare(b.startDate)),
-  }
+  const parents = lines.filter((l) => !l.parentLineId).sort((a, b) => a.startDate.localeCompare(b.startDate))
+  return parents.flatMap((p) => [p, ...lines.filter((l) => l.parentLineId === p.id)])
 }
 
 // ลูกค้า: ออเดอร์เดียว (RLS กันไม่ให้เห็นของคนอื่นอยู่แล้ว)

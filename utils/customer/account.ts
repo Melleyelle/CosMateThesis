@@ -207,6 +207,13 @@ export async function saveMyProfile(
 export const AVATAR_MAX_SIZE = 2 * 1024 * 1024 // ต้องตรงกับ file_size_limit ของ bucket avatars
 const AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
+// แจ้งส่วนอื่นในหน้า (เช่น Navbar) ว่ารูปโปรไฟล์เปลี่ยน · detail = url ใหม่ หรือ null เมื่อลบรูป
+export const AVATAR_CHANGE_EVENT = 'cosmate:avatar-change'
+
+function announceAvatarChange(url: string | null) {
+  window.dispatchEvent(new CustomEvent<string | null>(AVATAR_CHANGE_EVENT, { detail: url }))
+}
+
 // อัปโหลดรูปโปรไฟล์ไปที่ avatars/<user id>/avatar.<นามสกุล> (ทับรูปเดิม) แล้วบันทึก url ลง profiles
 export async function uploadMyAvatar(file: File): Promise<{ url: string } | { error: string }> {
   if (!AVATAR_TYPES.includes(file.type)) return { error: 'รองรับเฉพาะไฟล์ JPG, PNG หรือ WEBP' }
@@ -233,6 +240,7 @@ export async function uploadMyAvatar(file: File): Promise<{ url: string } | { er
   const url = `${supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl}?v=${Date.now()}`
   const { error } = await supabase.from('profiles').update({ avatar_url: url }).eq('id', userId)
   if (error) return { error: error.message.includes('avatar_url') ? 'ระบบยังไม่พร้อมอัปโหลดรูป' : error.message }
+  announceAvatarChange(url)
   return { url }
 }
 
@@ -243,7 +251,9 @@ export async function removeMyAvatar(): Promise<string | null> {
     .from('avatars')
     .remove(['jpg', 'png', 'webp'].map((ext) => `${userId}/avatar.${ext}`))
   const { error } = await supabase.from('profiles').update({ avatar_url: null }).eq('id', userId)
-  return error?.message ?? null
+  if (error) return error.message
+  announceAvatarChange(null)
+  return null
 }
 
 function addressPayload(a: Address) {

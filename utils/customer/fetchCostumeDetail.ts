@@ -26,6 +26,23 @@ export type CostumeVariant = {
   chart: CostumeSizeChart | null
 }
 
+// รองเท้าที่มากับชุด (Step 19) — สินค้ารองเท้าในคลังที่ผูกกับรายการหนึ่งใน "สิ่งที่ได้รับ"
+export type SetShoeVariant = {
+  id: string
+  size: string
+  availableUnits: number
+  footMinCm: number | null
+  footMaxCm: number | null
+}
+
+export type SetShoes = {
+  inclusionId: string // รายการใน inclusions ที่เป็นรองเท้า
+  productId: string
+  productName: string
+  price: number // ราคาแยกชิ้นของรองเท้า = ส่วนที่หักออกเมื่อไม่รับรองเท้า
+  variants: SetShoeVariant[] // ว่าง = รองเท้าปิดขายอยู่ เลือกได้แค่ไม่รับรองเท้า
+}
+
 export type CostumeDetail = {
   id: string
   name: string
@@ -42,6 +59,7 @@ export type CostumeDetail = {
   // price = ค่าเช่าเมื่อเลือกแยกชิ้น (null = ชิ้นนี้ไม่เปิดให้เช่าแยก)
   inclusions: { id: string; name: string; imageUrl: string | null; price: number | null; laundryFee: number }[]
   variants: CostumeVariant[]
+  shoes: SetShoes | null
 }
 
 type SizeChartRow = {
@@ -226,6 +244,8 @@ export async function fetchCostumeDetail(productId: string): Promise<{
     chart: withRange(mapSizeChart(variant.size_charts), rangeByVariant.get(variant.id)),
   }))
 
+  const shoes = await fetchSetShoes(productId, priceById)
+
   return {
     data: {
       id: product.id,
@@ -252,7 +272,65 @@ export async function fetchCostumeDetail(productId: string): Promise<{
           laundryFee: laundryById.get(inclusion.id) ?? 0,
         })),
       variants,
+      shoes,
     },
     error: null,
+  }
+}
+
+// ยังไม่ได้รัน Step 19 (ไม่มี shoe_product_id) หรือชุดไม่มีรองเท้า → null หน้าชุดแสดงแบบเดิม
+async function fetchSetShoes(productId: string, priceById: Map<string, number>): Promise<SetShoes | null> {
+  const supabase = createClient()
+  if (!supabase) return null
+
+  const { data: link, error } = await supabase
+    .from('product_inclusions')
+    .select('id, shoe_product_id')
+    .eq('product_id', productId)
+    .not('shoe_product_id', 'is', null)
+    .limit(1)
+    .maybeSingle()
+  if (error || !link?.shoe_product_id) return null
+
+  const base = {
+    inclusionId: link.id as string,
+    productId: link.shoe_product_id as string,
+    price: priceById.get(link.id) ?? 0,
+  }
+
+  // รองเท้าที่ปิดขาย RLS จะไม่คืนแถวมา → ยังหักราคาตอนไม่รับรองเท้าได้ แต่เลือกไซส์ไม่ได้
+  const { data: shoe } = await supabase
+    .from('products')
+    .select('id, name, product_variants ( id, size, product_items ( condition_status ) )')
+    .eq('id', base.productId)
+    .eq('status', 'active')
+    .maybeSingle()
+  if (!shoe) return { ...base, productName: 'รองเท้า', variants: [] }
+
+  type ShoeVariantRow = { id: string; size: string; product_items: { condition_status: string }[] | null }
+  const rows = ((shoe as { product_variants: ShoeVariantRow[] | null }).product_variants ?? [])
+  const { data: ranges } =
+    rows.length > 0
+      ? await supabase
+          .from('size_charts')
+          .select('variant_id, foot_min_cm, foot_max_cm')
+          .in('variant_id', rows.map((r) => r.id))
+      : { data: [] }
+  const rangeById = new Map(
+    ((ranges ?? []) as { variant_id: string; foot_min_cm: number | string | null; foot_max_cm: number | string | null }[]).map(
+      (r) => [r.variant_id, r],
+    ),
+  )
+
+  return {
+    ...base,
+    productName: (shoe as { name: string }).name,
+    variants: rows.map((r) => ({
+      id: r.id,
+      size: r.size,
+      availableUnits: (r.product_items ?? []).filter((i) => i.condition_status === 'available').length,
+      footMinCm: nullableNumber(rangeById.get(r.id)?.foot_min_cm ?? null),
+      footMaxCm: nullableNumber(rangeById.get(r.id)?.foot_max_cm ?? null),
+    })),
   }
 }

@@ -8,7 +8,6 @@ import {
   ListIcon,
   ReceiptIcon,
   ShoppingBagIcon,
-  SignInIcon,
   SignOutIcon,
   StorefrontIcon,
   UserIcon,
@@ -17,6 +16,7 @@ import {
 import { createClient } from '@/utils/client'
 import { useCart } from '@/utils/customer/cart'
 import { useFavorites } from '@/utils/customer/favorites'
+import { AVATAR_CHANGE_EVENT } from '@/utils/customer/account'
 import CosMateLogo from './CosMateLogo'
 
 const NAV_LINKS = [
@@ -34,6 +34,7 @@ export default function CustomerNavbar() {
 
   const [email, setEmail] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   // ไม่ได้ตั้งค่า Supabase = ไม่มีอะไรต้องรอโหลด แสดงเมนูแบบยังไม่ล็อกอินได้เลย
   const [noBackend] = useState(() => !createClient())
   const [authLoaded, setAuthLoaded] = useState(false)
@@ -54,23 +55,36 @@ export default function CustomerNavbar() {
     const supabase = createClient()
     if (!supabase) return
 
-    async function load(userEmail: string | null) {
-      setEmail(userEmail)
-      if (userEmail && supabase) {
-        const { data } = await supabase.rpc('is_admin')
-        setIsAdmin(data === true)
+    async function load(user: { id: string; email?: string } | null) {
+      setEmail(user?.email ?? null)
+      if (user && supabase) {
+        const [admin, profile] = await Promise.all([
+          supabase.rpc('is_admin'),
+          // ถ้ายังไม่มีคอลัมน์ avatar_url (ยังไม่ได้รัน Step 14) query จะ error → แสดงตัวอักษรแทน
+          supabase.from('profiles').select('avatar_url').eq('id', user.id).maybeSingle(),
+        ])
+        setIsAdmin(admin.data === true)
+        setAvatarUrl((!profile.error && profile.data?.avatar_url) || null)
       } else {
         setIsAdmin(false)
+        setAvatarUrl(null)
       }
       setAuthLoaded(true)
     }
 
-    supabase.auth.getUser().then(({ data }) => load(data.user?.email ?? null))
+    supabase.auth.getUser().then(({ data }) => load(data.user))
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setTimeout(() => load(session?.user?.email ?? null), 0)
+      setTimeout(() => load(session?.user ?? null), 0)
     })
     return () => sub.subscription.unsubscribe()
+  }, [])
+
+  // อัปโหลด/ลบรูปในหน้าบัญชี → เปลี่ยนรูปบน navbar ทันทีโดยไม่ต้องรีเฟรช
+  useEffect(() => {
+    const onAvatarChange = (e: Event) => setAvatarUrl((e as CustomEvent<string | null>).detail)
+    window.addEventListener(AVATAR_CHANGE_EVENT, onAvatarChange)
+    return () => window.removeEventListener(AVATAR_CHANGE_EVENT, onAvatarChange)
   }, [])
 
   useEffect(() => {
@@ -142,62 +156,57 @@ export default function CustomerNavbar() {
             {cartItems.length > 0 && <Badge count={cartItems.length} />}
           </Link>
 
-          <div ref={menuRef} className="relative">
-            <button
-              type="button"
-              onClick={() => {
-                setMenuOpen((o) => !o)
-                setNavOpen(false)
-              }}
-              aria-label="บัญชีของฉัน"
-              aria-expanded={menuOpen}
-              className={`nudge flex h-10 w-10 items-center justify-center rounded-full ${
-                email ? 'bg-[#FDE3EE] text-[#E5457F]' : 'text-[#263544]'
-              }`}
-            >
-              {email ? (
-                <span className="text-base font-bold uppercase">{email.charAt(0)}</span>
-              ) : (
-                <UserIcon size={20} />
-              )}
-            </button>
-
-            {menuOpen && ready && (
-              // เส้นขอบ 1px ตาม design v2 · คงเงาแข็งไว้ให้เมนูดูลอยเหนือหน้า
-              <div className="absolute right-0 top-12 w-60 overflow-hidden rounded-2xl border border-[#263544] bg-white shadow-[4px_4px_0_0_#263544]">
-                {email ? (
-                  <>
-                    <MenuLink href="/account" icon={<UserIcon size={18} />} label="บัญชีของฉัน" />
-                    <MenuLink href="/orders" icon={<ReceiptIcon size={18} />} label="ออเดอร์ของฉัน" />
-                    {isAdmin && (
-                      <MenuLink href="/admin"icon={<StorefrontIcon size={18} />} label="หลังร้าน (แอดมิน)" />
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleLogout}
-                      className="group flex w-full items-center gap-2 border-t border-gray-100 px-4 py-3 text-left text-base font-medium text-red-600"
-                    >
-                      <span className="flex items-center gap-2 transition-transform duration-150 group-hover:translate-x-1">
-                        <SignOutIcon size={18} />
-                        ออกจากระบบ
-                      </span>
-                    </button>
-                  </>
+          {!ready ? (
+            // ยังโหลดสถานะล็อกอินไม่เสร็จ → เว้นที่ไว้ก่อน ไม่ให้ลิงก์เข้าสู่ระบบโผล่แวบแล้วกลายเป็นอวาตาร์
+            <div className="h-10 w-10" />
+          ) : email ? (
+            <div ref={menuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen((o) => !o)
+                  setNavOpen(false)
+                }}
+                aria-label="บัญชีของฉัน"
+                aria-expanded={menuOpen}
+                className="nudge flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#FDE3EE] text-[#E5457F]"
+              >
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
                 ) : (
-                  <div className="p-4">
-                    <p className="mb-3 text-base text-[#263544]/70">เข้าสู่ระบบเพื่อเช่าชุด</p>
-                    <Link
-                      href={`/login?next=${encodeURIComponent(pathname)}`}
-                      className="pop flex items-center justify-center gap-2 rounded-full bg-[#E5457F] py-2.5 text-base font-semibold text-white"
-                    >
-                      <SignInIcon size={18} />
-                      เข้าสู่ระบบ / สมัครสมาชิก
-                    </Link>
-                  </div>
+                  <span className="text-base font-bold uppercase">{email.charAt(0)}</span>
                 )}
-              </div>
-            )}
-          </div>
+              </button>
+
+              {menuOpen && (
+                // เส้นขอบ 1px ตาม design v2 · คงเงาแข็งไว้ให้เมนูดูลอยเหนือหน้า
+                <div className="absolute right-0 top-12 w-60 overflow-hidden rounded-2xl border border-[#263544] bg-white shadow-[4px_4px_0_0_#263544]">
+                  <MenuLink href="/account" icon={<UserIcon size={18} />} label="บัญชีของฉัน" />
+                  <MenuLink href="/orders" icon={<ReceiptIcon size={18} />} label="ออเดอร์ของฉัน" />
+                  {isAdmin && (
+                    <MenuLink href="/admin"icon={<StorefrontIcon size={18} />} label="หลังร้าน (แอดมิน)" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="group flex w-full items-center gap-2 border-t border-gray-100 px-4 py-3 text-left text-base font-medium text-red-600"
+                  >
+                    <span className="flex items-center gap-2 transition-transform duration-150 group-hover:translate-x-1">
+                      <SignOutIcon size={18} />
+                      ออกจากระบบ
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <Link
+              href={`/login?next=${encodeURIComponent(pathname)}`}
+              className="whitespace-nowrap px-2 text-base font-medium text-[#263544] transition hover:text-[#E4487D]"
+            >
+              เข้าสู่ระบบ
+            </Link>
+          )}
 
           {/* ปุ่มแฮมเบอร์เกอร์: จอเล็กกว่า md หุบเมนูหลักไว้ในนี้ */}
           <button

@@ -94,10 +94,12 @@ function ExploreInner() {
     })
   }, [])
 
-  // เปลี่ยนเงื่อนไขค้นหา/กรอง/เรียง → กลับไปหน้า 1
-  useEffect(() => {
+  // เปลี่ยนเงื่อนไขค้นหา/กรอง/เรียง → กลับไปหน้า 1 (ปรับ state ระหว่าง render ตามแนวทางของ React แทนการใช้ effect)
+  const [lastQuery, setLastQuery] = useState({ filters, search, sort })
+  if (lastQuery.filters !== filters || lastQuery.search !== search || lastQuery.sort !== sort) {
+    setLastQuery({ filters, search, sort })
     setPage(1)
-  }, [filters, search, sort])
+  }
 
   // วันไม่ว่างของทุกไซส์ (ล่วงหน้า USE_DATE_DAYS_AHEAD วัน) — โหลดครั้งเดียวตอนเลือกวันครั้งแรก
   // หลังจากนั้นเปลี่ยนวันกี่ครั้งก็กรองได้ทันที ไม่ต้องยิงใหม่

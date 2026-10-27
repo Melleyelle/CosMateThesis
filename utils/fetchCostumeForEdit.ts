@@ -55,6 +55,12 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
     .eq('product_id', productId)
   const priceById = new Map((priceRows ?? []).map((r) => [r.id, r.rental_price == null ? '' : String(Number(r.rental_price))]))
   const laundryById = new Map((priceRows ?? []).map((r) => [r.id, r.laundry_fee == null ? '' : String(Number(r.laundry_fee))]))
+  // รองเท้าที่มากับชุด (Step 19) ดึงแยก — ยังไม่ได้รัน SQL ก็เปิดฟอร์มได้ (ไม่มีรองเท้า)
+  const { data: shoeRows } = await supabase
+    .from('product_inclusions')
+    .select('id, shoe_product_id')
+    .eq('product_id', productId)
+  const shoeById = new Map((shoeRows ?? []).map((r) => [r.id, (r.shoe_product_id as string | null) ?? '']))
 
   const inclusions = (data.product_inclusions ?? [])
     .slice()
@@ -65,6 +71,7 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
       imageUrl: inc.image_url ?? '',
       price: priceById.get(inc.id) ?? '',
       laundryFee: laundryById.get(inc.id) ?? '',
+      shoeProductId: shoeById.get(inc.id) ?? '',
     }))
 
   // ช่วงไซส์ + ประเภทไซส์ (Step 18) ดึงแยก — ยังไม่ได้รัน SQL ก็เปิดฟอร์มได้ (ถือว่าเป็นค่าเดียว/เสื้อผ้า)

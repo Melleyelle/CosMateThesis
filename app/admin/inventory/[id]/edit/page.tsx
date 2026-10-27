@@ -15,7 +15,7 @@ import ItemConditionCard from '@/app/components/admin/costume-form/ItemCondition
 import { PageHeader, primaryButtonClass, secondaryButtonClass } from '@/app/components/admin/ui'
 import { EMPTY_FORM_DATA, type CostumeFormData } from '@/app/components/admin/costume-form/types'
 import { fetchCostumeForEdit } from '@/utils/fetchCostumeForEdit'
-import { saveInclusionPrices } from '@/utils/saveInclusionPrices'
+import { saveInclusionPrices, validateShoeInclusion } from '@/utils/saveInclusionPrices'
 import { validateSkuPrefix } from '@/utils/skuPrefix'
 import { saveSizeDetails, validateSizeRanges } from '@/utils/sizeDefaults'
 
@@ -60,10 +60,16 @@ export default function EditCostumePage() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
+  // เปลี่ยนชุดที่แก้ → กลับเป็นสถานะกำลังโหลด (ปรับ state ระหว่าง render ตามแนวทางของ React แทนการใช้ effect)
+  const [loadedFor, setLoadedFor] = useState(productId)
+  if (loadedFor !== productId) {
+    setLoadedFor(productId)
     setLoading(true)
     setLoadError(null)
+  }
+
+  useEffect(() => {
+    let cancelled = false
 
     fetchCostumeForEdit(productId).then(({ data, error }) => {
       if (cancelled) return
@@ -110,6 +116,8 @@ export default function EditCostumePage() {
     if (codes.some((c) => !c) || new Set(codes).size !== codes.length) {
       return 'รหัสชุดจริงต้องไม่ว่างและต้องไม่ซ้ำกัน'
     }
+    const shoeError = validateShoeInclusion(formData.inclusions)
+    if (shoeError) return shoeError
     return null
   }
 
@@ -281,6 +289,7 @@ export default function EditCostumePage() {
             />
             <ItemConditionCard productId={productId} />
             <InclusionsCard
+              excludeProductId={productId}
               inclusions={formData.inclusions}
               onChange={(inclusions) => setFormData((f) => ({ ...f, inclusions }))}
             />

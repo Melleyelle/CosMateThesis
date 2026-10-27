@@ -41,7 +41,7 @@ type ItemStatus = 'ok' | 'closed' | 'pieces_changed' | 'too_soon' | 'booked' | '
 
 const STATUS_MESSAGE: Record<Exclude<ItemStatus, 'ok'>, string> = {
   closed: 'ชุดหรือไซส์นี้ปิดให้เช่าแล้ว',
-  pieces_changed: 'บางชิ้นที่เลือกไม่เปิดให้เช่าแยกแล้ว กรุณาเลือกชิ้นใหม่',
+  pieces_changed: 'ชิ้นหรือรองเท้าที่เลือกไม่เปิดให้เช่าแล้ว กรุณาเลือกใหม่',
   too_soon: 'วันที่เลือกกระชั้นเกินไปแล้ว กรุณาเลือกวันใหม่',
   booked: 'วันที่เลือกถูกจองไปแล้ว กรุณาเลือกวันใหม่',
   bad_days: 'จำนวนวันเช่านี้ไม่เปิดให้จองแล้ว กรุณาเลือกใหม่',
@@ -66,7 +66,10 @@ export default function CartPage() {
 
   // โหลดใหม่เมื่อ (ไซส์, จำนวนวัน, วิธีรับ) ในตะกร้าเปลี่ยน — วันที่ว่างขึ้นกับทั้งจำนวนวันและวิธีรับ
   const requestKey = useMemo(
-    () => Array.from(new Set(cart.map((i) => unavailableKey(i.variantId, i.rentalDays, cartDelivery)))).sort().join(','),
+    () =>
+      Array.from(new Set(cart.map((i) => unavailableKey(i.variantId, i.rentalDays, cartDelivery, i.shoeVariantId))))
+        .sort()
+        .join(','),
     [cart, cartDelivery],
   )
 
@@ -74,10 +77,12 @@ export default function CartPage() {
     if (!ready) return
     let cancelled = false
     const requests = (requestKey ? requestKey.split(',') : []).map((k) => {
-      const [variantId, days, method] = k.split(':')
-      return { variantId, rentalDays: Number(days), delivery: parseDelivery(method) }
+      const [variantPart, days, method] = k.split(':')
+      const [variantId, shoeVariantId] = variantPart.split('~')
+      return { variantId, shoeVariantId: shoeVariantId || undefined, rentalDays: Number(days), delivery: parseDelivery(method) }
     })
-    const ids = requests.map((r) => r.variantId)
+    // ไซส์รองเท้าโหลดมาพร้อมไซส์ชุด เพื่อแสดงไซส์ และรู้ว่ารองเท้ายังเปิดให้เช่าอยู่ไหม
+    const ids = requests.flatMap((r) => (r.shoeVariantId ? [r.variantId, r.shoeVariantId] : [r.variantId]))
     Promise.all([fetchVariantSummaries(ids), fetchUnavailableDates(requests), fetchBookingSettings()]).then(
       async ([v, u, s]) => {
         const p = await fetchPieces(Object.values(v.data).map((x) => x.productId))
@@ -97,25 +102,28 @@ export default function CartPage() {
   }, [ready, requestKey])
 
   const minStart = addDays(todayISO(), minStartOffset(settings, delivery))
-  const priceOf = (v: VariantSummary, item: CartItem) => priceLine(v, item.pieces, pieces, item.rentalDays, settings)
+  const priceOf = (v: VariantSummary, item: CartItem) =>
+    priceLine(v, item.pieces, pieces, item.rentalDays, settings, item.shoeVariantId)
 
   function statusOf(item: CartItem): ItemStatus {
     const v = variants[item.variantId]
     if (!v) return 'closed'
-    if (priceOf(v, item).invalid) return 'pieces_changed'
+    // รองเท้าที่เลือกไว้ถูกปิดขาย/ลบ หรือแอดมินเอารองเท้าออกจากชุด
+    if (priceOf(v, item).invalid || (item.shoeVariantId && !variants[item.shoeVariantId])) return 'pieces_changed'
     if (item.rentalDays < settings.minRentalDays || item.rentalDays > settings.maxRentalDays) return 'bad_days'
     if (item.startDate < minStart) return 'too_soon'
-    if (unavailable[unavailableKey(item.variantId, item.rentalDays, delivery)]?.has(item.startDate)) return 'booked'
+    if (unavailable[unavailableKey(item.variantId, item.rentalDays, delivery, item.shoeVariantId)]?.has(item.startDate)) {
+      return 'booked'
+    }
     return 'ok'
   }
 
   // ครั้งแรกที่โหลดเสร็จ เลือกทุกรายการที่ยังจองได้ไว้ให้ (สูงสุด 10 รายการต่อออเดอร์)
-  useEffect(() => {
-    if (loading || selectionReady) return
-    setSelected(cart.filter((i) => statusOf(i) === 'ok').slice(0, MAX_ITEMS_PER_ORDER).map(keyOf))
+  // (ปรับ state ระหว่าง render ตามแนวทางของ React แทนการใช้ effect)
+  if (!loading && !selectionReady) {
     setSelectionReady(true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading])
+    setSelected(cart.filter((i) => statusOf(i) === 'ok').slice(0, MAX_ITEMS_PER_ORDER).map(keyOf))
+  }
 
   // ชุดแนะนำ: ไม่ซ้ำกับของที่อยู่ในตะกร้า
   useEffect(() => {
@@ -262,6 +270,12 @@ export default function CartPage() {
                             <p className="text-lg font-semibold text-[#263544]/50">ชุดที่ไม่เปิดให้เช่าแล้ว</p>
                           )}
                           {v && <p className="text-base text-[#263544]/70">ไซส์: {v.size}</p>}
+                          {item.shoeVariantId && variants[item.shoeVariantId] && (
+                            <p className="text-base text-[#263544]/70">รองเท้า: EU {variants[item.shoeVariantId].size}</p>
+                          )}
+                          {!!line?.shoeDiscount && (
+                            <p className="text-base text-[#263544]/70">ไม่รับรองเท้า (−{formatBaht(line.shoeDiscount)})</p>
+                          )}
                           {line?.pieceNames && (
                             <p className="text-base text-[#263544]/70">
                               เช่าแยกชิ้น: <span className="text-[#263544]">{line.pieceNames.join(', ')}</span>

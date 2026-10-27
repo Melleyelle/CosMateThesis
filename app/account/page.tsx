@@ -124,8 +124,7 @@ export default function AccountPage() {
   const [avatarError, setAvatarError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
-  async function load() {
-    const res = await fetchMyAccount()
+  function applyAccount(res: Awaited<ReturnType<typeof fetchMyAccount>>) {
     if (res.error) setLoadError(res.error)
     setProfile(res.profile)
     setAddresses(res.addresses)
@@ -134,8 +133,20 @@ export default function AccountPage() {
     setLoading(false)
   }
 
+  async function load() {
+    applyAccount(await fetchMyAccount())
+  }
+
+  // ใส่ state ใน callback หลังโหลดเสร็จ ไม่เรียก setState ตรง ๆ ใน effect
   useEffect(() => {
-    load()
+    let cancelled = false
+    fetchMyAccount().then((res) => {
+      if (!cancelled) applyAccount(res)
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // กดแก้ไข → ช่องเปิดให้กรอกแล้ว โฟกัสช่องแรกให้พิมพ์ต่อได้เลย

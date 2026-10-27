@@ -44,13 +44,24 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [email, setEmail] = useState<string | null>(null)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [badges, setBadges] = useState<{ orders: number }>({ orders: 0 })
   const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
     if (!supabase) return
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null))
+    supabase.auth.getUser().then(async ({ data }) => {
+      setEmail(data.user?.email ?? null)
+      if (!data.user) return setAvatarUrl(null)
+      // ถ้ายังไม่มีคอลัมน์ avatar_url (ยังไม่ได้รัน Step 14) query จะ error → แสดงตัวอักษรแทน
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', data.user.id)
+        .maybeSingle()
+      setAvatarUrl((!error && profile?.avatar_url) || null)
+    })
 
     // งานที่ร้านต้องลงมือ: ตรวจสลิป + แพ็กส่ง + ตรวจสภาพชุดคืน + โอนเงินคืน
     supabase
@@ -60,7 +71,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       .then(({ count }) => setBadges({ orders: count ?? 0 }))
   }, [pathname])
 
-  useEffect(() => setMobileOpen(false), [pathname])
+  // เปลี่ยนหน้า → ปิดเมนูมือถือ (ปรับ state ระหว่าง render ตามแนวทางของ React แทนการใช้ effect)
+  const [lastPath, setLastPath] = useState(pathname)
+  if (pathname !== lastPath) {
+    setLastPath(pathname)
+    setMobileOpen(false)
+  }
 
   async function handleLogout() {
     await createClient()?.auth.signOut()
@@ -115,8 +131,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         ดูหน้าร้าน
       </Link>
       <div className="mt-2 flex items-center gap-3 px-3 py-2">
-        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#263544] text-xs font-bold uppercase text-white">
-          {email?.charAt(0) ?? 'A'}
+        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#263544] text-xs font-bold uppercase text-white">
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            email?.charAt(0) ?? 'A'
+          )}
         </span>
         <span className="min-w-0 flex-1 truncate text-xs text-[#5B6472]">{email ?? 'แอดมิน'}</span>
         <button

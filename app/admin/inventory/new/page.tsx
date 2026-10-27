@@ -11,7 +11,7 @@ import ImagesCard from '@/app/components/admin/costume-form/Imagescard'
 import InclusionsCard from '@/app/components/admin/costume-form/Inclusionscard'
 import SizesStockCard from '@/app/components/admin/costume-form/Sizesstockcard'
 import { EMPTY_FORM_DATA, type CostumeFormData } from '@/app/components/admin/costume-form/types'
-import { findProductIdBySku, saveInclusionPrices } from '@/utils/saveInclusionPrices'
+import { findProductIdBySku, saveInclusionPrices, validateShoeInclusion } from '@/utils/saveInclusionPrices'
 import { validateSkuPrefix } from '@/utils/skuPrefix'
 import { saveSizeDetails, validateSizeRanges } from '@/utils/sizeDefaults'
 
@@ -70,6 +70,8 @@ export default function NewCostumePage() {
     if (codes.some((c) => !c) || new Set(codes).size !== codes.length) {
       return 'รหัสชุดจริงต้องไม่ว่างและต้องไม่ซ้ำกัน'
     }
+    const shoeError = validateShoeInclusion(formData.inclusions)
+    if (shoeError) return shoeError
     return null
   }
 

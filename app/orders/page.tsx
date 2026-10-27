@@ -31,7 +31,7 @@ export default function MyOrdersPage() {
 
   const pendingCount = orders.filter((o) => o.status === 'pending_payment').length
   const needsReview = (o: OrderSummary) =>
-    o.status === 'completed' && o.lines.some((l) => !reviewedItemIds.has(l.id))
+    o.status === 'completed' && o.lines.some((l) => !l.bundledWith && !reviewedItemIds.has(l.id))
   const toReviewCount = orders.filter(needsReview).length
 
   return (

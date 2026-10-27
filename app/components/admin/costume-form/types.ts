@@ -52,6 +52,8 @@ export type ProductInclusion = {
   imageUrl: string
   price: string // ค่าเช่าเมื่อลูกค้าเลือกแยกชิ้น — เว้นว่าง = ไม่เปิดให้เช่าแยก (product_inclusions.rental_price)
   laundryFee: string // ค่าซักรีดเมื่อเช่าแยกชิ้น (ไม่บังคับ, ว่าง = 0) (product_inclusions.laundry_fee)
+  // ชิ้นนี้คือรองเท้าที่มากับชุด → id สินค้ารองเท้าในคลัง ('' = ชิ้นส่วนทั่วไป) (product_inclusions.shoe_product_id, Step 19)
+  shoeProductId: string
 }
 
 // สเตป 3 — ตรงกับตาราง product_variants และ size_charts
