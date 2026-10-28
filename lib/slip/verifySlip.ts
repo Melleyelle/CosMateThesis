@@ -144,8 +144,8 @@ function mockProvider(input: VerifyInput): ProviderResult {
 // slip2go — ส่งรูปสลิปแบบ multipart ไปที่ /api/verify-slip/qr-image/info
 // เอกสาร: https://slip2go.com/guide/rest-api/image · รหัสผล: https://slip2go.com/guide/response
 // env: SLIP2GO_API_URL  = base URL จากหน้า dashboard (ใส่ path เต็มมาก็ได้)
-//      SLIP2GO_API_KEY  = Secret Key ส่งดิบ ๆ ใน Authorization ตามเอกสาร
-//                         ถ้าทดสอบแล้วต้องมี Bearer ให้ใส่ "Bearer xxx" ใน env ได้เลย
+//      SLIP2GO_API_KEY  = Secret Key (ใส่หรือไม่ใส่ "Bearer " นำหน้าก็ได้)
+//                         เอกสารบอกให้ส่งดิบ แต่ทดสอบจริงต้องเป็น Bearer — ส่งดิบได้ 401001
 // (ฝั่งเซิร์ฟเวอร์เท่านั้น ห้ามขึ้นต้น NEXT_PUBLIC_)
 //
 // ไม่เปิด checkDuplicate: ลูกค้าอาจส่งสลิปเดิมซ้ำหลังโดน amount_mismatch / API ล่ม
@@ -172,7 +172,7 @@ async function slip2goProvider(input: VerifyInput): Promise<ProviderResult> {
   try {
     res = await fetch(url, {
       method: 'POST',
-      headers: { Authorization: key },
+      headers: { Authorization: key.startsWith('Bearer ') ? key : `Bearer ${key}` },
       body: form,
       signal: ctrl.signal,
     });
@@ -256,10 +256,10 @@ function normalizeSlip2Go(body: unknown): ProviderResult {
     case '200404':
     case '400001':
     case '400002':
-      return { ok: false, outcome: 'unreadable', raw: body, note };
+    // 200500 = สลิปปลอม/ถูกแก้ — รูปที่ไม่ใช่สลิป (เช่นรูปทั่วไป) ก็ได้รหัสนี้
+    // ปฏิเสธให้แนบใหม่ทันที ไม่ส่งเข้าคิวแอดมิน (ลูกค้าจะคิดว่าผ่านแล้ว)
     case '200500':
-      // สลิปปลอม/ถูกแก้ — ไม่ปฏิเสธเงียบ ๆ ให้แอดมินเห็นใน manual_review
-      return { ok: false, outcome: 'api_error', raw: body, note: 'Slip2Go แจ้งว่าสลิปผิดปกติ/อาจปลอม — ตรวจด้วยตา' };
+      return { ok: false, outcome: 'unreadable', raw: body, note };
     default:
       // 200502 ธนาคารล่ม, 401xxx token/แพ็กเกจ, 429 rate limit, 5xxxxx ระบบล่ม
       return { ok: false, outcome: 'api_error', raw: body, note };
