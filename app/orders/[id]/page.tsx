@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { QRCodeSVG } from 'qrcode.react'
 import { useParams } from 'next/navigation'
 import {
   ArrowLeftIcon,
@@ -271,16 +272,7 @@ export default function OrderPage() {
                 <PaymentCountdown orderId={order.id} onExpire={load} />
               </div>
 
-              <div className="flex flex-col items-center gap-5 sm:flex-row">
-                <PaymentQr seed={order.orderNumber} />
-                <div className="w-full flex-1 space-y-2 text-base">
-                  <p className="text-[#263544]/60">ยอดที่ต้องชำระ</p>
-                  <p className="text-3xl font-extrabold text-brand">{formatBaht(order.grandTotal)}</p>
-                  <p className="text-[#263544]/70">
-                    ชื่อบัญชี: <span className="font-semibold text-[#263544]">CosMate</span>
-                  </p>
-                </div>
-              </div>
+              <PaymentQr orderId={order.id} amount={order.grandTotal} />
 
               {/* แนบสลิป */}
               <div className="mt-6 border-t border-line-subtle pt-5">
@@ -930,34 +922,46 @@ function PaymentCountdown({ orderId, onExpire }: { orderId: string; onExpire: ()
   )
 }
 
-// ลาย QR สร้างจากเลขออเดอร์ (ยังไม่ได้ผูกกับ PromptPay จริง)
-function PaymentQr({ seed }: { seed: string }) {
-  const size = 21
-  const cells: boolean[] = []
-  let h = 0
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
-  for (let i = 0; i < size * size; i++) {
-    h = (h * 1103515245 + 12345) >>> 0
-    cells.push((h >>> 16) % 2 === 0)
-  }
-  const inFinder = (x: number, y: number) =>
-    (x < 7 && y < 7) || (x >= size - 7 && y < 7) || (x < 7 && y >= size - 7)
-  const finderOn = (x: number, y: number) => {
-    const fx = x >= size - 7 ? x - (size - 7) : x
-    const fy = y >= size - 7 ? y - (size - 7) : y
-    return fx === 0 || fx === 6 || fy === 0 || fy === 6 || (fx >= 2 && fx <= 4 && fy >= 2 && fy <= 4)
-  }
+// QR พร้อมเพย์ฝังยอด — เซิร์ฟเวอร์สร้างจากยอดในฐานข้อมูล (/api/orders/[id]/promptpay)
+// amount ใช้แสดงผลระหว่างโหลด และเป็น dep ให้ดึง QR ใหม่ถ้ายอดออเดอร์เปลี่ยน
+function PaymentQr({ orderId, amount }: { orderId: string; amount: number }) {
+  const [qr, setQr] = useState<{ payload: string; amount: number; accountName: string | null } | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    fetch(`/api/orders/${orderId}/promptpay`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((j) => {
+        if (!alive) return
+        setQr(j)
+        setFailed(false)
+      })
+      .catch(() => alive && setFailed(true))
+    return () => {
+      alive = false
+    }
+  }, [orderId, amount])
 
   return (
-    <div className="rounded-card border border-line bg-white p-3">
-      <svg viewBox={`0 0 ${size} ${size}`} className="h-40 w-40" shapeRendering="crispEdges" aria-label="QR พร้อมเพย์">
-        {Array.from({ length: size * size }).map((_, i) => {
-          const x = i % size
-          const y = Math.floor(i / size)
-          const on = inFinder(x, y) ? finderOn(x, y) : cells[i]
-          return on ? <rect key={i} x={x} y={y} width={1} height={1} fill="#263544" /> : null
-        })}
-      </svg>
+    <div className="flex flex-col items-center gap-5 sm:flex-row">
+      <div className="flex h-[184px] w-[184px] flex-shrink-0 items-center justify-center rounded-card border border-line bg-white p-3">
+        {qr ? (
+          <QRCodeSVG value={qr.payload} size={160} marginSize={0} fgColor="#263544" aria-label="QR พร้อมเพย์" />
+        ) : (
+          <p className="px-2 text-center text-sm text-[#263544]/60">
+            {failed ? 'ยังแสดง QR ไม่ได้ กรุณาติดต่อร้านทาง LINE' : 'กำลังสร้าง QR…'}
+          </p>
+        )}
+      </div>
+      <div className="w-full flex-1 space-y-2 text-base">
+        <p className="text-[#263544]/60">ยอดที่ต้องชำระ</p>
+        <p className="text-3xl font-extrabold text-brand">{formatBaht(qr?.amount ?? amount)}</p>
+        <p className="text-[#263544]/70">
+          ชื่อบัญชี: <span className="font-semibold text-[#263544]">{qr?.accountName ?? 'CosMate'}</span>
+        </p>
+        <p className="text-sm text-[#263544]/50">สแกนด้วยแอปธนาคาร ยอดจะขึ้นให้อัตโนมัติ</p>
+      </div>
     </div>
   )
 }

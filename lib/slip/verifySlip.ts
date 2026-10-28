@@ -202,14 +202,9 @@ function slip2goConditions(input: VerifyInput) {
   // checkReceiver ต้องมีรหัสประเภทบัญชีของ Slip2Go (เช่น 01004 กสิกร, 02001 พร้อมเพย์เบอร์โทร)
   // ถ้ายังไม่ได้ตั้ง account_type ใน app_settings ก็ปล่อยให้ judge() เทียบ 4 หลักท้ายอย่างเดียว
   const r = input.receiver;
+  // ไม่ส่งชื่อ: account_name เป็นชื่อที่โชว์ลูกค้า (เช่น CosMate) อาจไม่ตรงชื่อเจ้าของบัญชีจริง
   if (r?.account_type && r.account_number) {
-    cond.checkReceiver = [
-      {
-        accountType: r.account_type,
-        accountNumber: digits(r.account_number),
-        ...(r.account_name ? { accountNameTH: r.account_name } : {}),
-      },
-    ];
+    cond.checkReceiver = [{ accountType: r.account_type, accountNumber: digits(r.account_number) }];
   }
   return cond;
 }
