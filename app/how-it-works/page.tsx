@@ -22,6 +22,7 @@ import {
   DEFAULT_BOOKING_SETTINGS,
   fetchBookingSettings,
   minStartOffset,
+  shippingFeeText,
   type BookingSettings,
 } from '@/utils/customer/bookingSettings'
 import { formatBaht } from '@/utils/dateUtils'
@@ -356,7 +357,7 @@ export default function HowItWorksPage() {
             />
             <Fact
               label="ค่าส่งต่อออเดอร์"
-              value={formatBaht(settings.shippingFlatRate)}
+              value={shippingFeeText(settings)}
               unit={settings.pickupLocation ? 'รับที่ร้านฟรี' : undefined}
             />
             <Fact label="ยกเลิกได้ถึง" value={CANCEL_FREE_DAYS_BEFORE} unit="วันก่อนงาน" />
@@ -449,11 +450,11 @@ export default function HowItWorksPage() {
               />
               <ReceiptRow
                 label="ค่าจัดส่ง"
-                value={`${formatBaht(settings.shippingFlatRate)} / ออเดอร์`}
+                value={`${shippingFeeText(settings)} / ออเดอร์`}
                 note={
                   settings.pickupLocation
-                    ? 'เช่าหลายชุดในออเดอร์เดียว จ่ายค่าส่งครั้งเดียว · รับเองที่ร้านไม่มีค่าส่ง'
-                    : 'เช่าหลายชุดในออเดอร์เดียว จ่ายค่าส่งครั้งเดียว'
+                    ? 'เลือกขนส่งได้ตอนสั่ง · เช่าหลายชุดในออเดอร์เดียว จ่ายค่าส่งครั้งเดียว · รับเองที่ร้านไม่มีค่าส่ง'
+                    : 'เลือกขนส่งได้ตอนสั่ง · เช่าหลายชุดในออเดอร์เดียว จ่ายค่าส่งครั้งเดียว'
                 }
               />
             </dl>

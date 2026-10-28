@@ -53,6 +53,7 @@ export type OrderSummary = {
   refundAmount: number | null
   refundedAt: string | null
   // เลขพัสดุ: ร้านกรอกตอนส่งออก / ลูกค้ากรอกตอนส่งคืน
+  shipCarrier: string | null // รหัสขนส่งที่ลูกค้าเลือก (Step 20) · ชื่อดูที่ shipCarrierName()
   shipTrackingNo: string | null
   returnCarrier: string | null
   returnTrackingNo: string | null
@@ -91,6 +92,7 @@ type OrderRow = {
   refund_status?: 'pending' | 'transferred' | 'failed' | null
   refund_amount?: number | string | null
   refunded_at?: string | null
+  ship_carrier?: string | null
   ship_tracking_no?: string | null
   return_carrier?: string | null
   return_tracking_no?: string | null
@@ -128,9 +130,10 @@ const ORDER_COLUMNS = `
   customer_note, rental_total, deposit_total, laundry_total, shipping_fee, grand_total,
   refund_account_name, refund_bank, refund_account_number,
   cancel_reason, refund_status, refund_amount, refunded_at,
-  ship_tracking_no, return_carrier, return_tracking_no, return_submitted_at,
+  ship_carrier, ship_tracking_no, return_carrier, return_tracking_no, return_submitted_at,
   delivery_method, handover_to, handed_over_at, return_method
 `
+// ship_carrier ต้องรัน SQL Step 20 ก่อน
 
 // parent_item_id ต้องรัน SQL Step 19 ก่อน
 const LINE_COLUMNS = `
@@ -177,6 +180,7 @@ function mapOrder(o: OrderRow): OrderSummary {
     refundStatus: o.refund_status ?? null,
     refundAmount: o.refund_amount == null ? null : Number(o.refund_amount),
     refundedAt: o.refunded_at ?? null,
+    shipCarrier: o.ship_carrier ?? null,
     shipTrackingNo: o.ship_tracking_no ?? null,
     returnCarrier: o.return_carrier ?? null,
     returnTrackingNo: o.return_tracking_no ?? null,

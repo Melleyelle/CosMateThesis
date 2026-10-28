@@ -9,6 +9,7 @@ export type ShippedEmailData = {
   customerName: string;
   orderNumber: string;
   orderId: string;
+  carrierName: string;
   trackingNo: string;
   productNames: string[];
   returnBy: string | null; // วันที่ต้องส่งคืน (จัดรูปแบบแล้ว)
@@ -43,6 +44,7 @@ export function shippedEmail(d: ShippedEmailData) {
     <tr><td style="padding:16px 28px">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:15px;border-top:1px solid #e5e5e5;border-bottom:1px solid #e5e5e5">
         ${row('เลขออเดอร์', escapeHtml(d.orderNumber))}
+        ${row('ขนส่ง', escapeHtml(d.carrierName))}
         ${row('เลขพัสดุ', `<span style="color:${BRAND};font-size:17px">${escapeHtml(d.trackingNo)}</span>`)}
         ${d.returnBy ? row('ส่งชุดคืนภายใน', escapeHtml(d.returnBy)) : ''}
       </table>
@@ -65,6 +67,7 @@ export function shippedEmail(d: ShippedEmailData) {
   const text = [
     `สวัสดีคุณ ${d.customerName}`,
     `ร้านจัดส่งชุดออเดอร์ ${d.orderNumber} แล้ว`,
+    `ขนส่ง: ${d.carrierName}`,
     `เลขพัสดุ: ${d.trackingNo}`,
     d.returnBy ? `ส่งชุดคืนภายใน: ${d.returnBy}` : '',
     d.productNames.length ? `ชุด: ${d.productNames.join(', ')}` : '',

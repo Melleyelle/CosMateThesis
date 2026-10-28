@@ -1,11 +1,14 @@
 import { createClient } from '@/utils/client'
-import { addDays } from '@/utils/dateUtils'
+import { addDays, formatBaht } from '@/utils/dateUtils'
+import { SHIP_CARRIERS, type ShipCarrier } from '@/utils/tracking'
 
 export type BookingSettings = {
   bufferDaysBefore: number
   bufferDaysAfter: number
   minLeadDays: number
   shippingFlatRate: number
+  // ขนส่งที่เปิดให้เลือก + ค่าส่งของแต่ละเจ้า (Step 20) เรียงตาม SHIP_CARRIERS · ไม่ว่างเสมอ
+  shipCarriers: ShipCarrierOption[]
   lateFeePerDay: number
   maxPendingOrders: number | null // null = ฐานข้อมูลยังไม่มีคอลัมน์ max_pending_orders
   // ลูกค้าเลือกจำนวนวันเช่าเอง (v2) — อ่านจาก app_settings ผ่าน get_rental_day_settings()
@@ -22,6 +25,8 @@ export type BookingSettings = {
 // จัดส่ง (EMS) หรือ รับเองที่ร้าน (ลูกค้ามารับเอง / ลูกค้าเรียกไรเดอร์มารับ)
 export type DeliveryMethod = 'ship' | 'pickup'
 
+export type ShipCarrierOption = { code: ShipCarrier; name: string; fee: number }
+
 export type PickupLocation = {
   name: string
   address: string
@@ -35,6 +40,7 @@ export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
   bufferDaysAfter: 1,
   minLeadDays: 1,
   shippingFlatRate: 0,
+  shipCarriers: SHIP_CARRIERS.map((c) => ({ ...c, fee: 0 })),
   lateFeePerDay: 0,
   maxPendingOrders: null,
   minRentalDays: 1,
@@ -71,8 +77,22 @@ export function bufferBefore(settings: BookingSettings, method: DeliveryMethod =
   return method === 'pickup' ? 0 : settings.bufferDaysBefore
 }
 
-export function shippingFee(settings: BookingSettings, method: DeliveryMethod): number {
-  return method === 'pickup' ? 0 : settings.shippingFlatRate
+// ยังไม่ได้เลือกขนส่ง (หน้าตะกร้า/หน้าชุด) = ค่าส่งของเจ้าที่ถูกที่สุด
+export function shippingFee(settings: BookingSettings, method: DeliveryMethod, carrier?: ShipCarrier): number {
+  if (method === 'pickup') return 0
+  const chosen = settings.shipCarriers.find((c) => c.code === carrier)
+  return chosen ? chosen.fee : Math.min(...settings.shipCarriers.map((c) => c.fee))
+}
+
+// ค่าส่งไม่เท่ากันทุกเจ้า → ราคาที่แสดงก่อนเลือกขนส่งเป็นราคาเริ่มต้น
+export function shippingFeeVaries(settings: BookingSettings): boolean {
+  return new Set(settings.shipCarriers.map((c) => c.fee)).size > 1
+}
+
+// ค่าส่งก่อนเลือกขนส่ง เช่น "฿50" หรือ "เริ่ม ฿40"
+export function shippingFeeText(settings: BookingSettings): string {
+  const fee = formatBaht(shippingFee(settings, 'ship'))
+  return shippingFeeVaries(settings) ? `เริ่ม ${fee}` : fee
 }
 
 // จำนวนวันเช่าที่ใช้ได้ (ปัดเข้าช่วง min–max) — ค่าที่ไม่ใช่ตัวเลขถือเป็นค่าต่ำสุด
@@ -101,7 +121,7 @@ export async function fetchBookingSettings(): Promise<BookingSettings> {
   const supabase = createClient()
   if (!supabase) return DEFAULT_BOOKING_SETTINGS
 
-  const [{ data, error }, rental] = await Promise.all([
+  const [{ data, error }, rental, fees] = await Promise.all([
     supabase
       .from('booking_settings')
       // ใช้ * เพื่อให้คอลัมน์เสริม (max_pending_orders) ที่อาจยังไม่มี ไม่ทำให้ทั้ง query error
@@ -109,14 +129,18 @@ export async function fetchBookingSettings(): Promise<BookingSettings> {
       .limit(1)
       .maybeSingle(),
     supabase.rpc('get_rental_day_settings'),
+    supabase.rpc('get_ship_carrier_fees'),
   ])
 
-  const base = error || !data ? DEFAULT_BOOKING_SETTINGS : {
+  const flatRate = error || !data ? DEFAULT_BOOKING_SETTINGS.shippingFlatRate : settingValue(data.shipping_flat_rate, 0)
+  const shipCarriers = parseShipCarriers(fees.error ? null : fees.data, flatRate)
+  const base = error || !data ? { ...DEFAULT_BOOKING_SETTINGS, shipCarriers } : {
     ...DEFAULT_BOOKING_SETTINGS,
     bufferDaysBefore: settingValue(data.buffer_days_before, DEFAULT_BOOKING_SETTINGS.bufferDaysBefore),
     bufferDaysAfter: settingValue(data.buffer_days_after, DEFAULT_BOOKING_SETTINGS.bufferDaysAfter),
     minLeadDays: settingValue(data.min_lead_days, DEFAULT_BOOKING_SETTINGS.minLeadDays),
-    shippingFlatRate: settingValue(data.shipping_flat_rate, DEFAULT_BOOKING_SETTINGS.shippingFlatRate),
+    shippingFlatRate: flatRate,
+    shipCarriers,
     lateFeePerDay: settingValue(data.late_fee_per_day, DEFAULT_BOOKING_SETTINGS.lateFeePerDay),
     maxPendingOrders: data.max_pending_orders == null ? null : settingValue(data.max_pending_orders, 0) || null,
   }
@@ -134,6 +158,16 @@ export async function fetchBookingSettings(): Promise<BookingSettings> {
     pickupCutoffHour: settingValue(r.pickup_cutoff_hour, DEFAULT_BOOKING_SETTINGS.pickupCutoffHour),
     pickupLocation: parsePickupLocation(r.pickup_location),
   }
+}
+
+// ship_carrier_fees = {"ems": 60, ...} ตรงกับ create_booking:
+//   ไม่มีค่าตั้งนี้ (ยังไม่รัน Step 20) = ทุกเจ้าใช้ shipping_flat_rate · ไม่มีรหัสไหน = ปิดเจ้านั้น
+function parseShipCarriers(value: unknown, flatRate: number): ShipCarrierOption[] {
+  if (!value || typeof value !== 'object') return SHIP_CARRIERS.map((c) => ({ ...c, fee: flatRate }))
+  const fees = value as Record<string, unknown>
+  const open = SHIP_CARRIERS.filter((c) => fees[c.code] != null).map((c) => ({ ...c, fee: settingValue(fees[c.code], flatRate) }))
+  // ปิดหมดทุกเจ้าไม่ได้ (create_booking จะไม่รับ) → ถือว่าตั้งค่าผิด กลับไปใช้ EMS ราคาเดิม
+  return open.length > 0 ? open : [{ ...SHIP_CARRIERS[0], fee: flatRate }]
 }
 
 // ไม่มีชื่อหรือที่อยู่ร้าน = ถือว่าร้านไม่เปิดให้รับเอง

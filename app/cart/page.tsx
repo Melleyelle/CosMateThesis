@@ -33,6 +33,7 @@ import {
   getRentalTimeline,
   minStartOffset,
   shippingFee,
+  shippingFeeVaries,
   type BookingSettings,
 } from '@/utils/customer/bookingSettings'
 import { addDays, formatBaht, formatThaiDateLong, todayISO } from '@/utils/dateUtils'
@@ -349,7 +350,7 @@ export default function CartPage() {
                 <div role="radiogroup" aria-label="วิธีรับชุด" className="grid grid-cols-2 gap-1 rounded-xl border border-line bg-white p-1">
                   {(
                     [
-                      ['ship', 'จัดส่ง (EMS)'],
+                      ['ship', 'จัดส่ง'],
                       ['pickup', 'รับเองที่ร้าน'],
                     ] as const
                   ).map(([method, label]) => (
@@ -379,7 +380,10 @@ export default function CartPage() {
               <Row label="ค่าเช่าชุด" value={formatBaht(totals.rental)} />
               <Row label="ค่ามัดจำ (ได้คืนหลังตรวจชุด)" value={formatBaht(totals.deposit)} />
               <Row label="ค่าซักรีด" value={formatBaht(totals.laundry)} />
-              <Row label="ค่าจัดส่ง" value={formatBaht(shipping)} />
+              <Row
+                label={delivery === 'ship' && shippingFeeVaries(settings) ? 'ค่าจัดส่ง (เริ่มต้น)' : 'ค่าจัดส่ง'}
+                value={formatBaht(shipping)}
+              />
               <div className="flex items-center justify-between border-t border-dashed border-line-subtle pt-3">
                 <dt className="font-bold text-[#263544]">ยอดชำระทั้งหมด</dt>
                 <dd className="text-3xl font-extrabold text-brand">{formatBaht(grandTotal)}</dd>

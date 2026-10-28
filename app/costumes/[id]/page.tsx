@@ -39,6 +39,8 @@ import {
   getRentalTimeline,
   minStartOffset,
   shippingFee,
+  shippingFeeText,
+  shippingFeeVaries,
   type BookingSettings,
   type DeliveryMethod,
 } from '@/utils/customer/bookingSettings'
@@ -789,9 +791,9 @@ export default function CostumeDetailPage() {
                 <DeliveryOption
                   checked={delivery === 'ship'}
                   onSelect={() => setDeliveryChoice('ship')}
-                  title="จัดส่งถึงบ้าน (EMS)"
+                  title="จัดส่งถึงบ้าน"
                   lines={[
-                    `ค่าส่ง ${formatBaht(settings.shippingFlatRate)}`,
+                    `ค่าส่ง ${shippingFeeText(settings)} · เลือกขนส่งตอนสั่ง`,
                     `ได้รับชุด ${settings.bufferDaysBefore} วันก่อนวันใส่`,
                     `จองล่วงหน้าอย่างน้อย ${minStartOffset(settings, 'ship')} วัน`,
                   ]}
@@ -964,7 +966,16 @@ export default function CostumeDetailPage() {
                 )}
                 <PriceRow label="ค่ามัดจำ (ได้คืนหลังตรวจชุด)" value={depositAmount} />
                 {laundryFee > 0 && <PriceRow label="ค่าซักรีด" value={laundryFee} />}
-                <PriceRow label={delivery === 'pickup' ? 'ค่าจัดส่ง (รับเองที่ร้าน)' : 'ค่าจัดส่ง'} value={shippingFee(settings, delivery)} />
+                <PriceRow
+                  label={
+                    delivery === 'pickup'
+                      ? 'ค่าจัดส่ง (รับเองที่ร้าน)'
+                      : shippingFeeVaries(settings)
+                        ? 'ค่าจัดส่ง (เริ่มต้น)'
+                        : 'ค่าจัดส่ง'
+                  }
+                  value={shippingFee(settings, delivery)}
+                />
                 <div className="flex items-center justify-between border-t border-dashed border-line-subtle pt-2">
                   <dt className="font-bold text-[#263544]">ยอดชำระทั้งหมด</dt>
                   <dd className="text-xl font-extrabold text-brand">{formatBaht(grandTotal)}</dd>

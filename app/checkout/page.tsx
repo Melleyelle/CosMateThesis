@@ -27,6 +27,7 @@ import {
   type BookingSettings,
   type DeliveryMethod,
 } from '@/utils/customer/bookingSettings'
+import type { ShipCarrier } from '@/utils/tracking'
 import { isDateProblem, translateRpcError } from '@/utils/bookingErrors'
 import { addDays, formatBaht, formatThaiDateLong, isISODate, todayISO } from '@/utils/dateUtils'
 import {
@@ -94,6 +95,7 @@ function CheckoutInner() {
   const [hadSavedBank, setHadSavedBank] = useState(false)
   const [saveBank, setSaveBank] = useState(true)
   const [note, setNote] = useState('')
+  const [carrierChoice, setCarrierChoice] = useState<ShipCarrier | null>(null)
   const [accepted, setAccepted] = useState(false)
 
   const [sectionError, setSectionError] = useState<{ address?: string; refund?: string }>({})
@@ -206,7 +208,10 @@ function CheckoutInner() {
   // ร้านปิดรับเอง (ไม่มีข้อมูลร้าน) → จัดส่งเท่านั้น
   const delivery: DeliveryMethod = settings.pickupLocation ? requestedDelivery : 'ship'
   const pickup = delivery === 'pickup' ? settings.pickupLocation : null
-  const shipping = shippingFee(settings, delivery)
+  // ยังไม่เลือก หรือเจ้าที่เลือกถูกปิดไป → เจ้าแรกที่เปิดอยู่
+  const carrier =
+    settings.shipCarriers.find((c) => c.code === carrierChoice) ?? settings.shipCarriers[0]
+  const shipping = shippingFee(settings, delivery, carrier.code)
   const recipientProblem = (a: Address) => (pickup ? contactProblem(a) : addressProblem(a))
 
   const minStart = addDays(todayISO(), minStartOffset(settings, delivery))
@@ -300,6 +305,7 @@ function CheckoutInner() {
       p_ship_postal_code: pickup ? null : address.postalCode,
       p_note: note.trim() || null,
       p_delivery_method: delivery,
+      p_ship_carrier: pickup ? null : carrier.code,
     })
 
     if (error) {
@@ -530,12 +536,27 @@ function CheckoutInner() {
           </section>
 
           {/* ---------------- การจัดส่ง + วิธีชำระ ---------------- */}
-          <div className="grid gap-6 sm:grid-cols-2">
+          {/* จัดส่ง: ขนส่งหลายเจ้าเต็มความกว้าง วิธีชำระไปอยู่บรรทัดถัดไป */}
+          <div className={`grid gap-6 ${pickup ? 'sm:grid-cols-2' : ''}`}>
             <div>
               <h2 className="mb-3 text-lg font-bold text-[#263544]">การจัดส่ง</h2>
-              <FixedChoice label={pickup ? 'รับเองที่ร้าน' : 'ไปรษณีย์ไทย (ส่งด่วน EMS)'} />
+              {pickup ? (
+                <FixedChoice label="รับเองที่ร้าน" />
+              ) : (
+                <div role="radiogroup" aria-label="เลือกขนส่ง" className="grid gap-2 sm:grid-cols-2">
+                  {settings.shipCarriers.map((c) => (
+                    <ShipChoice
+                      key={c.code}
+                      label={c.name}
+                      fee={c.fee}
+                      checked={c.code === carrier.code}
+                      onSelect={() => setCarrierChoice(c.code)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-            <div>
+            <div className={pickup ? '' : 'sm:w-1/2 sm:pr-1'}>
               <h2 className="mb-3 text-lg font-bold text-[#263544]">วิธีการชำระ</h2>
               <FixedChoice label="QR พร้อมเพย์" />
             </div>
@@ -710,7 +731,7 @@ function CheckoutInner() {
             <PriceRow label="ค่าเช่าชุด" value={totals.rental} />
             <PriceRow label="ค่ามัดจำ (ได้คืนหลังตรวจชุด)" value={totals.deposit} />
             <PriceRow label="ค่าซักรีด" value={totals.laundry} />
-            <PriceRow label={pickup ? 'ค่าจัดส่ง (รับเองที่ร้าน)' : 'ค่าจัดส่ง'} value={shipping} />
+            <PriceRow label={pickup ? 'ค่าจัดส่ง (รับเองที่ร้าน)' : `ค่าจัดส่ง (${carrier.name})`} value={shipping} />
             <div className="flex items-center justify-between border-t border-dashed border-line-subtle pt-3">
               <dt className="font-bold text-[#263544]">ยอดชำระทั้งหมด</dt>
               <dd className="text-3xl font-extrabold text-brand">{formatBaht(grandTotal)}</dd>
@@ -802,6 +823,42 @@ function FixedChoice({ label }: { label: string }) {
       </span>
       <span className="text-base font-semibold text-[#263544]">{label}</span>
     </div>
+  )
+}
+
+// ขนส่งที่เลือกได้: เลือกอยู่ = หน้าตาเดียวกับ FixedChoice · ไม่ได้เลือก = พื้นขาว วงว่าง
+function ShipChoice({
+  label,
+  fee,
+  checked,
+  onSelect,
+}: {
+  label: string
+  fee: number
+  checked: boolean
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      onClick={onSelect}
+      className={`focus-ring flex items-center gap-4 rounded-card border px-5 py-4 text-left transition ${
+        checked ? 'border-line bg-brand-soft' : 'border-line-subtle bg-white hover:border-line'
+      }`}
+    >
+      <span
+        aria-hidden
+        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full ${
+          checked ? 'bg-[#E5457F] text-white' : 'border border-line bg-white'
+        }`}
+      >
+        {checked && <CheckIcon size={16} weight="bold" />}
+      </span>
+      <span className="min-w-0 flex-1 text-base font-semibold text-[#263544]">{label}</span>
+      <span className="text-base font-semibold tabular-nums text-[#263544]">{formatBaht(fee)}</span>
+    </button>
   )
 }
 

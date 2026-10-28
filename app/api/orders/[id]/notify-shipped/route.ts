@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { sendMail } from '@/lib/mail/mailer';
 import { shippedEmail } from '@/lib/mail/shippedEmail';
 import { formatThaiDateLong } from '@/utils/dateUtils';
+import { shipCarrierName } from '@/utils/tracking';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,6 +17,7 @@ type OrderRow = {
   order_number: string;
   status: string;
   ship_name: string | null;
+  ship_carrier: string | null;
   ship_tracking_no: string | null;
   order_items: { end_date: string; product_variants: { products: { name: string } | null } | null }[] | null;
 };
@@ -36,7 +38,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const admin = createAdminClient();
   const { data } = await admin
     .from('orders')
-    .select('id, user_id, order_number, status, ship_name, ship_tracking_no, order_items ( end_date, product_variants ( products ( name ) ) )')
+    .select('id, user_id, order_number, status, ship_name, ship_carrier, ship_tracking_no, order_items ( end_date, product_variants ( products ( name ) ) )')
     .eq('id', orderId)
     .maybeSingle();
   const order = data as unknown as OrderRow | null;
@@ -56,6 +58,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     customerName: order.ship_name ?? 'ลูกค้า',
     orderNumber: order.order_number,
     orderId: order.id,
+    carrierName: shipCarrierName(order.ship_carrier),
     trackingNo: order.ship_tracking_no,
     productNames: [...new Set(items.map((i) => i.product_variants?.products?.name).filter((n): n is string => !!n))],
     returnBy: returnBy ? formatThaiDateLong(returnBy) : null,

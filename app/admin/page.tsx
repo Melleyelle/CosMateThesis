@@ -214,7 +214,7 @@ export default function AdminDashboardPage() {
           <QueueColumn
             icon={<PackageIcon size={18} />}
             title="แพ็กและส่งออก"
-            hint="ส่ง EMS ก่อนวันรับชุด 1 วัน · รับเองที่ร้าน เตรียมไว้ภายในวันใส่"
+            hint="ส่งด้วยขนส่งที่ลูกค้าเลือก ก่อนวันรับชุด 1 วัน · รับเองที่ร้าน เตรียมไว้ภายในวันใส่"
             tasks={queues?.ship}
             href="/admin/orders?tab=to_ship"
           />

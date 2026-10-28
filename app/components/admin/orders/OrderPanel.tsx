@@ -36,7 +36,7 @@ import { ADMIN_STATUS_LABEL, orderBadge } from '@/utils/admin/statusTone'
 import { ORDER_STATUS_LABEL } from '@/utils/orderStatus'
 import { translateRpcError } from '@/utils/bookingErrors'
 import { formatBaht, formatDateTime, formatThaiDateWithWeekday } from '@/utils/dateUtils'
-import { SHIP_CARRIER, normalizeTracking, trackingProblem } from '@/utils/tracking'
+import { normalizeTracking, shipCarrierName, trackingProblem } from '@/utils/tracking'
 import {
   ACTOR_LABEL,
   DEDUCTION_LABEL,
@@ -464,7 +464,7 @@ function PackForm({ order, onDone }: { order: OrderSummary; onDone: PanelProps['
               />
             </Step>
           ) : (
-            <Step n={4} title="เลขพัสดุ" hint={SHIP_CARRIER}>
+            <Step n={4} title="เลขพัสดุ" hint={`ลูกค้าเลือก ${shipCarrierName(order.shipCarrier)}`}>
               <input
                 value={tracking}
                 onChange={(e) => setTracking(e.target.value)}
@@ -1054,7 +1054,7 @@ function OrderDetails({ order, detail, openByDefault }: { order: OrderSummary; d
         <div className="flex min-w-0 flex-col gap-7">
           <DetailGroup
             icon={order.deliveryMethod === 'pickup' ? <StorefrontIcon size={16} /> : <MapPinIcon size={16} />}
-            title={order.deliveryMethod === 'pickup' ? 'รับเองที่ร้าน · ผู้ติดต่อ' : 'จัดส่งถึง'}
+            title={order.deliveryMethod === 'pickup' ? 'รับเองที่ร้าน · ผู้ติดต่อ' : `จัดส่งถึง · ${shipCarrierName(order.shipCarrier)}`}
           >
             <p className="font-semibold text-ink">{order.shipName}</p>
             <a

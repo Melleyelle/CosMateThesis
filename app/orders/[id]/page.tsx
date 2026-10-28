@@ -33,7 +33,7 @@ import {
 } from '@/utils/orderStatus'
 import { addDays, formatBaht, formatDateTime, formatThaiDateWithWeekday } from '@/utils/dateUtils'
 import { DEFAULT_BOOKING_SETTINGS, fetchBookingSettings, type PickupLocation } from '@/utils/customer/bookingSettings'
-import { RETURN_CARRIERS, SHIP_CARRIER, normalizeTracking, trackingProblem, trackingUrl } from '@/utils/tracking'
+import { RETURN_CARRIERS, normalizeTracking, shipCarrierName, trackingProblem, trackingUrl } from '@/utils/tracking'
 import { submitSlip } from '@/utils/submitSlip'
 
 const SLIP_MAX_BYTES = 5 * 1024 * 1024
@@ -700,7 +700,8 @@ function TrackingSection({
   }
 
   if (order.status === 'shipped') {
-    const shipUrl = order.shipTrackingNo ? trackingUrl(SHIP_CARRIER, order.shipTrackingNo) : null
+    const carrierName = shipCarrierName(order.shipCarrier)
+    const shipUrl = order.shipTrackingNo ? trackingUrl(carrierName, order.shipTrackingNo) : null
     return (
       <section className="rounded-card border border-line bg-white p-6">
         <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-[#263544]">
@@ -708,7 +709,7 @@ function TrackingSection({
           ชุดกำลังเดินทางไปหาคุณ
         </h2>
         <div className="rounded-2xl bg-[#F7F7F8] p-4 text-base">
-          <p className="text-[#263544]/60">ร้านส่งชุดให้คุณด้วย {SHIP_CARRIER}</p>
+          <p className="text-[#263544]/60">ร้านส่งชุดให้คุณด้วย {carrierName}</p>
           {order.shipTrackingNo ? (
             <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
               <p className="font-mono text-lg font-bold tracking-wide text-[#263544]">{order.shipTrackingNo}</p>
