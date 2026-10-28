@@ -101,6 +101,15 @@ export async function fetchAllEventsForAdmin(): Promise<{ data: CosEvent[]; erro
   return { data: (data as EventRow[]).map(mapEvent), error: null }
 }
 
+// หน้าแก้ไขงาน — แอดมินเห็นฉบับร่างด้วย · ไม่พบ = event null ไม่ใช่ error
+export async function fetchEventForAdmin(id: string): Promise<{ event: CosEvent | null; error: string | null }> {
+  const supabase = createClient()
+  if (!supabase) return { event: null, error: 'Supabase ยังไม่ได้ถูกตั้งค่า' }
+  const { data, error } = await supabase.from('events').select(EVENT_COLUMNS).eq('id', id).maybeSingle()
+  if (error) return { event: null, error: error.message }
+  return { event: data ? mapEvent(data as EventRow) : null, error: null }
+}
+
 export async function saveEvent(id: string | null, v: EventInput): Promise<{ event: CosEvent | null; error: string | null }> {
   const supabase = createClient()
   if (!supabase) return { event: null, error: 'Supabase ยังไม่ได้ถูกตั้งค่า' }

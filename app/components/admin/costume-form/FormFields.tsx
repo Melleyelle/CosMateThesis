@@ -1,11 +1,27 @@
 // ช่องกรอกและ select ที่ใช้ร่วมกันทุกสเตป หน้าตาเดียวกับ AuthField แต่แยกไฟล์
 // เพราะฟอร์มนี้อยู่คนละโฟลเดอร์ (admin) และมีปุ่ม/label หลายแบบกว่าฟอร์ม auth
 
-type FieldProps = React.InputHTMLAttributes<HTMLInputElement> & {
+// error: ข้อความใต้ช่อง + กรอบแดง + aria-invalid · hint: คำอธิบายใต้ช่อง (ซ่อนเมื่อมี error) — ไม่ส่ง = หน้าตาเดิม
+type Feedback = { error?: string | null; hint?: React.ReactNode }
+
+const controlClass = (invalid: boolean) =>
+  `w-full rounded-xl border bg-white px-4 py-2.5 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:ring-2 ${
+    invalid
+      ? 'border-[#D92D20] focus:border-[#D92D20] focus:ring-[#D92D20]/15'
+      : 'border-gray-300 focus:border-[#E5457F] focus:ring-[#E5457F]/15'
+  }`
+
+function FieldFeedback({ id, error, hint }: Feedback & { id?: string }) {
+  if (error) return <p id={`${id}-feedback`} className="text-xs text-[#B42318]">{error}</p>
+  if (hint) return <p id={`${id}-feedback`} className="text-xs text-[#6B7280]">{hint}</p>
+  return null
+}
+
+type FieldProps = React.InputHTMLAttributes<HTMLInputElement> & Feedback & {
   label: string
 }
 
-export function FormField({ label, id, ...inputProps }: FieldProps) {
+export function FormField({ label, id, error, hint, ...inputProps }: FieldProps) {
   return (
     <div className="space-y-1.5">
       <label htmlFor={id} className="block text-sm font-medium text-gray-700">
@@ -13,18 +29,21 @@ export function FormField({ label, id, ...inputProps }: FieldProps) {
       </label>
       <input
         id={id}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error || hint ? `${id}-feedback` : undefined}
         {...inputProps}
-        className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-[#E5457F] focus:ring-2 focus:ring-[#E5457F]/15"
+        className={controlClass(!!error)}
       />
+      <FieldFeedback id={id} error={error} hint={hint} />
     </div>
   )
 }
 
-type TextAreaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+type TextAreaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement> & Feedback & {
   label: string
 }
 
-export function FormTextArea({ label, id, ...textAreaProps }: TextAreaProps) {
+export function FormTextArea({ label, id, error, hint, ...textAreaProps }: TextAreaProps) {
   return (
     <div className="space-y-1.5">
       <label htmlFor={id} className="block text-sm font-medium text-gray-700">
@@ -32,9 +51,12 @@ export function FormTextArea({ label, id, ...textAreaProps }: TextAreaProps) {
       </label>
       <textarea
         id={id}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error || hint ? `${id}-feedback` : undefined}
         {...textAreaProps}
-        className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-[#E5457F] focus:ring-2 focus:ring-[#E5457F]/15"
+        className={controlClass(!!error)}
       />
+      <FieldFeedback id={id} error={error} hint={hint} />
     </div>
   )
 }
