@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, type CSSProperties, type FocusEvent, type MouseEvent } from 'react'
 import Link from 'next/link'
 import type { DashboardData } from '@/utils/admin/fetchDashboard'
-import { BLOCKING, dayDiff, lockRange } from '@/utils/admin/fetchDashboard'
+import { BLOCKING, CONDITION_LABEL, dayDiff, lockRange } from '@/utils/admin/fetchDashboard'
 import { ADMIN_STATUS_LABEL } from '@/utils/admin/statusTone'
 import { addDays, formatThaiDateWithWeekday, parseISODate, todayISO } from '@/utils/dateUtils'
 import type { OrderStatus } from '@/utils/orderStatus'
@@ -35,7 +35,6 @@ const LEGEND: { type: SegType; label: string }[] = [
   { type: 'buffer', label: 'เผื่อส่งช้า / ซัก' },
 ]
 
-const CONDITION_LABEL: Record<string, string> = { cleaning: 'กำลังซัก', damaged: 'ซ่อม', retired: 'ปลดระวาง' }
 
 type Booking = {
   key: string

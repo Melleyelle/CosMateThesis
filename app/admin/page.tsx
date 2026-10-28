@@ -1,26 +1,23 @@
 'use client'
-/* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import {
-  ArrowSquareOutIcon,
+  ArrowUUpLeftIcon,
   CheckCircleIcon,
   PackageIcon,
-  PlusIcon,
   ReceiptIcon,
-  ArrowUUpLeftIcon,
 } from '@phosphor-icons/react'
 import AdminLayout from '../components/admin/AdminLayout'
-import { Metric, MetricStrip, Panel, StatusBadge, primaryButtonClass, secondaryButtonClass } from '../components/admin/ui'
+import { Metric, MetricStrip, Panel, StatusBadge } from '../components/admin/ui'
 import OccupancyBoard from '../components/admin/dashboard/OccupancyBoard'
 import WeeklyRevenueChart from '../components/admin/dashboard/WeeklyRevenueChart'
 import TopCostumes, { type TopCostume } from '../components/admin/dashboard/TopCostumes'
 import RentalDaysChart from '../components/admin/dashboard/RentalDaysChart'
+import { DamageByCause, IdleCostumes, UTIL_FULL, UtilizationBySize } from '../components/admin/dashboard/StockPanels'
 import { StarDisplay } from '../components/customer/StarRating'
 import {
   BLOCKING,
-  REVENUE,
   dayDiff,
   fetchDashboard,
   rentalDaysStats,
@@ -29,9 +26,20 @@ import {
   weeklyRevenue,
   type DashboardData,
 } from '@/utils/admin/fetchDashboard'
+import {
+  damageSummary,
+  depositsHeld,
+  expiredRate,
+  idleCostumes,
+  incomeBySource,
+  utilizationBySize,
+} from '@/utils/admin/dashboardInsights'
 import type { Tone } from '@/utils/admin/statusTone'
 import type { OrderSummary } from '@/utils/customer/fetchOrders'
 import { addDays, formatBaht, formatThaiDateWithWeekday, todayISO, toISODate } from '@/utils/dateUtils'
+
+// หน้าแรกหลังร้าน แบ่งตามรอบที่เจ้าของร้านเปิดดู: ทุกเช้า / ทุกสัปดาห์ / ทุกเดือน
+// ทุกแผงต้องตอบได้ว่า "ดูแล้วจะทำอะไรต่อ" — คำอธิบายใต้หัวแผงเขียนเป็นคู่ ข้อมูล → การตัดสินใจ
 
 type Task = { order: OrderSummary; tone: Tone; when: string; sort: number }
 
@@ -41,6 +49,8 @@ function relativeHours(timestamp: string) {
   if (h < 24) return `${h} ชม.ที่แล้ว`
   return `${Math.floor(h / 24)} วันที่แล้ว`
 }
+
+const orderHref = (o: OrderSummary) => `/admin/orders?q=${o.orderNumber}`
 
 export default function AdminDashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
@@ -55,7 +65,7 @@ export default function AdminDashboardPage() {
 
   const today = todayISO()
 
-  // ---------------- งานวันนี้ ----------------
+  // ---------------- ทุกเช้า: คิวงาน ----------------
   const queues = useMemo(() => {
     if (!data) return null
     const s = data.settings
@@ -109,36 +119,37 @@ export default function AdminDashboardPage() {
     return { review, ship, back }
   }, [data, today])
 
-  // ---------------- ตัวเลขสรุป ----------------
-  const metrics = useMemo(() => {
+  // ---------------- ทุกสัปดาห์: เงินและคิว ----------------
+  const weekly = useMemo(() => {
     if (!data) return null
     const monthStart = `${today.slice(0, 7)}-01`
-    const lastMonthStart = (() => {
-      const d = new Date(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 2, 1)
-      return toISODate(d)
-    })()
+    const lastMonthStart = toISODate(new Date(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 2, 1))
     const createdDay = (o: OrderSummary) => toISODate(new Date(o.createdAt))
-    const revenueOf = (list: OrderSummary[]) => list.reduce((s, o) => s + o.rentalTotal + o.laundryTotal, 0)
-
-    const paid = data.orders.filter((o) => REVENUE.includes(o.status))
-    const thisMonth = paid.filter((o) => createdDay(o) >= monthStart)
-    const lastMonth = paid.filter((o) => createdDay(o) >= lastMonthStart && createdDay(o) < monthStart)
-    const bookedThisMonth = data.orders.filter((o) => BLOCKING.includes(o.status) && createdDay(o) >= monthStart)
+    const tomorrow = addDays(today, 1)
 
     return {
-      revenue: revenueOf(thisMonth),
-      revenueLast: revenueOf(lastMonth),
-      orders: bookedThisMonth.length,
+      income: incomeBySource(data, monthStart, tomorrow),
+      incomeLast: incomeBySource(data, lastMonthStart, monthStart),
+      deposits: depositsHeld(data, today, 7),
+      orders: data.orders.filter((o) => BLOCKING.includes(o.status) && createdDay(o) >= monthStart).length,
       util: utilization(data, today, 30),
       rentable: data.items.filter((i) => i.productActive && i.condition === 'available').length,
+      expired: expiredRate(data.orders, today, 30),
     }
   }, [data, today])
 
   const weeks = useMemo(() => (data ? weeklyRevenue(data.orders, 8) : []), [data])
-  const daysStats = useMemo(
-    () => (data ? rentalDaysStats(data.orders, addDays(today, -90), data.settings.maxRentalDays) : null),
-    [data, today],
-  )
+
+  // ---------------- ทุกเดือน: สต็อกชุด ----------------
+  const monthly = useMemo(() => {
+    if (!data) return null
+    return {
+      sizes: utilizationBySize(data, today, 30),
+      idle: idleCostumes(data, today, 60),
+      damage: damageSummary(data, today, 90),
+      days: rentalDaysStats(data.orders, addDays(today, -90), data.settings.maxRentalDays),
+    }
+  }, [data, today])
 
   const top: TopCostume[] = useMemo(() => {
     if (!data) return []
@@ -174,19 +185,27 @@ export default function AdminDashboardPage() {
       .slice(0, 5)
   }, [data, today])
 
+  // รีวิว 1–2 ดาวที่ยังไม่ตอบขึ้นก่อน แล้วตามด้วยรีวิวล่าสุด
+  const needsReply = (r: DashboardData['reviews'][number]) => !r.isHidden && r.rating <= 2 && !r.adminReply
+  const reviews = useMemo(
+    () => (data ? [...data.reviews.filter(needsReply), ...data.reviews.filter((r) => !needsReply(r))] : []),
+    [data],
+  )
+  const unansweredLow = data ? data.reviews.filter(needsReply).length : 0
+
   const taskCount = queues ? queues.review.length + queues.ship.length + queues.back.filter((t) => t.tone !== 'progress').length : 0
   const dateLabel = new Date().toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })
+  const fullSizes = monthly ? monthly.sizes.filter((s) => s.rate >= UTIL_FULL).length : 0
+  const skeleton = (h = 'h-48') => <div className={`m-5 ${h} animate-pulse rounded-xl bg-[#F5F4F8]`} />
 
   return (
     <AdminLayout>
       <div className="px-5 py-7 sm:px-8">
-        <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-sm text-[#5B6472]">{dateLabel}</p>
-            <h1 className="mt-1 text-[28px] font-bold leading-tight text-[#263544]">
-              {!queues ? 'กำลังโหลด…' : taskCount === 0 ? 'วันนี้ไม่มีงานค้าง' : `วันนี้มีงานรอ ${taskCount} รายการ`}
-            </h1>
-          </div>
+        <header className="mb-6">
+          <p className="text-sm text-[#5B6472]">{dateLabel}</p>
+          <h1 className="mt-1 text-[28px] font-bold leading-tight text-[#263544]">
+            {!queues ? 'กำลังโหลด…' : taskCount === 0 ? 'วันนี้ไม่มีงานค้าง' : `วันนี้มีงานรอ ${taskCount} รายการ`}
+          </h1>
         </header>
 
         {error && (
@@ -195,13 +214,14 @@ export default function AdminDashboardPage() {
           </p>
         )}
 
-        {/* ---------------- งานวันนี้: จุดเดียวในหน้าที่ใช้กรอบหนา เพราะเป็นสิ่งที่ต้องลงมือ ---------------- */}
+        {/* ================= ทุกเช้า ================= */}
+        <SectionHeading eyebrow="ทุกเช้า" title="วันนี้ต้องทำอะไร มีอะไรไฟไหม้ไหม" first />
+
+        {/* คิวงานประจำ: จุดเดียวในหน้าที่ใช้กรอบหนา เพราะเป็นสิ่งที่ต้องลงมือ */}
         <section
           aria-label="งานวันนี้"
           className={`grid overflow-hidden rounded-2xl bg-white md:grid-cols-3 ${
-            taskCount > 0
-              ? 'border-2 border-[#263544] shadow-[4px_4px_0_0_#263544]'
-              : 'border border-[#E4E3EA]'
+            taskCount > 0 ? 'border-2 border-[#263544] shadow-[4px_4px_0_0_#263544]' : 'border border-[#E4E3EA]'
           }`}
         >
           <QueueColumn
@@ -227,19 +247,52 @@ export default function AdminDashboardPage() {
           />
         </section>
 
-        {/* ---------------- ตัวเลขสรุป ---------------- */}
-        <div className="mt-6">
+        {/* ================= ทุกสัปดาห์ ================= */}
+        <SectionHeading eyebrow="ทุกสัปดาห์" title="เงินกับคิวเป็นยังไง" />
+
+        <MetricStrip>
+          <Metric
+            label="รายได้ค่าเช่า + ค่าซัก เดือนนี้"
+            value={weekly ? formatBaht(weekly.income.rental) : '—'}
+            note={weekly ? `เดือนก่อน ${formatBaht(weekly.incomeLast.rental)}` : undefined}
+          />
+          <Metric
+            label="ค่าปรับ + หักมัดจำ เดือนนี้"
+            value={weekly ? formatBaht(weekly.income.lateFee + weekly.income.damage) : '—'}
+            note={
+              weekly
+                ? `คืนช้า ${formatBaht(weekly.income.lateFee)} · เสียหาย ${formatBaht(weekly.income.damage)} · ยิ่งสูงยิ่งต้องหาสาเหตุ`
+                : undefined
+            }
+          />
+          <Metric
+            label="มัดจำที่ร้านถืออยู่"
+            value={weekly ? formatBaht(weekly.deposits.held) : '—'}
+            note="เงินของลูกค้า ห้ามนำไปใช้"
+          />
+          <Metric
+            label="ต้องโอนคืนภายใน 7 วัน"
+            value={weekly ? formatBaht(weekly.deposits.dueSoon) : '—'}
+            note={weekly ? `รอโอนตอนนี้ ${formatBaht(weekly.deposits.pendingNow)} · ที่เหลือก่อนหักค่าเสียหาย` : undefined}
+          />
+        </MetricStrip>
+
+        <div className="mt-4">
           <MetricStrip>
-            <Metric
-              label="รายได้เดือนนี้"
-              value={metrics ? formatBaht(metrics.revenue) : '—'}
-              note={metrics ? `เดือนก่อน ${formatBaht(metrics.revenueLast)} · ไม่รวมมัดจำ` : undefined}
-            />
-            <Metric label="ออเดอร์เดือนนี้" value={metrics ? metrics.orders : '—'} note="รวมที่รอชำระ ไม่นับที่ยกเลิก" />
+            <Metric label="ออเดอร์เดือนนี้" value={weekly ? weekly.orders : '—'} note="รวมที่รอชำระ ไม่นับที่ยกเลิก" />
             <Metric
               label="อัตราการจองชุด 30 วันข้างหน้า"
-              value={metrics?.util != null ? `${Math.round(metrics.util * 100)}%` : '—'}
-              note={metrics ? `จากชุดพร้อมเช่า ${metrics.rentable} ตัว` : undefined}
+              value={weekly?.util != null ? `${Math.round(weekly.util * 100)}%` : '—'}
+              note={weekly ? `จากชุดพร้อมเช่า ${weekly.rentable} ตัว · ต่ำ = ถึงเวลาโปรโมต` : undefined}
+            />
+            <Metric
+              label="ออเดอร์หมดอายุเพราะไม่จ่าย"
+              value={weekly?.expired.rate != null ? `${Math.round(weekly.expired.rate * 100)}%` : '—'}
+              note={
+                weekly
+                  ? `${weekly.expired.expired} จาก ${weekly.expired.total} ออเดอร์ · 30 วัน · สูง = จ่ายยากหรือมีคนจองกั๊กชุด`
+                  : undefined
+              }
             />
             <Metric
               label="คะแนนรีวิวเฉลี่ย"
@@ -258,44 +311,75 @@ export default function AdminDashboardPage() {
           </MetricStrip>
         </div>
 
-        {/* ---------------- กระดานคิวชุด ---------------- */}
         <Panel
-          className="mt-6"
+          className="mt-4"
           bodyClassName=""
           title="คิวชุด 3 สัปดาห์"
-          description="ชุดจริงแต่ละตัวถูกล็อกวันไหนบ้าง แถบหนึ่งคือการจองหนึ่งครั้ง ชี้เพื่อดูรายละเอียด กดเพื่อเปิดออเดอร์"
+          description="ชุดจริงแต่ละตัวถูกล็อกวันไหน → ช่วงที่ว่างเยอะให้โปรโมต ช่วงที่เต็มไม่ต้องลดราคา · ชี้แถบเพื่อดูรายละเอียด กดเพื่อเปิดออเดอร์"
         >
-          {data ? <OccupancyBoard data={data} /> : <div className="m-5 h-48 animate-pulse rounded-xl bg-[#F5F4F8]" />}
+          {data ? <OccupancyBoard data={data} /> : skeleton()}
         </Panel>
 
-        {/* ---------------- รายได้ + ชุดยอดนิยม ---------------- */}
-        <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <Panel
+          className="mt-4"
+          bodyClassName=""
+          title="รายได้รายสัปดาห์"
+          description="ค่าเช่า + ค่าซัก จากออเดอร์ที่ชำระแล้ว ตามวันที่สั่ง (ไม่รวมมัดจำ) → ดูแนวโน้ม เทียบกับช่วงที่มีงานอีเวนต์"
+        >
+          {data ? <WeeklyRevenueChart weeks={weeks} /> : skeleton()}
+        </Panel>
+
+        {/* ================= ทุกเดือน ================= */}
+        <SectionHeading eyebrow="ทุกเดือน" title="ชุดตัวไหนควรซื้อเพิ่ม ซ่อม หรือเลิกเช่า" />
+
+        <div className="grid gap-4 lg:grid-cols-3">
           <Panel
             className="lg:col-span-2"
             bodyClassName=""
-            title="รายได้รายสัปดาห์"
-            description="ค่าเช่า + ค่าซัก จากออเดอร์ที่ชำระแล้ว ตามวันที่สั่ง (ไม่รวมมัดจำ)"
+            title="อัตราการใช้งานรายชุดและไซส์"
+            description={`30 วันล่าสุด วันที่ถูกล็อก ÷ วันทั้งหมด → เกิน ${Math.round(UTIL_FULL * 100)}% ซื้อเพิ่มเฉพาะไซส์นั้น${
+              monthly ? ` (ตอนนี้ ${fullSizes} ไซส์)` : ''
+            }`}
           >
-            {data ? <WeeklyRevenueChart weeks={weeks} /> : <div className="m-5 h-48 animate-pulse rounded-xl bg-[#F5F4F8]" />}
+            {monthly ? <UtilizationBySize rows={monthly.sizes} /> : skeleton()}
           </Panel>
-          <div className="flex flex-col gap-6">
-            <Panel title="ชุดที่ถูกเช่ามากที่สุด" description="90 วันล่าสุด" bodyClassName="">
-              {data ? <TopCostumes items={top} /> : <div className="m-5 h-48 animate-pulse rounded-xl bg-[#F5F4F8]" />}
-            </Panel>
-            <Panel
-              title="ลูกค้าเช่ากี่วัน"
-              description="รายการในออเดอร์ที่ชำระแล้ว สั่งใน 90 วันล่าสุด"
-              bodyClassName=""
-            >
-              {daysStats ? <RentalDaysChart stats={daysStats} /> : <div className="m-5 h-48 animate-pulse rounded-xl bg-[#F5F4F8]" />}
-            </Panel>
-          </div>
+          <Panel
+            title="ชุดที่ไม่ถูกเช่า 60 วัน"
+            description="ชุดนอนตู้ = ทุนจม → ลดราคา จัดเซ็ตกับชุดยอดนิยม ถ่ายรูปใหม่ หรือขายออก"
+            bodyClassName=""
+          >
+            {monthly ? <IdleCostumes rows={monthly.idle} today={today} /> : skeleton()}
+          </Panel>
         </div>
 
-        {/* ---------------- รีวิวล่าสุด ---------------- */}
+        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+          <Panel
+            title="ความเสียหายแยกตามสาเหตุ"
+            description="90 วันล่าสุด → ชิ้นส่วนหายบ่อยใส่ถุงแยก ติดป้าย · เสียบ่อยขึ้นมัดจำ · เสียซ้ำหลายครั้งปลดระวาง"
+            bodyClassName=""
+          >
+            {monthly ? <DamageByCause summary={monthly.damage} /> : skeleton()}
+          </Panel>
+          <Panel title="ชุดที่ถูกเช่ามากที่สุด" description="90 วันล่าสุด → ใช้คู่กับอัตราการใช้งานก่อนตัดสินใจซื้อเพิ่ม" bodyClassName="">
+            {data ? <TopCostumes items={top} /> : skeleton()}
+          </Panel>
+          <Panel
+            title="ลูกค้าเช่ากี่วัน"
+            description="รายการที่ชำระแล้ว สั่งใน 90 วันล่าสุด → ใช้กำหนดแพ็กเกจระยะเช่า"
+            bodyClassName=""
+          >
+            {monthly ? <RentalDaysChart stats={monthly.days} /> : skeleton()}
+          </Panel>
+        </div>
+
         <Panel
-          className="mt-6"
-          title="รีวิวล่าสุด"
+          className="mt-4"
+          title="รีวิว"
+          description={
+            unansweredLow > 0
+              ? `รีวิว 1–2 ดาวที่ยังไม่ตอบ ${unansweredLow} รายการ ขึ้นก่อน → ตอบทุกอัน และตรวจสภาพจริงของชุดนั้น`
+              : 'รีวิวล่าสุด · รีวิว 1–2 ดาวที่ยังไม่ตอบจะขึ้นก่อนเสมอ'
+          }
           bodyClassName=""
           action={
             <Link href="/admin/reviews" className="text-xs font-medium text-[#C92D67] hover:underline">
@@ -304,14 +388,14 @@ export default function AdminDashboardPage() {
           }
         >
           {!data ? (
-            <div className="m-5 h-24 animate-pulse rounded-xl bg-[#F5F4F8]" />
-          ) : data.reviews.length === 0 ? (
+            skeleton('h-24')
+          ) : reviews.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-[#6B7280]">
               ยังไม่มีรีวิว ลูกค้ารีวิวได้หลังออเดอร์ &quot;เสร็จสิ้น&quot;
             </p>
           ) : (
             <ul className="divide-y divide-[#EEEDF2]">
-              {data.reviews.slice(0, 4).map((r) => (
+              {reviews.slice(0, Math.max(4, unansweredLow)).map((r) => (
                 <li key={r.id} className="flex flex-wrap items-start gap-x-4 gap-y-1 px-5 py-3.5">
                   <div className="w-full min-w-0 sm:w-56">
                     <p className="truncate text-sm font-medium text-[#263544]">{r.productName}</p>
@@ -326,7 +410,7 @@ export default function AdminDashboardPage() {
                   <div className="flex items-center gap-2">
                     {r.isHidden ? (
                       <StatusBadge tone="closed">ซ่อนอยู่</StatusBadge>
-                    ) : r.rating <= 2 ? (
+                    ) : needsReply(r) ? (
                       <StatusBadge tone="problem">ควรตอบ</StatusBadge>
                     ) : r.adminReply ? (
                       <StatusBadge tone="done">ตอบแล้ว</StatusBadge>
@@ -341,6 +425,15 @@ export default function AdminDashboardPage() {
         </Panel>
       </div>
     </AdminLayout>
+  )
+}
+
+function SectionHeading({ eyebrow, title, first = false }: { eyebrow: string; title: string; first?: boolean }) {
+  return (
+    <div className={`mb-3 flex items-baseline gap-3 ${first ? '' : 'mt-10 border-t border-[#E4E3EA] pt-6'}`}>
+      <span className="rounded-full bg-[#263544] px-2.5 py-0.5 text-xs font-semibold text-white">{eyebrow}</span>
+      <h2 className="text-lg font-bold text-[#263544]">{title}</h2>
+    </div>
   )
 }
 
@@ -391,7 +484,7 @@ function QueueColumn({
             {tasks.slice(0, 4).map((t) => (
               <li key={t.order.id}>
                 <Link
-                  href={`/admin/orders?q=${t.order.orderNumber}`}
+                  href={orderHref(t.order)}
                   className="flex items-center gap-3 rounded-xl px-2 py-2.5 transition hover:bg-[#F7F6FA]"
                 >
                   <span className="min-w-0 flex-1">
