@@ -74,6 +74,14 @@ export const EMPTY_BANK: BankAccount = { accountName: '', bank: '', accountNumbe
 
 export const onlyDigits = (s: string) => s.replace(/[^0-9]/g, '')
 
+// เบอร์มือถือ 10 หลัก → 081-234-5678 · เบอร์บ้าน 9 หลัก → 02-123-4567 · อื่น ๆ แสดงตามเดิม
+export function formatPhone(s: string) {
+  const d = onlyDigits(s)
+  if (d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`
+  if (d.length === 9) return `${d.slice(0, 2)}-${d.slice(2, 5)}-${d.slice(5)}`
+  return d || '—'
+}
+
 export function maskAccount(n: string) {
   const d = onlyDigits(n)
   return d.length <= 4 ? d : `${'x'.repeat(d.length - 4)}${d.slice(-4)}`

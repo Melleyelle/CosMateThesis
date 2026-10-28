@@ -196,6 +196,9 @@ export default function SizesStockCard({
       const variant = { ...emptyVariant(size), ...(defaultFor(size) ?? {}) }
       if (suggestedPrice != null) variant.packagePrice = String(suggestedPrice)
       onVariantsChange([...variants, variant])
+      // ไซส์ที่เพิ่งเลือกเริ่มที่ 1 ตัวเสมอ
+      const itemCode = nextItemCode(skuPrefix, size, items.map((i) => i.itemCode))
+      onItemsChange([...items, { id: makeId(), variantId: variant.id, itemCode }])
     }
   }
 

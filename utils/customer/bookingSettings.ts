@@ -102,6 +102,8 @@ export function clampRentalDays(days: unknown, settings: BookingSettings): numbe
   return Math.min(settings.maxRentalDays, Math.max(settings.minRentalDays, n))
 }
 
+// เช่า N วัน = ใส่ N วัน แล้วส่งคืนภายในวันถัดไป ตรงกับ end_date ใน create_booking (Step 23)
+//   เช่า 1 วัน ใส่วันที่ 23 → ได้รับวันที่ 22 · ส่งคืนภายในวันที่ 24 · ส่งวันที่ 25 = เริ่มคิดค่าล่าช้า
 // buffer ก่อน/หลัง (ขนส่ง ตรวจ ซัก) กันคิวอยู่ในฐานข้อมูล แต่ไม่นับเป็นวันเช่าที่ลูกค้าเห็น
 // รับเองที่ร้าน: วันรับชุด = วันใส่
 export function getRentalTimeline(
@@ -110,10 +112,12 @@ export function getRentalTimeline(
   settings: BookingSettings,
   method: DeliveryMethod = 'ship',
 ) {
+  const returnBy = addDays(useDate, Math.max(1, rentalDays))
   return {
     receiveDate: addDays(useDate, -bufferBefore(settings, method)),
     useDate,
-    returnBy: addDays(useDate, Math.max(0, rentalDays - 1)),
+    returnBy,
+    lateFrom: addDays(returnBy, 1),
   }
 }
 

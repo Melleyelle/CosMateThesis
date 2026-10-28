@@ -38,6 +38,7 @@ import {
   addressProblem,
   bankProblem,
   contactProblem,
+  formatPhone,
   maskAccount,
   onlyDigits,
   saveDefaultAddress,
@@ -420,12 +421,12 @@ function CheckoutInner() {
                 )}
 
                 {pickup && !editingAddress ? (
-                  <p className="mt-3 text-base">
-                    <span className="text-[#263544]/70">ผู้ติดต่อ: </span>
-                    <span className="font-semibold text-[#263544]">
-                      {address.name} ({address.phone})
-                    </span>
-                  </p>
+                  <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-base">
+                    <dt className="text-[#263544]/70">ผู้ติดต่อ:</dt>
+                    <dd className="font-semibold text-[#263544]">{address.name}</dd>
+                    <dt className="text-[#263544]/70">เบอร์โทร:</dt>
+                    <dd className="font-semibold tabular-nums text-[#263544]">{formatPhone(address.phone)}</dd>
+                  </dl>
                 ) : pickup ? (
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <Field label="ชื่อผู้ติดต่อ">
@@ -438,12 +439,13 @@ function CheckoutInner() {
                     </Field>
                     <Field label="เบอร์โทร">
                       <input
+                        type="tel"
                         inputMode="numeric"
                         maxLength={10}
                         value={address.phone}
                         onChange={(e) => setAddress({ ...address, phone: onlyDigits(e.target.value) })}
                         autoComplete="tel"
-                        className={inputClass}
+                        className={`${inputClass} tabular-nums`}
                       />
                     </Field>
                     {sectionError.address && <ErrorText>{sectionError.address}</ErrorText>}
@@ -454,16 +456,18 @@ function CheckoutInner() {
                     </div>
                   </div>
                 ) : !editingAddress ? (
-                  <div className="mt-2 text-base">
-                    <p className="font-semibold text-[#263544]">
-                      {address.name} ({address.phone})
-                    </p>
-                    <p className="mt-1 text-[#263544]/70">
+                  <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-base">
+                    <dt className="text-[#263544]/70">ผู้รับ:</dt>
+                    <dd className="font-semibold text-[#263544]">{address.name}</dd>
+                    <dt className="text-[#263544]/70">เบอร์โทร:</dt>
+                    <dd className="font-semibold tabular-nums text-[#263544]">{formatPhone(address.phone)}</dd>
+                    <dt className="text-[#263544]/70">ที่อยู่:</dt>
+                    <dd className="text-[#263544]/80">
                       {[address.line, address.subdistrict, address.district, address.province, address.postalCode]
                         .filter(Boolean)
                         .join(' ')}
-                    </p>
-                  </div>
+                    </dd>
+                  </dl>
                 ) : (
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <Field label="ชื่อผู้รับ">
@@ -476,12 +480,13 @@ function CheckoutInner() {
                     </Field>
                     <Field label="เบอร์โทรผู้รับ">
                       <input
+                        type="tel"
                         inputMode="numeric"
                         maxLength={10}
                         value={address.phone}
                         onChange={(e) => setAddress({ ...address, phone: onlyDigits(e.target.value) })}
                         autoComplete="tel"
-                        className={inputClass}
+                        className={`${inputClass} tabular-nums`}
                       />
                     </Field>
                     <Field label="บ้านเลขที่ ซอย ถนน" wide>

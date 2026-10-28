@@ -6,7 +6,7 @@ import { CaretLeftIcon, CaretRightIcon, MapPinIcon } from '@phosphor-icons/react
 import { addDays, formatThaiDateWithWeekday, todayISO, toISODate } from '@/utils/dateUtils'
 import { eventsByDate, type CalendarEvent } from '@/utils/customer/events'
 
-type Timeline = { receiveDate: string; returnBy: string }
+type Timeline = { receiveDate: string; returnBy: string; lateFrom: string }
 
 interface BookingCalendarProps {
   /** วันที่ใช้เป็นวันใส่ไม่ได้ สำหรับจำนวนวันเช่าที่เลือกอยู่ (get_unavailable_start_dates) */
@@ -69,8 +69,8 @@ export default function BookingCalendar({
   const today = todayISO()
   const firstBookable = addDays(today, minStartOffset)
   const lastDate = addDays(today, Math.max(0, daysAhead))
-  // วันใส่สุดท้ายที่วันคืนยังอยู่ในช่วงเปิดจอง
-  const lastStart = addDays(lastDate, -(Math.max(1, rentalDays) - 1))
+  // วันใส่สุดท้ายที่วันคืน (วันใส่ + จำนวนวันเช่า) ยังอยู่ในช่วงเปิดจอง
+  const lastStart = addDays(lastDate, -Math.max(1, rentalDays))
 
   // วันที่ → ไซส์ที่ถูกจองวันนั้น · แสดงเฉพาะชุดที่มีมากกว่า 1 ไซส์ ชุดไซส์เดียวใช้คำว่า "จองแล้ว" ตามเดิม
   const multiSize = sizeBookings.length > 1
@@ -152,9 +152,12 @@ export default function BookingCalendar({
           const isUse = range?.useDate === date
           const isReceive = range?.receiveDate === date
           const isReturn = range?.returnBy === date
+          const isLate = range?.lateFrom === date
           const inRange = !!range && date > range.receiveDate && date < range.returnBy
-          // เช่า 1 วัน วันใส่กับวันคืนเป็นวันเดียวกัน จึงแสดงได้หลายป้ายในช่องเดียว
-          const labels = [isReceive && 'รับชุด', isUse && 'ใส่', isReturn && 'คืน'].filter(Boolean).join('·')
+          // รับเองที่ร้าน วันรับกับวันใส่เป็นวันเดียวกัน จึงแสดงได้หลายป้ายในช่องเดียว
+          const labels = [isReceive && 'รับชุด', isUse && 'ใส่', isReturn && 'คืน', isLate && 'ปรับ']
+            .filter(Boolean)
+            .join('·')
           const sizesHere = bookedSizes.get(date) ?? []
 
           const tone = isUse
@@ -163,7 +166,9 @@ export default function BookingCalendar({
               ? 'bg-brand-soft text-brand-strong font-semibold'
               : inRange
                 ? 'bg-brand-subtle text-ink'
-                : isBooked
+                : isLate
+                  ? 'bg-warning-subtle text-warning font-semibold'
+                  : isBooked
                   ? 'cursor-not-allowed bg-sunken text-muted'
                   : disabled
                     ? 'cursor-not-allowed text-muted/50 line-through'
@@ -230,6 +235,9 @@ export default function BookingCalendar({
               </>
             )}
             {' · '}ส่งคืนภายใน <b className="text-ink">{formatThaiDateWithWeekday(range.returnBy)}</b>
+            <span className="block">
+              ส่งคืนตั้งแต่ <b className="text-warning">{formatThaiDateWithWeekday(range.lateFrom)}</b> คิดค่าส่งคืนล่าช้า
+            </span>
           </>
         ) : (
           'เลือกวันที่จะใส่ชุด เพื่อดูว่าจะได้รับชุดวันไหนและต้องส่งคืนวันไหน'
@@ -240,6 +248,7 @@ export default function BookingCalendar({
       <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-body-sm text-secondary">
         <Legend swatch="bg-brand-soft" label={pickup ? 'วันส่งคืน' : 'วันรับชุด / ส่งคืน'} />
         <Legend swatch="bg-brand" label="วันใส่ชุด" />
+        <Legend swatch="bg-warning-subtle ring-1 ring-inset ring-warning/40" label="เริ่มคิดค่าล่าช้า" />
         {events.length > 0 && <Legend swatch="bg-info" label="มีงานอีเวนต์" dot />}
         <Legend swatch="bg-sunken ring-1 ring-inset ring-line-subtle" label="ไซส์ที่เลือกถูกจองแล้ว" />
         {multiSize && (

@@ -29,7 +29,6 @@ import { StarDisplay } from '@/app/components/customer/StarRating'
 import { fetchRatingSummaries, type RatingSummary } from '@/utils/customer/reviews'
 import { addToCart, encodeCheckoutItems, setCartDelivery } from '@/utils/customer/cart'
 import { loginHref } from '@/utils/customer/authUser'
-import { COLOR_HEX, colorKeysOf } from '@/utils/customer/filterOptions'
 import { formatRange } from '@/utils/sizeDefaults'
 import { fetchCostumeDetail, type CostumeDetail } from '@/utils/customer/fetchCostumeDetail'
 import {
@@ -209,7 +208,7 @@ export default function CostumeDetailPage() {
 
   // เปลี่ยนจำนวนวัน/วิธีรับแล้ววันใส่ที่เลือกไว้ใช้ไม่ได้ → ไม่นับว่าเลือกไว้ และบอกลูกค้าให้เลือกใหม่
   // (ไม่ลบ state ทิ้ง ถ้าเปลี่ยนกลับ วันเดิมจะกลับมาเป็นที่เลือก)
-  const lastStart = addDays(todayISO(), DAYS_AHEAD - (rentalDays - 1))
+  const lastStart = addDays(todayISO(), DAYS_AHEAD - rentalDays) // วันคืน = วันใส่ + จำนวนวันเช่า
   const selectedInvalid =
     !!selectedDate && !datesLoading && (unavailable.has(selectedDate) || selectedDate > lastStart)
   const activeDate = selectedInvalid ? null : selectedDate
@@ -473,7 +472,6 @@ export default function CostumeDetailPage() {
             <h1 className="text-3xl font-extrabold leading-tight text-[#263544]">{detail.name}</h1>
             <FavoriteButton productId={detail.id} size="lg" />
           </div>
-          {detail.characterName && <p className="mt-1 text-[#263544]/60">ตัวละคร: {detail.characterName}</p>}
           {rating && rating.reviewCount > 0 && (
             <a href="#reviews" className="mt-2 inline-flex items-center gap-2 text-base text-[#263544]">
               <StarDisplay value={rating.avgRating} size={16} />
@@ -481,35 +479,12 @@ export default function CostumeDetailPage() {
               <span className="text-[#263544]/60 underline">{rating.reviewCount} รีวิว</span>
             </a>
           )}
-          {colorKeysOf(detail.colorTags).length > 0 && (
-            <div className="mt-2 flex items-center gap-1.5">
-              {colorKeysOf(detail.colorTags).map((key) => (
-                <span
-                  key={key}
-                  className="h-5 w-5 rounded-full border border-[#263544]/40"
-                  style={{ backgroundColor: COLOR_HEX[key] }}
-                />
-              ))}
-            </div>
+          {/* หัวสินค้าบอกแค่ราคา — ราคาแต่ละไซส์อยู่บนปุ่มไซส์ ค่าวันเพิ่มอยู่ขั้น "เช่ากี่วัน" */}
+          {detail.variants.length > 0 && (
+            <p className="mt-3 text-2xl font-bold text-brand">
+              เริ่มต้น {formatBaht(variant ? variant.packagePrice : minPrice)}
+            </p>
           )}
-          {detail.variants.length > 0 &&
-            (variant ? (
-              <div className="mt-3">
-                <p className="text-2xl font-bold text-brand">เริ่มต้น {formatBaht(variant.packagePrice)}</p>
-                <p className="mt-0.5 text-base text-[#263544]/60">
-                  ราคาเช่า 1 วัน{setShoes && ' ครบเซ็ตรวมรองเท้า'} · วันถัดไป +{formatBaht(settings.extraDayRate)}/วัน
-                  {/* บอกชัดว่าราคานี้เป็นของไซส์ไหน — ลูกค้าจะไม่เข้าใจผิดว่าทุกไซส์ราคาเดียวกัน */}
-                  {pricesVary && (
-                    <>
-                      {' '}
-                      · ราคาไซส์ {variant.size} (ไซส์อื่น {formatBaht(minPrice)}–{formatBaht(maxPrice)})
-                    </>
-                  )}
-                </p>
-              </div>
-            ) : (
-              <p className="mt-3 text-2xl font-bold text-brand">เริ่มต้น {formatBaht(minPrice)}</p>
-            ))}
 
           {/* สิ่งที่ได้รับ — ให้รู้ก่อนเลือกไซส์/วันว่าชุดนี้ครบแค่ไหน (กดรูปเพื่อดูขนาดใหญ่) */}
           {detail.inclusions.length > 0 && (
@@ -729,17 +704,16 @@ export default function CostumeDetailPage() {
                       <tr>
                         <th className="rounded-l-lg px-2 py-2">ไซส์</th>
                         {isShoes ? (
-                          <th className={`px-2 py-2 ${pricesVary ? '' : 'rounded-r-lg'}`}>ความยาวเท้า</th>
+                          <th className="rounded-r-lg px-2 py-2">ความยาวเท้า</th>
                         ) : (
                           <>
                             <th className="px-2 py-2">รอบอก</th>
                             <th className="px-2 py-2">รอบเอว</th>
                             <th className="px-2 py-2">รอบสะโพก</th>
                             <th className="px-2 py-2">ความยาว</th>
-                            <th className={`px-2 py-2 ${pricesVary ? '' : 'rounded-r-lg'}`}>ส่วนสูง (ซม.)</th>
+                            <th className="rounded-r-lg px-2 py-2">ส่วนสูง (ซม.)</th>
                           </>
                         )}
-                        {pricesVary && <th className="rounded-r-lg px-2 py-2">ค่าเช่าวันแรก</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-line-subtle tabular-nums text-[#263544]/80">
@@ -762,9 +736,6 @@ export default function CostumeDetailPage() {
                                     : '—'}
                                 </td>
                               </>
-                            )}
-                            {pricesVary && (
-                              <td className="px-2 py-2 tabular-nums">{formatBaht(v.packagePrice)}</td>
                             )}
                           </tr>
                         ))}
@@ -806,24 +777,11 @@ export default function CostumeDetailPage() {
                   </button>
                 </div>
                 <p className="text-base text-[#263544]/70">
-                  {noPiecesYet ? (
-                    'เลือกชิ้นที่จะเช่าด้านล่าง เพื่อดูค่าเช่า'
-                  ) : rentalDays === 1 ? (
-                    <>
-                      ค่าเช่า 1 วัน <b className="text-ink">{formatBaht(price.rentalPrice)}</b> · วันถัดไป +
-                      {formatBaht(price.dayRate)}/วัน
-                    </>
-                  ) : (
-                    <>
-                      วันแรก {formatBaht(price.baseRental)} + เพิ่ม {rentalDays - 1} วัน × {formatBaht(price.dayRate)} ={' '}
-                      <b className="text-ink">{formatBaht(price.rentalPrice)}</b>
-                    </>
-                  )}
+                  {noPiecesYet
+                    ? 'เลือกชิ้นที่จะเช่าด้านล่าง เพื่อดูค่าเช่า'
+                    : `เช่าเพิ่ม +${formatBaht(price.dayRate)} ต่อวัน · สูงสุด ${settings.maxRentalDays} วัน`}
                 </p>
               </div>
-              <p className="mt-1.5 text-sm text-[#263544]/60">
-                นับจากวันใส่ถึงวันส่งคืน เช่าได้ {settings.minRentalDays}–{settings.maxRentalDays} วัน
-              </p>
             </section>
           )}
 

@@ -13,14 +13,12 @@ import { Metric, MetricStrip, Panel, StatusBadge } from '../components/admin/ui'
 import OccupancyBoard from '../components/admin/dashboard/OccupancyBoard'
 import WeeklyRevenueChart from '../components/admin/dashboard/WeeklyRevenueChart'
 import TopCostumes, { type TopCostume } from '../components/admin/dashboard/TopCostumes'
-import RentalDaysChart from '../components/admin/dashboard/RentalDaysChart'
 import { DamageByCause, IdleCostumes, UTIL_FULL, UtilizationBySize } from '../components/admin/dashboard/StockPanels'
 import { StarDisplay } from '../components/customer/StarRating'
 import {
   BLOCKING,
   dayDiff,
   fetchDashboard,
-  rentalDaysStats,
   shipByDate,
   utilization,
   weeklyRevenue,
@@ -147,7 +145,6 @@ export default function AdminDashboardPage() {
       sizes: utilizationBySize(data, today, 30),
       idle: idleCostumes(data, today, 60),
       damage: damageSummary(data, today, 90),
-      days: rentalDaysStats(data.orders, addDays(today, -90), data.settings.maxRentalDays),
     }
   }, [data, today])
 
@@ -352,7 +349,7 @@ export default function AdminDashboardPage() {
           </Panel>
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <Panel
             title="ความเสียหายแยกตามสาเหตุ"
             description="90 วันล่าสุด → ชิ้นส่วนหายบ่อยใส่ถุงแยก ติดป้าย · เสียบ่อยขึ้นมัดจำ · เสียซ้ำหลายครั้งปลดระวาง"
@@ -362,13 +359,6 @@ export default function AdminDashboardPage() {
           </Panel>
           <Panel title="ชุดที่ถูกเช่ามากที่สุด" description="90 วันล่าสุด → ใช้คู่กับอัตราการใช้งานก่อนตัดสินใจซื้อเพิ่ม" bodyClassName="">
             {data ? <TopCostumes items={top} /> : skeleton()}
-          </Panel>
-          <Panel
-            title="ลูกค้าเช่ากี่วัน"
-            description="รายการที่ชำระแล้ว สั่งใน 90 วันล่าสุด → ใช้กำหนดแพ็กเกจระยะเช่า"
-            bodyClassName=""
-          >
-            {monthly ? <RentalDaysChart stats={monthly.days} /> : skeleton()}
           </Panel>
         </div>
 
