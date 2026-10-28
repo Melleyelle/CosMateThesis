@@ -166,6 +166,7 @@ export async function fetchCostumeDetail(productId: string): Promise<{
   const supabase = createClient()
   if (!supabase) return { data: null, error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
 
+  // product_inclusions!product_id — ตารางนี้มี FK ไป products 2 เส้น (product_id + shoe_product_id ของ Step 19) ต้องระบุเส้น
   const { data, error } = await supabase
     .from('products')
     .select(
@@ -173,7 +174,7 @@ export async function fetchCostumeDetail(productId: string): Promise<{
       id, name, character_name, series_name, franchise_type, costume_category,
       gender_tag, color_tags, crossplay_friendly, is_group_set, cover_image_url,
       product_images ( image_url, display_order ),
-      product_inclusions ( id, name, image_url, display_order ),
+      product_inclusions!product_id ( id, name, image_url, display_order ),
       product_variants (
         id, size, package_price, deposit_amount, deposit_return_hours, laundry_fee,
         size_charts ( chest_in, waist_in, hip_in, length_in, recommended_height_min, recommended_height_max ),

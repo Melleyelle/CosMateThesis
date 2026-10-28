@@ -1,7 +1,7 @@
 // ตัวตรวจสลิป 3 โหมด — เปลี่ยนโหมดที่ app_settings.slip_verify_mode ไม่ต้องแก้โค้ด
 //   manual  : ไม่ตรวจ ส่งเข้าคิว manual_review ทุกใบ
 //   mock    : จำลองผลจากชื่อไฟล์ ใช้ทดสอบทุกเส้นทาง
-//   slip2go : เรียก API จริง (เติม normalizeSlip2Go() วันที่ 24 ต.ค.)
+//   slip2go : เรียก API จริง (ส่งรูปแบบ multipart)
 //
 // โครง: provider แต่ละตัวแค่ "อ่านสลิป" ให้เป็น NormalizedSlip
 //       ส่วนการตัดสิน (ยอด / บัญชีผู้รับ / เวลาโอน) อยู่ที่ judge() ที่เดียว
@@ -31,6 +31,7 @@ export interface ShopReceiver {
   bank?: string;
   account_number?: string;
   account_name?: string;
+  account_type?: string; // รหัสประเภทบัญชีของ Slip2Go เช่น 01004, 02001 — ไม่ใส่ก็ได้
 }
 
 export interface VerifyInput {
@@ -48,6 +49,8 @@ interface NormalizedSlip {
   receiverAccount: string | null; // มักปิดบางหลัก เช่น xxx-x-x1234-x
   transferredAt: string | null; // ISO
   raw: unknown;
+  /** provider ตัดสินแล้วว่าไม่ผ่านเงื่อนไข — judge() ใช้ผลนี้ก่อนตรวจเอง */
+  rejected?: { outcome: 'amount_mismatch' | 'receiver_mismatch'; note: string };
 }
 
 type ProviderResult =
@@ -77,6 +80,8 @@ export async function verifySlip(mode: VerifyMode, input: VerifyInput): Promise<
 // ---------------------------------------------------------------------
 function judge(slip: NormalizedSlip, input: VerifyInput): SlipCheck {
   const base = { transRef: slip.transRef, amount: slip.amount, raw: slip.raw };
+
+  if (slip.rejected) return { ...base, ...slip.rejected };
 
   // ยอดต้องตรงทุกสตางค์ (เกินหรือขาดให้แอดมินดู ไม่ปฏิเสธทันที)
   if (Math.round(slip.amount * 100) !== Math.round(input.expectedAmount * 100)) {
@@ -136,20 +141,30 @@ function mockProvider(input: VerifyInput): ProviderResult {
 }
 
 // ---------------------------------------------------------------------
-// slip2go — โครงพร้อมแล้ว เหลือเติมตามเอกสาร API วันที่ 24 ต.ค.
-// ตอนนี้ยังไม่เติม ระบบจะคืน api_error → ออเดอร์เข้า manual_review (ปลอดภัย)
-// env: SLIP2GO_API_URL, SLIP2GO_API_KEY (ฝั่งเซิร์ฟเวอร์เท่านั้น ห้ามขึ้นต้น NEXT_PUBLIC_)
+// slip2go — ส่งรูปสลิปแบบ multipart ไปที่ /api/verify-slip/qr-image/info
+// เอกสาร: https://slip2go.com/guide/rest-api/image · รหัสผล: https://slip2go.com/guide/response
+// env: SLIP2GO_API_URL  = base URL จากหน้า dashboard (ใส่ path เต็มมาก็ได้)
+//      SLIP2GO_API_KEY  = Secret Key ส่งดิบ ๆ ใน Authorization ตามเอกสาร
+//                         ถ้าทดสอบแล้วต้องมี Bearer ให้ใส่ "Bearer xxx" ใน env ได้เลย
+// (ฝั่งเซิร์ฟเวอร์เท่านั้น ห้ามขึ้นต้น NEXT_PUBLIC_)
+//
+// ไม่เปิด checkDuplicate: ลูกค้าอาจส่งสลิปเดิมซ้ำหลังโดน amount_mismatch / API ล่ม
+// ถ้าให้ Slip2Go กันซ้ำ ใบนั้นจะติด duplicate ตลอดไป — ให้ unique trans_ref ใน
+// confirm_payment() เป็นคนกันแทน
 // ---------------------------------------------------------------------
+const SLIP2GO_PATH = '/api/verify-slip/qr-image/info';
+
 async function slip2goProvider(input: VerifyInput): Promise<ProviderResult> {
-  const url = process.env.SLIP2GO_API_URL;
+  const base = process.env.SLIP2GO_API_URL;
   const key = process.env.SLIP2GO_API_KEY;
-  if (!url || !key) {
+  if (!base || !key) {
     return { ok: false, outcome: 'api_error', raw: { error: 'missing env' }, note: 'ยังไม่ได้ตั้งค่า Slip2Go' };
   }
+  const url = base.includes(SLIP2GO_PATH) ? base : base.replace(/\/+$/, '') + SLIP2GO_PATH;
 
-  // TODO(24 ต.ค.): ตรวจกับเอกสารว่าต้องส่งไฟล์แบบ multipart หรือ base64 / ชื่อ field / header auth
   const form = new FormData();
-  form.append('file', input.file, 'slip.jpg');
+  form.append('file', input.file, fileName(input.slipPath));
+  form.append('payload', JSON.stringify(slip2goConditions(input)));
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15_000);
@@ -157,7 +172,7 @@ async function slip2goProvider(input: VerifyInput): Promise<ProviderResult> {
   try {
     res = await fetch(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${key}` },
+      headers: { Authorization: key },
       body: form,
       signal: ctrl.signal,
     });
@@ -165,18 +180,111 @@ async function slip2goProvider(input: VerifyInput): Promise<ProviderResult> {
     clearTimeout(timer);
   }
 
+  // Slip2Go ตอบผลตรวจเป็น code 6 หลักใน body (ไม่ใช่ HTTP status) อ่าน body เสมอ
   const body: unknown = await res.json().catch(() => null);
-  if (!res.ok || body == null) {
-    return { ok: false, outcome: 'api_error', raw: { status: res.status, body }, note: `Slip2Go ตอบ ${res.status}` };
+  if (body == null) {
+    return { ok: false, outcome: 'api_error', raw: { status: res.status }, note: `Slip2Go ตอบ ${res.status}` };
   }
   return normalizeSlip2Go(body);
 }
 
-/**
- * TODO(24 ต.ค.): แปลง response ของ Slip2Go เป็น NormalizedSlip
- * ต้องหา 4 ค่า: เลขอ้างอิงธุรกรรม, ยอดเงิน, เลขบัญชีผู้รับ, เวลาโอน
- * และรหัสที่บอกว่า "สลิปซ้ำ" / "ไม่ใช่สลิป" → คืน duplicate / unreadable
- */
+/** เงื่อนไขให้ Slip2Go ตรวจ — judge() ยังตรวจซ้ำอีกชั้นเสมอ */
+function slip2goConditions(input: VerifyInput) {
+  const cond: Record<string, unknown> = {
+    checkAmount: { type: 'eq', amount: String(Number(input.expectedAmount.toFixed(2))) },
+    // เผื่อนาฬิกาคลาด 5 นาทีเท่ากับ judge()
+    checkDate: {
+      type: 'gte',
+      date: new Date(new Date(input.orderCreatedAt).getTime() - 5 * 60_000).toISOString(),
+    },
+  };
+
+  // checkReceiver ต้องมีรหัสประเภทบัญชีของ Slip2Go (เช่น 01004 กสิกร, 02001 พร้อมเพย์เบอร์โทร)
+  // ถ้ายังไม่ได้ตั้ง account_type ใน app_settings ก็ปล่อยให้ judge() เทียบ 4 หลักท้ายอย่างเดียว
+  const r = input.receiver;
+  if (r?.account_type && r.account_number) {
+    cond.checkReceiver = [
+      {
+        accountType: r.account_type,
+        accountNumber: digits(r.account_number),
+        ...(r.account_name ? { accountNameTH: r.account_name } : {}),
+      },
+    ];
+  }
+  return cond;
+}
+
+function fileName(path: string): string {
+  const ext = path.toLowerCase().match(/\.(png|jpe?g)$/)?.[1] ?? 'jpg';
+  return `slip.${ext}`;
+}
+
+interface Slip2GoBody {
+  code?: string;
+  message?: string;
+  data?: {
+    transRef?: string;
+    amount?: number | string;
+    dateTime?: string;
+    receiver?: {
+      account?: {
+        bank?: { account?: string | null } | null;
+        proxy?: { account?: string | null } | null;
+      };
+    };
+  };
+}
+
+/** แปลง response ของ Slip2Go เป็น NormalizedSlip หรือ outcome ที่ตัดสินได้เลย */
 function normalizeSlip2Go(body: unknown): ProviderResult {
-  return { ok: false, outcome: 'api_error', raw: body, note: 'ยังไม่ได้แปลง response ของ Slip2Go' };
+  const b = body as Slip2GoBody;
+  const code = String(b.code ?? '');
+  const note = `Slip2Go ${code}: ${b.message ?? ''}`.trim();
+
+  let rejected: NormalizedSlip['rejected'];
+  switch (code) {
+    case '200000':
+    case '200200':
+      break;
+    // สลิปจริงแต่ไม่ผ่านเงื่อนไข — เก็บ transRef/ยอดไว้ให้แอดมินดู
+    case '200401':
+      rejected = { outcome: 'receiver_mismatch', note: 'บัญชีผู้รับไม่ตรงกับบัญชีร้าน (Slip2Go)' };
+      break;
+    case '200402':
+      rejected = { outcome: 'amount_mismatch', note: 'ยอดในสลิปไม่ตรงกับยอดออเดอร์ (Slip2Go)' };
+      break;
+    case '200403':
+      rejected = { outcome: 'amount_mismatch', note: 'เวลาโอนก่อนสร้างออเดอร์ (Slip2Go)' };
+      break;
+    case '200501':
+      return { ok: false, outcome: 'duplicate', raw: body, note };
+    case '200404':
+    case '400001':
+    case '400002':
+      return { ok: false, outcome: 'unreadable', raw: body, note };
+    case '200500':
+      // สลิปปลอม/ถูกแก้ — ไม่ปฏิเสธเงียบ ๆ ให้แอดมินเห็นใน manual_review
+      return { ok: false, outcome: 'api_error', raw: body, note: 'Slip2Go แจ้งว่าสลิปผิดปกติ/อาจปลอม — ตรวจด้วยตา' };
+    default:
+      // 200502 ธนาคารล่ม, 401xxx token/แพ็กเกจ, 429 rate limit, 5xxxxx ระบบล่ม
+      return { ok: false, outcome: 'api_error', raw: body, note };
+  }
+
+  const d = b.data;
+  const amount = Number(d?.amount);
+  if (!d?.transRef || !Number.isFinite(amount)) {
+    return { ok: false, outcome: 'api_error', raw: body, note: `${note} (ข้อมูลสลิปไม่ครบ)` };
+  }
+  const acc = d.receiver?.account;
+  return {
+    ok: true,
+    slip: {
+      transRef: d.transRef,
+      amount,
+      receiverAccount: acc?.bank?.account ?? acc?.proxy?.account ?? null,
+      transferredAt: d.dateTime ?? null,
+      raw: body,
+      rejected,
+    },
+  };
 }
