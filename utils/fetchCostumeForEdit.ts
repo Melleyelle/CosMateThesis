@@ -76,7 +76,7 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
 
   // ช่วงไซส์ + ประเภทไซส์ (Step 18) ดึงแยก — ยังไม่ได้รัน SQL ก็เปิดฟอร์มได้ (ถือว่าเป็นค่าเดียว/เสื้อผ้า)
   const variantIds = (data.product_variants ?? []).map((v) => v.id)
-  const [rangeRes, systemRes] = await Promise.all([
+  const [rangeRes, systemRes, pricingRes] = await Promise.all([
     variantIds.length > 0
       ? supabase
           .from('size_charts')
@@ -84,6 +84,8 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
           .in('variant_id', variantIds)
       : Promise.resolve({ data: [], error: null }),
     supabase.from('products').select('size_system').eq('id', productId).maybeSingle(),
+    // ต้นทุน/มัดจำกำหนดเอง (Step 21) — ยังไม่ได้รัน SQL ก็เปิดฟอร์มได้ (ว่าง = ใช้มัดจำรายไซส์แบบเดิม)
+    supabase.from('products').select('cost_price, deposit_override').eq('id', productId).maybeSingle(),
   ])
   type RangeRow = {
     variant_id: string
@@ -158,6 +160,10 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
       crossplayFriendly: data.crossplay_friendly ?? false,
       isGroupSet: data.is_group_set ?? false,
       sizeSystem,
+    },
+    pricing: {
+      costPrice: pricingRes.error ? '' : str(pricingRes.data?.cost_price),
+      depositOverride: pricingRes.error ? '' : str(pricingRes.data?.deposit_override),
     },
     coverImage,
     images,

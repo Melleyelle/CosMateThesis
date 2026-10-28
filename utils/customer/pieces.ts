@@ -1,5 +1,5 @@
 import { createClient } from '@/utils/client'
-import { depositForRental } from '@/utils/customer/pricing'
+import { pieceDeposit } from '@/utils/rentalTiers'
 import { calcRentalPrice } from '@/utils/customer/rentalPrice'
 import type { BookingSettings } from '@/utils/customer/bookingSettings'
 import type { VariantSummary } from '@/utils/customer/fetchVariantSummaries'
@@ -69,7 +69,8 @@ export type LinePrice = {
 }
 
 // ราคาต่อรายการ: ทั้งชุดใช้ราคาไซส์ / แยกชิ้นใช้ผลรวมราคาชิ้น + ค่าวันเพิ่ม
-// มัดจำคิดจากราคาวันแรก ไม่ขึ้นตามจำนวนวัน · ต้องตรงกับที่ create_booking() คำนวณในฐานข้อมูล
+// มัดจำไม่ขึ้นตามจำนวนวัน และขึ้นกับชุดจริงตัวที่จะได้ (Step 21) → ส่ง quotedDeposit จาก quoteDeposits() มา
+//   ไม่มี (ยังโหลดไม่เสร็จ/ยังไม่ได้รัน SQL) = ใช้มัดจำของไซส์ · แยกชิ้นคิดสัดส่วนเหมือน public.piece_deposit()
 // รองเท้าที่มากับชุด: ทั้งชุดไม่ส่ง shoeVariantId = ไม่รับรองเท้า หักราคาชิ้นรองเท้า (มัดจำเท่าเดิม)
 export function priceLine(
   variant: VariantSummary,
@@ -78,6 +79,7 @@ export function priceLine(
   rentalDays: number,
   settings: BookingSettings,
   shoeVariantId?: string,
+  quotedDeposit?: number | null,
 ): LinePrice {
   const shoePiece = Object.values(pieces).find((p) => p.productId === variant.productId && p.isShoe)
 
@@ -90,7 +92,7 @@ export function priceLine(
       dayRate: p.dayRate,
       extraFee: p.extraFee,
       rentalDays,
-      deposit: variant.depositAmount,
+      deposit: quotedDeposit ?? variant.depositAmount,
       laundry: variant.laundryFee,
       pieceNames: null,
       shoeDiscount,
@@ -113,7 +115,7 @@ export function priceLine(
     dayRate: p.dayRate,
     extraFee: p.extraFee,
     rentalDays,
-    deposit: depositForRental(base).amount,
+    deposit: quotedDeposit ?? pieceDeposit(variant.depositAmount, variant.packagePrice, base),
     laundry: valid.reduce((sum, p) => sum + p.laundryFee, 0),
     pieceNames: valid.map((p) => p.name),
     shoeDiscount: 0,

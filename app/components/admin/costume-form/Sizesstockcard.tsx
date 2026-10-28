@@ -30,6 +30,10 @@ type Props = {
   onVariantsChange: (variants: ProductVariant[]) => void
   items: ProductItem[]
   onItemsChange: (items: ProductItem[]) => void
+  // ต้นทุนอยู่ในเทียร์ / มีมัดจำกำหนดเอง (Step 21) → ไม่ต้องกรอกมัดจำรายไซส์
+  autoDeposit?: boolean
+  // ค่าเช่าแนะนำจากต้นทุน เติมให้ไซส์ที่เพิ่งเลือก
+  suggestedPrice?: number | null
 }
 
 const SYSTEM_OPTIONS = [
@@ -141,6 +145,8 @@ export default function SizesStockCard({
   onVariantsChange,
   items,
   onItemsChange,
+  autoDeposit = false,
+  suggestedPrice = null,
 }: Props) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [showCodes, setShowCodes] = useState<Record<string, boolean>>({})
@@ -187,7 +193,9 @@ export default function SizesStockCard({
       onItemsChange(items.filter((item) => item.variantId !== existing.id))
     } else {
       // เติมสัดส่วนจากไซส์มาตรฐานของร้านให้ทันที แอดมินแก้ต่อได้
-      onVariantsChange([...variants, { ...emptyVariant(size), ...(defaultFor(size) ?? {}) }])
+      const variant = { ...emptyVariant(size), ...(defaultFor(size) ?? {}) }
+      if (suggestedPrice != null) variant.packagePrice = String(suggestedPrice)
+      onVariantsChange([...variants, variant])
     }
   }
 
@@ -330,16 +338,25 @@ export default function SizesStockCard({
                     value={variant.packagePrice}
                     onChange={(e) => updateVariant(variant.id, { packagePrice: e.target.value })}
                   />
-                  <FormField
-                    id={`deposit-${variant.id}`}
-                    label="มัดจำ (บาท)"
-                    type="number"
-                    min="0"
-                    step="1"
-                    required
-                    value={variant.depositAmount}
-                    onChange={(e) => updateVariant(variant.id, { depositAmount: e.target.value })}
-                  />
+                  {autoDeposit ? (
+                    <div className="space-y-1.5">
+                      <p className="block text-sm font-medium text-gray-700">มัดจำ (บาท)</p>
+                      <p className="rounded-xl border border-dashed border-gray-300 bg-[#FAFAFB] px-4 py-2.5 text-sm text-gray-500">
+                        อัตโนมัติตามรอบ
+                      </p>
+                    </div>
+                  ) : (
+                    <FormField
+                      id={`deposit-${variant.id}`}
+                      label="มัดจำ (บาท)"
+                      type="number"
+                      min="0"
+                      step="1"
+                      required
+                      value={variant.depositAmount}
+                      onChange={(e) => updateVariant(variant.id, { depositAmount: e.target.value })}
+                    />
+                  )}
                   <FormField
                     id={`qty-${variant.id}`}
                     label="จำนวนชุดที่มี (ตัว)"

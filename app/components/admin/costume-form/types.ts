@@ -86,8 +86,16 @@ export type ProductItem = {
   itemCode: string
 }
 
+// ต้นทุนและมัดจำ (Step 21) — ตรงกับ products.cost_price / products.deposit_override
+// ต้นทุนอยู่ในช่วงเทียร์ → มัดจำคิดอัตโนมัติตามรอบของชุดแต่ละตัว ไม่ใช้มัดจำที่กรอกในไซส์
+export type ProductPricing = {
+  costPrice: string
+  depositOverride: string // ว่าง = ตามเทียร์
+}
+
 export type CostumeFormData = {
   basicInfo: ProductBasicInfo
+  pricing: ProductPricing
   coverImage: ProductImage | null // ตรงกับ products.cover_image_url (รูปหน้าปก มีได้รูปเดียว)
   images: ProductImage[] // ตรงกับ product_images (รูปประกอบ มีได้หลายรูป)
   inclusions: ProductInclusion[]
@@ -110,6 +118,7 @@ export const EMPTY_FORM_DATA: CostumeFormData = {
     isGroupSet: false,
     sizeSystem: 'clothing',
   },
+  pricing: { costPrice: '', depositOverride: '' },
   coverImage: null,
   images: [],
   inclusions: [],

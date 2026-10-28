@@ -49,7 +49,7 @@ import {
   receiveAndInspect,
   returnByDate,
   setOrderStatus,
-  notifyShipped,
+  notifyCustomer,
   shipOrder,
   taskOf,
   uploadEvidence,
@@ -381,7 +381,7 @@ function PackForm({ order, onDone }: { order: OrderSummary; onDone: PanelProps['
       return onDone(`ส่งมอบ ${order.orderNumber} แล้ว`)
     }
     // จัดส่งสำเร็จแล้ว อีเมลล้มก็ไม่ย้อนสถานะ แค่บอกแอดมินให้แจ้งลูกค้าเอง
-    const { error: mailErr } = await notifyShipped(order.id)
+    const { error: mailErr } = await notifyCustomer(order.id, 'shipped')
     setSaving(false)
     onDone(
       mailErr
@@ -667,9 +667,15 @@ function InspectForm({
       severity,
       returnMethod: walkIn ? 'walk_in' : 'ship',
     })
+    if (err) {
+      setSaving(false)
+      return setError(translateRpcError(err))
+    }
+    // บันทึกผลตรวจแล้ว อีเมลล้มก็ไม่ย้อนสถานะ แค่บอกแอดมินให้แจ้งลูกค้าเอง
+    const { error: mailErr } = await notifyCustomer(order.id, 'inspected')
     setSaving(false)
-    if (err) return setError(translateRpcError(err))
-    onDone(`ตรวจคืน ${order.orderNumber} แล้ว · โอนคืน ${formatBaht(refund)}`)
+    const done = `ตรวจคืน ${order.orderNumber} แล้ว · โอนคืน ${formatBaht(refund)}`
+    onDone(mailErr ? `${done} แต่ส่งอีเมลผลตรวจไม่สำเร็จ (${mailErr})` : `${done} · ส่งอีเมลผลตรวจแล้ว`)
   }
 
   const returnBy = returnByDate(order)
@@ -911,9 +917,21 @@ function RefundForm({ order, detail, onDone }: { order: OrderSummary; detail: Or
     setSaving(true)
     setError(null)
     const { error: err } = await markRefund(order.id, status)
+    if (err) {
+      setSaving(false)
+      return setError(translateRpcError(err))
+    }
+    if (status === 'failed') {
+      setSaving(false)
+      return onDone(`บันทึกว่าโอน ${order.orderNumber} ไม่สำเร็จ`)
+    }
+    const { error: mailErr } = await notifyCustomer(order.id, 'refunded')
     setSaving(false)
-    if (err) return setError(translateRpcError(err))
-    onDone(status === 'transferred' ? `บันทึกโอนคืน ${order.orderNumber} แล้ว` : `บันทึกว่าโอน ${order.orderNumber} ไม่สำเร็จ`)
+    onDone(
+      mailErr
+        ? `บันทึกโอนคืน ${order.orderNumber} แล้ว แต่ส่งอีเมลแจ้งลูกค้าไม่สำเร็จ (${mailErr})`
+        : `บันทึกโอนคืน ${order.orderNumber} แล้ว · ส่งอีเมลแจ้งลูกค้าแล้ว`,
+    )
   }
 
   return (

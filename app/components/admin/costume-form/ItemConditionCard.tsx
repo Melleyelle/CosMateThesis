@@ -24,7 +24,9 @@ const BY_VALUE = Object.fromEntries(CONDITIONS.map((c) => [c.value, c])) as Reco
 const UNSHIPPED = ['pending_payment', 'manual_review', 'paid']
 
 type Booking = { orderNumber: string; status: string; startDate: string; endDate: string }
-type Unit = { id: string; code: string; size: string; condition: Condition; bookings: Booking[] }
+// สถิติรายตัว (Step 21): เช่าสำเร็จกี่รอบ ค่าเช่าสะสม มัดจำรอบถัดไป — null = ยังไม่ได้รัน SQL
+type UnitStats = { completed: number; income: number; nextDeposit: number }
+type Unit = { id: string; code: string; size: string; condition: Condition; bookings: Booking[]; stats: UnitStats | null }
 
 type Row = {
   size: string
@@ -65,6 +67,15 @@ async function fetchUnits(productId: string, today: string): Promise<{ units: Un
 
   if (error) return { error: error.message }
 
+  const { data: statRows } = await supabase.rpc('admin_unit_rental_stats', { p_product_id: productId })
+  type StatRow = { item_id: string; completed_rentals: number; rental_income: number | string; next_deposit: number | string }
+  const statsById = new Map(
+    ((statRows ?? []) as StatRow[]).map((r) => [
+      r.item_id,
+      { completed: r.completed_rentals, income: Number(r.rental_income), nextDeposit: Number(r.next_deposit) },
+    ]),
+  )
+
   const units: Unit[] = ((data ?? []) as unknown as Row[])
     .flatMap((v) =>
       (v.product_items ?? []).map((pi) => ({
@@ -72,6 +83,7 @@ async function fetchUnits(productId: string, today: string): Promise<{ units: Un
         code: pi.item_code,
         size: v.size,
         condition: pi.condition_status,
+        stats: statsById.get(pi.id) ?? null,
         bookings: (pi.order_items ?? [])
           .filter((oi) => oi.is_blocking && oi.end_date >= today && oi.orders)
           .map((oi) => ({
@@ -87,7 +99,15 @@ async function fetchUnits(productId: string, today: string): Promise<{ units: Un
   return { units }
 }
 
-export default function ItemConditionCard({ productId, refreshKey = 0 }: { productId: string; refreshKey?: number }) {
+export default function ItemConditionCard({
+  productId,
+  refreshKey = 0,
+  costPrice = null,
+}: {
+  productId: string
+  refreshKey?: number
+  costPrice?: number | null // ต้นทุนชุด ใช้บอกว่าตัวไหนคืนทุนแล้ว
+}) {
   const [units, setUnits] = useState<Unit[]>([])
   const [loading, setLoading] = useState(true)
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -207,6 +227,18 @@ export default function ItemConditionCard({ productId, refreshKey = 0 }: { produ
                         (u.bookings.length > 1 ? ` และอีก ${u.bookings.length - 1} คิว` : '')
                       : 'ไม่มีคิวจอง'}
                   </p>
+                  {u.stats && (
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs tabular-nums text-gray-500">
+                      เช่าสำเร็จ {u.stats.completed} รอบ · มัดจำรอบถัดไป ฿{u.stats.nextDeposit.toLocaleString('th-TH')}
+                      {costPrice != null && costPrice > 0 && (
+                        <>
+                          {' '}
+                          · ค่าเช่าสะสม ฿{u.stats.income.toLocaleString('th-TH')} / ทุน ฿{costPrice.toLocaleString('th-TH')}
+                          {u.stats.income >= costPrice && <StatusBadge tone="done">คืนทุนแล้ว</StatusBadge>}
+                        </>
+                      )}
+                    </p>
+                  )}
                 </div>
 
                 <label className="flex items-center gap-2">

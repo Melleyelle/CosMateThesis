@@ -19,6 +19,7 @@ import {
   type CartItem,
 } from '@/utils/customer/cart'
 import { fetchPieces, priceLine, type PieceInfo } from '@/utils/customer/pieces'
+import { quoteDeposits } from '@/utils/customer/deposits'
 import {
   fetchUnavailableDates,
   fetchVariantSummaries,
@@ -61,6 +62,8 @@ export default function CartPage() {
   const [selected, setSelected] = useState<string[]>([])
   const [selectionReady, setSelectionReady] = useState(false)
   const [recommended, setRecommended] = useState<CatalogCostume[]>([])
+  // มัดจำตามชุดจริงตัวที่จะได้ (Step 21) ของรายการที่เลือก · ไม่มี = ใช้มัดจำของไซส์
+  const [deposits, setDeposits] = useState<Record<string, number | null>>({})
 
   // ร้านปิดรับเอง (ไม่มีข้อมูลร้าน) → ถือเป็นจัดส่ง แม้ตะกร้าเคยตั้งไว้เป็นรับเอง
   const delivery = settings.pickupLocation ? cartDelivery : 'ship'
@@ -104,7 +107,7 @@ export default function CartPage() {
 
   const minStart = addDays(todayISO(), minStartOffset(settings, delivery))
   const priceOf = (v: VariantSummary, item: CartItem) =>
-    priceLine(v, item.pieces, pieces, item.rentalDays, settings, item.shoeVariantId)
+    priceLine(v, item.pieces, pieces, item.rentalDays, settings, item.shoeVariantId, deposits[keyOf(item)])
 
   function statusOf(item: CartItem): ItemStatus {
     const v = variants[item.variantId]
@@ -134,6 +137,22 @@ export default function CartPage() {
   }, [loading, variants])
 
   const selectedItems = cart.filter((i) => selected.includes(keyOf(i)) && statusOf(i) === 'ok')
+
+  // ถามมัดจำของรายการที่เลือกพร้อมกัน — ไซส์เดียวกันวันทับกันจะได้คนละตัว เหมือนตอนจองจริง
+  const quoteRequest = JSON.stringify({
+    delivery,
+    items: selectedItems.map((i) => ({ key: keyOf(i), variantId: i.variantId, startDate: i.startDate, rentalDays: i.rentalDays, pieces: i.pieces })),
+  })
+  useEffect(() => {
+    const req = JSON.parse(quoteRequest) as { delivery: typeof delivery; items: ({ key: string } & Parameters<typeof quoteDeposits>[0][number])[] }
+    let cancelled = false
+    quoteDeposits(req.items, req.delivery).then((res) => {
+      if (!cancelled) setDeposits(res ? Object.fromEntries(req.items.map((i, idx) => [i.key, res[idx]])) : {})
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [quoteRequest])
   const totals = selectedItems.reduce(
     (acc, i) => {
       const v = variants[i.variantId]

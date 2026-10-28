@@ -17,6 +17,7 @@ import CustomerLayout from '@/app/components/customer/CustomerLayout'
 import { createClient } from '@/utils/client'
 import { cartKeyOf, decodeCheckoutItems, parseDelivery, removeFromCart, type CartKey } from '@/utils/customer/cart'
 import { fetchPieces, priceLine, type PieceInfo } from '@/utils/customer/pieces'
+import { quoteDeposits } from '@/utils/customer/deposits'
 import { fetchVariantSummaries, type VariantSummary } from '@/utils/customer/fetchVariantSummaries'
 import {
   DEFAULT_BOOKING_SETTINGS,
@@ -96,6 +97,8 @@ function CheckoutInner() {
   const [saveBank, setSaveBank] = useState(true)
   const [note, setNote] = useState('')
   const [carrierChoice, setCarrierChoice] = useState<ShipCarrier | null>(null)
+  // มัดจำตามชุดจริงตัวที่จะได้ (Step 21) ตามลำดับ requested · null = ใช้มัดจำของไซส์
+  const [deposits, setDeposits] = useState<(number | null)[] | null>(null)
   const [accepted, setAccepted] = useState(false)
 
   const [sectionError, setSectionError] = useState<{ address?: string; refund?: string }>({})
@@ -214,10 +217,21 @@ function CheckoutInner() {
   const shipping = shippingFee(settings, delivery, carrier.code)
   const recipientProblem = (a: Address) => (pickup ? contactProblem(a) : addressProblem(a))
 
+  // ทุกรายการพร้อมกัน — ไซส์เดียวกันวันทับกันจะได้คนละตัว เหมือนตอนจองจริง
+  useEffect(() => {
+    let cancelled = false
+    quoteDeposits(requested, delivery).then((res) => {
+      if (!cancelled) setDeposits(res)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [requested, delivery])
+
   const minStart = addDays(todayISO(), minStartOffset(settings, delivery))
-  const lines = requested.map((r) => {
+  const lines = requested.map((r, idx) => {
     const v = variants[r.variantId]
-    const price = v ? priceLine(v, r.pieces, pieces, r.rentalDays, settings, r.shoeVariantId) : null
+    const price = v ? priceLine(v, r.pieces, pieces, r.rentalDays, settings, r.shoeVariantId, deposits?.[idx]) : null
     const shoe = r.shoeVariantId ? variants[r.shoeVariantId] : undefined
     return {
       key: cartKeyOf(r),
