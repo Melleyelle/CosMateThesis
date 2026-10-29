@@ -25,7 +25,6 @@ const MAX_COMMENT = 1000
 export default function ReviewForm({ orderItemId, productName, size, coverImageUrl, onClose, onSubmitted }: Props) {
   const [rating, setRating] = useState(0)
   const [sizeFit, setSizeFit] = useState<SizeFit | null>(null)
-  const [height, setHeight] = useState('')
   const [comment, setComment] = useState('')
   const [anonymous, setAnonymous] = useState(false)
   const [uploads, setUploads] = useState<Upload[]>([])
@@ -74,12 +73,6 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
       setError('กรุณาให้คะแนนอย่างน้อย 1 ดาว')
       return
     }
-    const h = height ? Number(height) : null
-    if (h !== null && (h < 100 || h > 220)) {
-      setError('ส่วนสูงต้องอยู่ระหว่าง 100–220 ซม.')
-      return
-    }
-
     setSubmitting(true)
     setError(null)
     const { error: rpcError } = await submitReview({
@@ -88,7 +81,7 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
       sizeFit,
       comment,
       imageUrls: uploads.filter((u) => u.url).map((u) => u.url as string),
-      heightCm: h,
+      heightCm: null, // เลิกถามส่วนสูงในฟอร์มแล้ว
       anonymous,
     })
     setSubmitting(false)
@@ -160,18 +153,6 @@ export default function ReviewForm({ orderItemId, productName, size, coverImageU
               </button>
             ))}
           </div>
-          <label className="mt-3 flex items-center gap-2 text-base text-[#263544]">
-            ส่วนสูงของคุณ
-            <input
-              inputMode="numeric"
-              maxLength={3}
-              value={height}
-              onChange={(e) => setHeight(e.target.value.replace(/[^0-9]/g, ''))}
-              placeholder="เช่น 165"
-              className="w-24 rounded-control border border-line bg-white px-3 py-1.5 text-base outline-none placeholder:text-muted focus:border-brand-strong focus:ring-[3px] focus:ring-brand/25"
-            />
-            ซม. <span className="text-base text-[#263544]/50">(ไม่บังคับ ช่วยคนอื่นเลือกไซส์)</span>
-          </label>
         </section>
 
         <section className="mt-5">

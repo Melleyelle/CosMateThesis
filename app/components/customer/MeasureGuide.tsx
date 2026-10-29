@@ -3,10 +3,11 @@
 // app/components/customer/MeasureGuide.tsx
 // ปุ่ม "วิธีวัดตัว" + ป๊อปอัปอธิบายการวัดสัดส่วน ใช้คู่กับตัวเลือกไซส์/ตารางไซส์ในหน้ารายละเอียดชุด
 // ใช้ <dialog> ของเบราว์เซอร์: ล็อกโฟกัสในป๊อปอัป, ปิดด้วย Esc, คืนโฟกัสให้ปุ่มเดิมเมื่อปิด
-// หน่วยตรงกับ size_charts: รอบอก/เอว/สะโพก/ความยาว = นิ้ว · ส่วนสูง = ซม.
+// หน่วยตรงกับ size_charts: รอบอก/เอว/สะโพก/ความยาว = นิ้ว
 // kind="shoes" (ชุดที่ size_system = shoes) แสดงวิธีวัดความยาวเท้าแทน หน่วย ซม. ตรงกับ foot_min_cm/foot_max_cm
 
 import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 import { RulerIcon, XIcon } from '@phosphor-icons/react'
 
 type Step = { no: number; title: string; unit?: string; how: string }
@@ -36,12 +37,6 @@ const STEPS: Step[] = [
     unit: 'นิ้ว',
     how: 'วัดจากจุดบนสุดของบ่า (ชิดโคนคอ) ลงมาถึงตำแหน่งที่อยากให้ชายชุดอยู่ แล้วเทียบกับความยาวในตารางไซส์',
   },
-  {
-    no: 5,
-    title: 'ส่วนสูง',
-    unit: 'ซม.',
-    how: 'ยืนตัวตรงชิดผนัง ไม่ใส่รองเท้า วัดจากพื้นถึงกลางศีรษะ',
-  },
 ]
 
 const TIPS = [
@@ -54,24 +49,19 @@ const TIPS = [
 const FOOT_STEPS: Step[] = [
   {
     no: 1,
-    title: 'วางกระดาษชิดผนัง',
-    how: 'วางกระดาษ A4 บนพื้นเรียบ ให้ขอบกระดาษด้านหนึ่งชิดผนัง',
+    title: 'วางเท้าลงบนกระดาษ',
+    how: 'วางกระดาษบนพื้นเรียบ ใส่ถุงเท้าที่จะใส่จริง แล้ววางเท้าลงบนกระดาษ ลงน้ำหนักเต็มเท้า (ยืน ไม่ใช่นั่ง เพราะเท้าจะยาวขึ้นเมื่อรับน้ำหนัก)',
   },
   {
     no: 2,
-    title: 'ยืนให้ส้นเท้าชิดผนัง',
-    how: 'ใส่ถุงเท้าที่จะใส่จริง ยืนบนกระดาษ ส้นเท้าแตะผนัง ลงน้ำหนักเต็มเท้า (ยืน ไม่ใช่นั่ง เพราะเท้าจะยาวขึ้นเมื่อรับน้ำหนัก)',
+    title: 'วาดรูปเท้า',
+    how: 'ใช้ดินสอหรือปากกาลากเส้นรอบเท้า จับปากกาตั้งตรง ไม่เอียงเข้าหาเท้า ให้คนอื่นช่วยวาดจะแม่นกว่า',
   },
   {
     no: 3,
-    title: 'ขีดตรงปลายนิ้วที่ยาวที่สุด',
-    how: 'ให้คนอื่นช่วยขีดเส้นตรงปลายนิ้วเท้าที่ยื่นยาวที่สุด (บางคนเป็นนิ้วชี้ ไม่ใช่นิ้วโป้ง) จับปากกาตั้งตรง ไม่เอียงเข้าหาเท้า',
-  },
-  {
-    no: 4,
-    title: 'วัดความยาวเท้า',
+    title: 'วัดขนาด',
     unit: 'ซม.',
-    how: 'วัดจากขอบกระดาษที่ชิดผนังถึงเส้นที่ขีด เป็นเซนติเมตร แล้วเทียบกับช่วงความยาวเท้าในตารางไซส์รองเท้า',
+    how: 'ใช้ไม้บรรทัดวัดความยาวจากปลายนิ้วที่ยาวที่สุดถึงส้นเท้า (เส้นประในภาพ) แล้วเทียบกับช่วงความยาวเท้าในตารางไซส์รองเท้า',
   },
 ]
 
@@ -126,7 +116,7 @@ export default function MeasureGuideButton({
         onClick={(e) => {
           if (e.target === e.currentTarget) setOpen(false)
         }}
-        className="m-auto max-h-[90vh] w-[calc(100%-32px)] max-w-2xl overflow-hidden rounded-2xl border border-[#E5E5E5] bg-white p-0 text-[#2E2E2E] shadow-xl backdrop:bg-black/50"
+        className="m-auto max-h-[90vh] w-[calc(100%-32px)] max-w-3xl overflow-hidden rounded-2xl border border-[#E5E5E5] bg-white p-0 text-[#2E2E2E] shadow-xl backdrop:bg-black/50"
       >
         <div className="flex max-h-[90vh] flex-col">
           {/* หัวป๊อปอัป */}
@@ -146,24 +136,31 @@ export default function MeasureGuideButton({
 
           {/* เนื้อหา (เลื่อนได้เมื่อจอเตี้ย) */}
           <div className="overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
-            <div className="grid gap-5 sm:grid-cols-[160px_1fr]">
-              {shoes ? <FootFigure /> : <BodyFigure />}
-              <ol className="space-y-3">
-                {steps.map((s) => (
-                  <li key={s.no} className="flex gap-3">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E4487D] text-sm font-bold text-white">
-                      {s.no}
-                    </span>
-                    <div>
-                      <p className="font-semibold leading-7">
-                        {s.title}
-                        {s.unit && <span className="text-sm font-normal text-[#6E6E6E]"> ({s.unit})</span>}
-                      </p>
-                      <p className="text-sm leading-relaxed text-[#5C5C5C]">{s.how}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
+            <div className="grid items-start gap-5 sm:grid-cols-[260px_1fr]">
+              <MeasureFigure shoes={shoes} />
+              <div>
+                {shoes && (
+                  <p className="mb-4 rounded-xl bg-[#FDEEF3] px-4 py-2.5 text-sm text-[#2E2E2E]">
+                    <span className="font-semibold">อุปกรณ์:</span> กระดาษ · ดินสอหรือปากกา · ไม้บรรทัด
+                  </p>
+                )}
+                <ol className="space-y-3">
+                  {steps.map((s) => (
+                    <li key={s.no} className="flex gap-3">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E4487D] text-sm font-bold text-white">
+                        {s.no}
+                      </span>
+                      <div>
+                        <p className="font-semibold leading-7">
+                          {s.title}
+                          {s.unit && <span className="text-sm font-normal text-[#6E6E6E]"> ({s.unit})</span>}
+                        </p>
+                        <p className="text-sm leading-relaxed text-[#5C5C5C]">{s.how}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </div>
             </div>
 
             <div className="mt-5 rounded-xl bg-[#F7F7F7] p-4">
@@ -219,102 +216,24 @@ function CmToInch() {
   )
 }
 
-// ภาพวัดเท้า (มองจากด้านบน) — ผนังอยู่ล่าง ส้นเท้าชิดผนัง เส้นประที่ปลายนิ้ว ลูกศรคือความยาวเท้า เลขตรงกับขั้นตอน
-function FootFigure() {
+// ภาพตำแหน่งวัด (public/images) — ภาพตัว: เลข 1–4 ตรงกับขั้นตอน (อก/เอว/สะโพก/ความยาวชุด)
+// ภาพเท้า: เส้นประคือความยาวเท้าที่ใช้เลือกไซส์
+// ภาพต้นฉบับจัตุรัสมีขอบโปร่งใสด้านข้างเยอะ → ครอปเป็น 3:4 ให้ตัวภาพใหญ่ขึ้น (เลขกำกับยังอยู่ในกรอบ)
+function MeasureFigure({ shoes }: { shoes: boolean }) {
   return (
-    <svg
-      viewBox="0 0 160 300"
-      className="mx-auto h-64 w-auto sm:h-auto sm:w-full"
-      role="img"
-      aria-label="ภาพวัดความยาวเท้า: ยืนบนกระดาษ ส้นเท้าชิดผนัง แล้ววัดจากผนังถึงเส้นที่ปลายนิ้วเท้า"
-    >
-      {/* ผนัง */}
-      <rect x="8" y="270" width="144" height="14" fill="#D4D4D4" />
-      {/* กระดาษ A4 */}
-      <rect x="22" y="40" width="104" height="230" fill="#fff" stroke="#D4D4D4" strokeWidth="1.5" />
-
-      {/* เท้าขวา ส้นชิดผนัง */}
-      <g fill="#F0F0F0" stroke="#B8B8B8" strokeWidth="1.5">
-        <path d="M58 268 C44 266 40 248 42 226 C44 200 40 178 42 150 C44 118 50 96 66 86 C80 78 98 82 104 98 C110 116 104 140 102 164 C100 196 102 226 96 250 C92 264 76 270 58 268 Z" />
-        <ellipse cx="94" cy="80" rx="10" ry="12" />
-        <ellipse cx="76" cy="70" rx="7" ry="9" />
-        <ellipse cx="62" cy="74" rx="6" ry="8" />
-        <ellipse cx="51" cy="82" rx="5" ry="7" />
-        <ellipse cx="43" cy="93" rx="4.5" ry="6" />
-      </g>
-
-      {/* เส้นขีดที่ปลายนิ้วที่ยาวที่สุด */}
-      <path d="M30 58 H118" stroke="#E4487D" strokeWidth="2.5" strokeDasharray="5 4" />
-
-      {/* ความยาวเท้า: ผนังถึงเส้น */}
-      <g stroke="#2E2E2E" strokeWidth="2" fill="#2E2E2E">
-        <path d="M136 62 V266" />
-        <path d="M131 58 H141 M131 270 H141" />
-        <path d="M136 58 l-4 8 h8 z M136 270 l-4 -8 h8 z" />
-      </g>
-
-      {/* ป้ายเลข */}
-      {[
-        { n: 1, x: 32, y: 254 },
-        { n: 2, x: 72, y: 290 },
-        { n: 3, x: 22, y: 36 },
-        { n: 4, x: 136, y: 164 },
-      ].map((p) => (
-        <g key={p.n}>
-          <circle cx={p.x} cy={p.y} r="10" fill="#E4487D" />
-          <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize="12" fontWeight="700" fill="#fff">
-            {p.n}
-          </text>
-        </g>
-      ))}
-    </svg>
-  )
-}
-
-// ภาพประกอบตำแหน่งวัด — หุ่นเรียบ ๆ เลขตรงกับขั้นตอนด้านขวา
-function BodyFigure() {
-  return (
-    <svg
-      viewBox="0 0 160 300"
-      className="mx-auto h-64 w-auto sm:h-auto sm:w-full"
-      role="img"
-      aria-label="ภาพตำแหน่งวัดรอบอก รอบเอว รอบสะโพก และความยาวชุด"
-    >
-      {/* หุ่น */}
-      <g fill="#F0F0F0" stroke="#D4D4D4" strokeWidth="1.5">
-        <circle cx="80" cy="28" r="18" />
-        <path d="M70 46 h20 v8 h-20 z" />
-        <path d="M44 62 Q80 50 116 62 L122 120 Q118 150 112 160 Q122 190 120 215 L106 290 H90 L82 220 H78 L70 290 H54 L40 215 Q38 190 48 160 Q42 150 38 120 Z" />
-        <path d="M44 62 L28 140 L36 142 L50 84" />
-        <path d="M116 62 L132 140 L124 142 L110 84" />
-      </g>
-
-      {/* เส้นวัด: อก เอว สะโพก */}
-      <g stroke="#E4487D" strokeWidth="2.5" strokeDasharray="5 4" fill="none">
-        <path d="M40 92 Q80 100 120 92" />
-        <path d="M44 140 Q80 147 116 140" />
-        <path d="M41 182 Q80 190 119 182" />
-      </g>
-      {/* ความยาวชุด: บ่าถึงชายชุด */}
-      <g stroke="#2E2E2E" strokeWidth="2">
-        <path d="M100 58 V232" />
-        <path d="M95 58 H105 M95 232 H105" />
-      </g>
-
-      {/* ป้ายเลข */}
-      {[
-        { n: 1, x: 22, y: 92 },
-        { n: 2, x: 26, y: 140 },
-        { n: 3, x: 22, y: 182 },
-        { n: 4, x: 100, y: 250 },
-      ].map((p) => (
-        <g key={p.n}>
-          <circle cx={p.x} cy={p.y} r="10" fill="#E4487D" />
-          <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize="12" fontWeight="700" fill="#fff">
-            {p.n}
-          </text>
-        </g>
-      ))}
-    </svg>
+    <figure className="mx-auto w-full max-w-72 sm:max-w-none">
+      <Image
+        src={shoes ? '/images/Foot-measurement01.png' : '/images/Body-measurement01.png'}
+        alt={
+          shoes
+            ? 'ภาพฝ่าเท้า: เส้นประจากปลายนิ้วที่ยาวที่สุดถึงส้นเท้าคือความยาวเท้า'
+            : 'ภาพตำแหน่งวัด 1 รอบอก 2 รอบเอว 3 รอบสะโพก 4 ความยาวชุดจากบ่า'
+        }
+        width={2000}
+        height={2000}
+        sizes="(min-width: 640px) 260px, 288px"
+        className="aspect-[3/4] w-full object-cover"
+      />
+    </figure>
   )
 }
