@@ -2,7 +2,8 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react'
+import { CalendarStarIcon, CameraIcon, MagnifyingGlassIcon, MapPinIcon, SparkleIcon, XIcon } from '@phosphor-icons/react'
+import BannerSticker, { riseDelay } from '@/app/components/customer/BannerSticker'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
 import EmptyState from '@/app/components/EmptyState'
 import EventTile from '@/app/components/customer/events/EventTile'
@@ -110,7 +111,7 @@ function EventsExplorer() {
 
   return (
     <div className="theme-v2 text-ink">
-      {/* ---------- แบนเนอร์ ---------- */}
+      {/* ---------- แบนเนอร์: หน้าตาเดียวกับหน้าสำรวจชุด (พื้นชมพูลายจุด · สติกเกอร์ · ช่องค้นหาแคปซูล) ---------- */}
       <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6">
         <section
           className="relative overflow-hidden rounded-hero bg-brand-subtle px-4 py-9 text-center sm:py-12"
@@ -119,15 +120,22 @@ function EventsExplorer() {
             backgroundSize: '22px 22px',
           }}
         >
-          <p className="relative text-body font-semibold text-brand-strong">ปฏิทินสายคอส</p>
-          <h1 className="relative mt-1 text-h1 font-bold text-ink sm:text-display">
+          {/* สติกเกอร์ตกแต่ง (จอ ≥ 768px) */}
+          <div aria-hidden="true" className="pointer-events-none hidden md:block">
+            <BannerSticker icon={CalendarStarIcon} className="left-[7%] top-7 -rotate-12" tone="bg-deco-yellow" delay="0s" />
+            <BannerSticker icon={MapPinIcon} className="bottom-7 left-[14%] rotate-6" tone="bg-surface" delay="-1.1s" small />
+            <BannerSticker icon={CameraIcon} className="right-[8%] top-8 rotate-12" tone="bg-deco-lavender" delay="-2s" />
+            <BannerSticker icon={SparkleIcon} className="bottom-8 right-[15%] -rotate-6" tone="bg-brand-soft" delay="-0.6s" small />
+          </div>
+
+          <h1 className="rise relative text-h1 font-bold text-ink sm:text-display">
             อีเวนต์
             <span className="relative inline-block">
               <span aria-hidden="true" className="absolute inset-x-[-4px] bottom-[0.08em] h-[0.6em] -rotate-2 rounded-md bg-deco-yellow" />
               <span className="relative">คอสเพลย์</span>
             </span>
           </h1>
-          <p className="relative mt-2 text-body text-secondary">
+          <p className="rise relative mt-2 text-body text-secondary" style={riseDelay(80)}>
             ดูงานที่กำลังจะมาถึง กดสนใจให้เพื่อนสายคอสรู้ว่าใครไปบ้าง แล้วกลับมาอวดรูปหลังงาน
           </p>
           <form
@@ -136,25 +144,43 @@ function EventsExplorer() {
               e.preventDefault()
               setSearch(searchInput)
             }}
-            className="relative mx-auto mt-5 flex h-[52px] max-w-xl items-center gap-1 rounded-full border border-ink bg-surface p-[3px] pl-4 transition-shadow duration-200 ease-out hover:shadow-[3px_3px_0_0_var(--color-ink)] focus-within:shadow-[3px_3px_0_0_var(--color-ink)]"
+            className="rise relative mx-auto mt-5 flex h-[52px] max-w-xl items-center gap-1 rounded-full border border-ink bg-surface p-[3px] pl-4 transition-shadow duration-200 ease-out hover:shadow-[3px_3px_0_0_var(--color-ink)] focus-within:shadow-[3px_3px_0_0_var(--color-ink)]"
+            style={riseDelay(160)}
           >
-            <input
-              type="search"
-              value={searchInput}
-              onChange={(e) => {
-                setSearchInput(e.target.value)
-                if (e.target.value === '') setSearch('')
-              }}
-              placeholder="ค้นหาชื่องานหรือสถานที่"
-              aria-label="ค้นหาอีเวนต์"
-              className="h-full min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-muted"
-            />
+            <label className="flex h-full min-w-0 flex-1 cursor-text items-center gap-2.5">
+              <MagnifyingGlassIcon size={20} weight="bold" aria-hidden="true" className="flex-shrink-0 text-muted" />
+              <span className="sr-only">ค้นหาอีเวนต์</span>
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(e) => {
+                  setSearchInput(e.target.value)
+                  if (e.target.value === '') setSearch('')
+                }}
+                placeholder="ชื่องานหรือสถานที่"
+                className="h-full w-full min-w-0 bg-transparent text-body text-ink caret-brand outline-none placeholder:text-muted [&::-webkit-search-cancel-button]:appearance-none"
+              />
+            </label>
+            {searchInput && (
+              <button
+                type="button"
+                aria-label="ล้างคำค้นหา"
+                onClick={() => {
+                  setSearchInput('')
+                  setSearch('')
+                }}
+                className="focus-ring flex size-11 flex-shrink-0 items-center justify-center rounded-full text-secondary transition-colors hover:bg-sunken hover:text-ink"
+              >
+                <XIcon size={18} weight="bold" />
+              </button>
+            )}
             <button
               type="submit"
               aria-label="ค้นหา"
-              className="flex h-full w-14 flex-shrink-0 items-center justify-center rounded-full bg-brand text-white active:bg-brand-strong"
+              className="focus-ring flex h-11 min-w-11 flex-shrink-0 items-center justify-center gap-1.5 rounded-full border border-ink bg-brand px-3 text-body font-bold text-white transition-colors active:bg-brand-strong sm:px-5"
             >
-              <MagnifyingGlassIcon size={22} weight="bold" />
+              <MagnifyingGlassIcon size={18} weight="bold" className="sm:hidden" />
+              <span className="hidden sm:inline">ค้นหา</span>
             </button>
           </form>
         </section>

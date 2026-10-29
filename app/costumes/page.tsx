@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   ArrowsDownUpIcon,
@@ -14,9 +14,9 @@ import {
   SparkleIcon,
   WarningCircleIcon,
   XIcon,
-  type Icon,
 } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
+import BannerSticker, { riseDelay } from '@/app/components/customer/BannerSticker'
 import CostumeGridCard, { CARD_MEDIA } from '@/app/components/customer/CostumeGridCard'
 import Pagination from '@/app/components/customer/Pagination'
 import ExploreFilters, {
@@ -484,7 +484,7 @@ function ExploreInner() {
           )}
 
           {busy && !loadError && (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 xl:grid-cols-4 min-[2200px]:grid-cols-5" aria-busy="true" aria-label="กำลังโหลด">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3" aria-busy="true" aria-label="กำลังโหลด">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="overflow-hidden rounded-card border border-line">
                   <div className={`${CARD_MEDIA} animate-pulse border-b border-line bg-sunken`} />
@@ -563,7 +563,7 @@ function ExploreInner() {
 
           {!busy && !loadError && pageItems.length > 0 && (
             <>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 xl:grid-cols-4 min-[2200px]:grid-cols-5">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3">
                 {pageItems.map((c) => (
                   <CostumeGridCard
                     key={c.id}
@@ -617,37 +617,6 @@ function ExploreInner() {
         </div>
       )}
     </div>
-  )
-}
-
-// หน่วงจังหวะ .rise ทีละบรรทัดในแบนเนอร์
-const riseDelay = (ms: number) => ({ '--d': `${ms}ms` }) as CSSProperties
-
-// สติกเกอร์วงกลมบนแบนเนอร์: เส้น 1px ink · หมุนเอียงจาก className · .wobble โยกรอบมุมที่เอียงไว้
-function BannerSticker({
-  icon: StickerIcon,
-  className,
-  tone,
-  delay,
-  small = false,
-}: {
-  icon: Icon
-  className: string
-  tone: string
-  delay: string
-  small?: boolean
-}) {
-  return (
-    <span className={`absolute block ${className}`}>
-      <span
-        className={`wobble flex items-center justify-center rounded-full border border-line text-ink ${tone} ${
-          small ? 'h-11 w-11' : 'h-14 w-14'
-        }`}
-        style={{ animationDelay: delay }}
-      >
-        <StickerIcon size={small ? 20 : 26} weight="duotone" />
-      </span>
-    </span>
   )
 }
 
