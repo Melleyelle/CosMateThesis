@@ -40,12 +40,12 @@ export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
   bufferDaysAfter: 1,
   minLeadDays: 1,
   shippingFlatRate: 0,
-  shipCarriers: SHIP_CARRIERS.map((c) => ({ ...c, fee: 0 })),
+  shipCarriers: [{ ...SHIP_CARRIERS[0], fee: 0 }], // Step 26: จัดส่งเฉพาะ EMS
   lateFeePerDay: 0,
   maxPendingOrders: null,
   minRentalDays: 1,
-  maxRentalDays: 10,
-  extraDayRate: 100,
+  maxRentalDays: 5,
+  extraDayRate: 400,
   pieceExtraDayPercent: 50,
   pickupLeadDays: 0,
   pickupCutoffHour: 15,
@@ -165,9 +165,9 @@ export async function fetchBookingSettings(): Promise<BookingSettings> {
 }
 
 // ship_carrier_fees = {"ems": 60, ...} ตรงกับ create_booking:
-//   ไม่มีค่าตั้งนี้ (ยังไม่รัน Step 20) = ทุกเจ้าใช้ shipping_flat_rate · ไม่มีรหัสไหน = ปิดเจ้านั้น
+//   ไม่มีค่าตั้งนี้ = EMS ราคา shipping_flat_rate · ไม่มีรหัสไหน = ปิดเจ้านั้น (Step 26 เหลือแค่ ems)
 function parseShipCarriers(value: unknown, flatRate: number): ShipCarrierOption[] {
-  if (!value || typeof value !== 'object') return SHIP_CARRIERS.map((c) => ({ ...c, fee: flatRate }))
+  if (!value || typeof value !== 'object') return [{ ...SHIP_CARRIERS[0], fee: flatRate }]
   const fees = value as Record<string, unknown>
   const open = SHIP_CARRIERS.filter((c) => fees[c.code] != null).map((c) => ({ ...c, fee: settingValue(fees[c.code], flatRate) }))
   // ปิดหมดทุกเจ้าไม่ได้ (create_booking จะไม่รับ) → ถือว่าตั้งค่าผิด กลับไปใช้ EMS ราคาเดิม

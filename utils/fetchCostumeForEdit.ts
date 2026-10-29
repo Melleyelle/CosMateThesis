@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/client'
-import type { CostumeFormData } from '@/app/components/admin/costume-form/types'
+import { EMPTY_PRICING, type CostumeFormData, type ProductPricing } from '@/app/components/admin/costume-form/types'
+import { isAutoCost, suggestedPrices } from '@/utils/rentalTiers'
 
 // โหลดข้อมูลชุดเดิมทั้งหมดมาใส่ในฟอร์มเดียวกับหน้า "เพิ่มชุดใหม่" เพื่อแก้ไข
 // id ของ variant/item ที่ได้จากตรงนี้เป็น id จริงจากฐานข้อมูล (ใช้แยกของเดิม/ของใหม่ตอนบันทึก)
@@ -85,8 +86,12 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
           .in('variant_id', variantIds)
       : Promise.resolve({ data: [], error: null }),
     supabase.from('products').select('size_system').eq('id', productId).maybeSingle(),
-    // ต้นทุน/มัดจำกำหนดเอง (Step 21) — ยังไม่ได้รัน SQL ก็เปิดฟอร์มได้ (ว่าง = ใช้มัดจำรายไซส์แบบเดิม)
-    supabase.from('products').select('cost_price, deposit_override').eq('id', productId).maybeSingle(),
+    // ต้นทุน ราคา 3 ช่วง มัดจำกำหนดเอง ล็อกราคา (Step 25) — ยังไม่ได้รัน SQL ก็เปิดฟอร์มได้ (ราคาว่าง)
+    supabase
+      .from('products')
+      .select('cost_price, deposit_override, price_new, price_normal, price_old, price_locked')
+      .eq('id', productId)
+      .maybeSingle(),
   ])
   type RangeRow = {
     variant_id: string
@@ -162,10 +167,7 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
       isGroupSet: data.is_group_set ?? false,
       sizeSystem,
     },
-    pricing: {
-      costPrice: pricingRes.error ? '' : str(pricingRes.data?.cost_price),
-      depositOverride: pricingRes.error ? '' : str(pricingRes.data?.deposit_override),
-    },
+    pricing: pricingOf(pricingRes.error ? null : pricingRes.data),
     coverImage,
     images,
     inclusions,
@@ -174,4 +176,37 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
   }
 
   return { data: formData, error: null }
+}
+
+type PricingRow = {
+  cost_price: number | string | null
+  deposit_override: number | string | null
+  price_new: number | string | null
+  price_normal: number | string | null
+  price_old: number | string | null
+  price_locked: boolean | null
+}
+
+// ราคาไม่ตรงกับที่ระบบแนะนำจากต้นทุน = แอดมินเคยแก้เอง → แก้ต้นทุนแล้วไม่เติมราคาทับ
+function pricingOf(row: PricingRow | null): ProductPricing {
+  if (!row) return EMPTY_PRICING
+  const s = (v: number | string | null) => (v == null ? '' : String(Number(v)))
+  const pricing: ProductPricing = {
+    costPrice: s(row.cost_price),
+    depositOverride: s(row.deposit_override),
+    priceNew: s(row.price_new),
+    priceNormal: s(row.price_normal),
+    priceOld: s(row.price_old),
+    priceLocked: row.price_locked ?? false,
+    manual: true,
+  }
+  const cost = row.cost_price == null ? null : Number(row.cost_price)
+  if (isAutoCost(cost)) {
+    const suggested = suggestedPrices(cost)
+    pricing.manual =
+      Number(pricing.priceNew) !== suggested.new ||
+      Number(pricing.priceNormal) !== suggested.normal ||
+      Number(pricing.priceOld) !== suggested.old
+  }
+  return pricing
 }

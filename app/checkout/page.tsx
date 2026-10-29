@@ -8,16 +8,19 @@ import {
   ArrowLeftIcon,
   BankIcon,
   CheckIcon,
+  IdentificationCardIcon,
   ImageIcon,
   MapPinIcon,
   NotePencilIcon,
   WarningCircleIcon,
 } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
+import IdCardForm from '@/app/components/customer/IdCardForm'
+import { canBook, fetchMyIdCard, type MyIdCard } from '@/utils/customer/idCard'
 import { createClient } from '@/utils/client'
 import { cartKeyOf, decodeCheckoutItems, parseDelivery, removeFromCart, type CartKey } from '@/utils/customer/cart'
 import { fetchPieces, priceLine, type PieceInfo } from '@/utils/customer/pieces'
-import { quoteDeposits } from '@/utils/customer/deposits'
+import { quoteLines, type LineQuote } from '@/utils/customer/deposits'
 import { fetchVariantSummaries, type VariantSummary } from '@/utils/customer/fetchVariantSummaries'
 import {
   DEFAULT_BOOKING_SETTINGS,
@@ -98,9 +101,11 @@ function CheckoutInner() {
   const [saveBank, setSaveBank] = useState(true)
   const [note, setNote] = useState('')
   const [carrierChoice, setCarrierChoice] = useState<ShipCarrier | null>(null)
-  // มัดจำตามชุดจริงตัวที่จะได้ (Step 21) ตามลำดับ requested · null = ใช้มัดจำของไซส์
-  const [deposits, setDeposits] = useState<(number | null)[] | null>(null)
+  // ค่าเช่า/มัดจำตามชุดจริงตัวที่จะได้ (Step 25) ตามลำดับ requested · null = ใช้ราคาเริ่มต้นของไซส์
+  const [quotes, setQuotes] = useState<(LineQuote | null)[] | null>(null)
   const [accepted, setAccepted] = useState(false)
+  // รูปบัตรประชาชน (Step 25): verified = จ่ายได้เลย · pending = จองแล้วรอร้านตรวจ · none/rejected = ต้องส่งรูปก่อน
+  const [idCard, setIdCard] = useState<MyIdCard | null>(null)
 
   const [sectionError, setSectionError] = useState<{ address?: string; refund?: string }>({})
   const [submitting, setSubmitting] = useState(false)
@@ -123,15 +128,17 @@ function CheckoutInner() {
         return
       }
 
-      const [variantRes, s, userRes] = await Promise.all([
+      const [variantRes, s, userRes, idRes] = await Promise.all([
         // ไซส์รองเท้าที่มากับชุดโหลดมาด้วย เพื่อแสดงไซส์และรู้ว่ารองเท้ายังเปิดให้เช่าอยู่ไหม
         fetchVariantSummaries(requested.flatMap((r) => (r.shoeVariantId ? [r.variantId, r.shoeVariantId] : [r.variantId]))),
         fetchBookingSettings(),
         supabase.auth.getUser(),
+        fetchMyIdCard(),
       ])
       const pieceRes = await fetchPieces(Object.values(variantRes.data).map((v) => v.productId))
       if (cancelled) return
       setSettings(s)
+      setIdCard(idRes.data)
       if (variantRes.error) setLoadError(variantRes.error)
       setVariants(variantRes.data)
       setPieces(pieceRes)
@@ -221,8 +228,8 @@ function CheckoutInner() {
   // ทุกรายการพร้อมกัน — ไซส์เดียวกันวันทับกันจะได้คนละตัว เหมือนตอนจองจริง
   useEffect(() => {
     let cancelled = false
-    quoteDeposits(requested, delivery).then((res) => {
-      if (!cancelled) setDeposits(res)
+    quoteLines(requested, delivery).then((res) => {
+      if (!cancelled) setQuotes(res)
     })
     return () => {
       cancelled = true
@@ -232,7 +239,7 @@ function CheckoutInner() {
   const minStart = addDays(todayISO(), minStartOffset(settings, delivery))
   const lines = requested.map((r, idx) => {
     const v = variants[r.variantId]
-    const price = v ? priceLine(v, r.pieces, pieces, r.rentalDays, settings, r.shoeVariantId, deposits?.[idx]) : null
+    const price = v ? priceLine(v, r.pieces, pieces, r.rentalDays, settings, r.shoeVariantId, quotes?.[idx]) : null
     const shoe = r.shoeVariantId ? variants[r.shoeVariantId] : undefined
     return {
       key: cartKeyOf(r),
@@ -255,6 +262,8 @@ function CheckoutInner() {
     }
   })
   const hasProblem = lines.some((l) => l.problem)
+  const idReady = !!idCard && canBook(idCard.status)
+  const awaitingId = idCard?.status === 'pending'
   const totals = lines.reduce(
     (acc, l) =>
       l.price
@@ -293,7 +302,7 @@ function CheckoutInner() {
     setSectionError({ address: aProblem ?? undefined, refund: rProblem ?? undefined })
     if (aProblem) setEditingAddress(true)
     if (rProblem) setEditingRefund(true)
-    if (aProblem || rProblem || hasProblem || !accepted) return
+    if (aProblem || rProblem || hasProblem || !accepted || !idReady) return
 
     const supabase = createClient()
     if (!supabase) return
@@ -387,6 +396,17 @@ function CheckoutInner() {
 
       <form onSubmit={handleSubmit} noValidate className="grid gap-6 lg:grid-cols-[1fr_420px]">
         <div className="space-y-7">
+          {/* ---------------- ยืนยันตัวตน (เช่าครั้งแรก) ---------------- */}
+          {idCard && idCard.status !== 'verified' && (
+            <section className={cardClass}>
+              <div className="mb-3 flex items-center gap-3">
+                <IdentificationCardIcon size={26} weight="fill" className="flex-shrink-0 text-[#E5457F]" />
+                <h2 className="text-lg font-bold text-[#263544]">ยืนยันตัวตน (เช่าครั้งแรกเท่านั้น)</h2>
+              </div>
+              <IdCardForm context="checkout" onChange={setIdCard} />
+            </section>
+          )}
+
           {/* ---------------- ที่อยู่จัดส่ง ---------------- */}
           <section className={cardClass}>
             <div className="flex items-start gap-3">
@@ -789,11 +809,19 @@ function CheckoutInner() {
 
           <button
             type="submit"
-            disabled={submitting || !accepted || hasProblem}
+            disabled={submitting || !accepted || hasProblem || !idReady}
             className="lift focus-ring mt-5 w-full rounded-full border border-line bg-brand py-4 text-lg font-bold text-white active:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {submitting ? 'กำลังจองชุด...' : 'ยืนยันการเช่า'}
+            {submitting ? 'กำลังจองชุด...' : awaitingId ? 'จองชุด แล้วรอร้านตรวจบัตร' : 'ยืนยันการเช่า'}
           </button>
+          {idCard && !idReady && (
+            <p className="mt-2 text-center text-base text-[#263544]/70">ส่งรูปบัตรประชาชนด้านบนก่อน แล้วจึงยืนยันการเช่าได้</p>
+          )}
+          {awaitingId && (
+            <p className="mt-2 text-center text-base text-[#263544]/70">
+              ยังไม่ต้องจ่ายตอนนี้ ร้านตรวจบัตรภายใน 24 ชม. (ไม่เกินก่อนวันส่งชุด) แล้วส่งอีเมลแจ้งให้ชำระเงิน
+            </p>
+          )}
           {hasProblem && (
             <p className="mt-2 text-center text-base text-red-600">มีบางรายการจองไม่ได้ กรุณากลับไปแก้ไขก่อน</p>
           )}

@@ -27,6 +27,7 @@ type TabDef = {
 }
 
 const TABS: TabDef[] = [
+  { value: 'id_review', label: 'ตรวจบัตร', group: 'todo', note: 'เช่าครั้งแรก รอร้านอนุมัติก่อนจ่าย', match: (_, t) => t === 'id' },
   { value: 'review', label: 'ตรวจยอดชำระ', group: 'todo', note: 'สลิปที่รอร้านยืนยัน', match: (_, t) => t === 'slip' },
   { value: 'to_ship', label: 'รอแพ็กส่ง', group: 'todo', note: 'ชำระแล้ว ต้องแพ็กและส่ง', match: (_, t) => t === 'pack' },
   { value: 'returning', label: 'รับคืนและตรวจ', group: 'todo', note: 'ชุดกลับมาแล้ว / เลยกำหนดคืน', match: (_, t) => t === 'inspect' || t === 'lost' },
@@ -174,7 +175,7 @@ function AdminOrdersInner() {
 
         {/* คิวงานที่ร้านต้องทำ — แบบเดียวกับตัวเลขสรุปหน้าคลังชุด กดช่องเพื่อเปิดคิว · มีงานค้าง = ตัวเลขสีส้ม */}
         <div className="mb-6">
-          <MetricStrip>
+          <MetricStrip cols={5}>
             {TODO_TABS.map((t) => {
               const count = counts[t.value] ?? 0
               return (

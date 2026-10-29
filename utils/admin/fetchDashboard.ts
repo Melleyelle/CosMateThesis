@@ -119,6 +119,7 @@ export async function fetchDashboard(): Promise<{ data: DashboardData | null; er
 
 // ออเดอร์ที่ยังล็อกชุดอยู่ (is_blocking = true ในฐานข้อมูล)
 export const BLOCKING: OrderStatus[] = [
+  'awaiting_id',
   'pending_payment',
   'manual_review',
   'paid',

@@ -7,6 +7,7 @@ import { createClient } from '@/utils/client'
 import type { Tone } from '@/utils/admin/statusTone'
 import { compareSize } from '@/utils/customer/labels'
 import { formatThaiDateWithWeekday, todayISO } from '@/utils/dateUtils'
+import { PHASE_LABEL, type PricePhase } from '@/utils/rentalTiers'
 
 // สภาพชุดจริงรายตัว — บันทึกทันทีที่เปลี่ยน (แยกจากปุ่ม "บันทึกการแก้ไข" ของฟอร์ม)
 // เพราะเป็นงานประจำวันหลังตรวจสภาพชุดคืน ไม่ใช่การแก้ข้อมูลสินค้า
@@ -25,7 +26,7 @@ const UNSHIPPED = ['pending_payment', 'manual_review', 'paid']
 
 type Booking = { orderNumber: string; status: string; startDate: string; endDate: string }
 // สถิติรายตัว (Step 21): เช่าสำเร็จกี่รอบ ค่าเช่าสะสม มัดจำรอบถัดไป — null = ยังไม่ได้รัน SQL
-type UnitStats = { completed: number; income: number; nextDeposit: number }
+type UnitStats = { completed: number; income: number; phase: PricePhase | null; nextPrice: number | null; nextDeposit: number }
 type Unit = { id: string; code: string; size: string; condition: Condition; bookings: Booking[]; stats: UnitStats | null }
 
 type Row = {
@@ -68,11 +69,25 @@ async function fetchUnits(productId: string, today: string): Promise<{ units: Un
   if (error) return { error: error.message }
 
   const { data: statRows } = await supabase.rpc('admin_unit_rental_stats', { p_product_id: productId })
-  type StatRow = { item_id: string; completed_rentals: number; rental_income: number | string; next_deposit: number | string }
-  const statsById = new Map(
+  // phase / next_price มีหลังรัน Step 25
+  type StatRow = {
+    item_id: string
+    completed_rentals: number
+    rental_income: number | string
+    phase?: PricePhase | null
+    next_price?: number | string | null
+    next_deposit: number | string
+  }
+  const statsById = new Map<string, UnitStats>(
     ((statRows ?? []) as StatRow[]).map((r) => [
       r.item_id,
-      { completed: r.completed_rentals, income: Number(r.rental_income), nextDeposit: Number(r.next_deposit) },
+      {
+        completed: r.completed_rentals,
+        income: Number(r.rental_income),
+        phase: r.phase ?? null,
+        nextPrice: r.next_price == null ? null : Number(r.next_price),
+        nextDeposit: Number(r.next_deposit),
+      },
     ]),
   )
 
@@ -229,7 +244,11 @@ export default function ItemConditionCard({
                   </p>
                   {u.stats && (
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs tabular-nums text-gray-500">
-                      เช่าสำเร็จ {u.stats.completed} รอบ · มัดจำรอบถัดไป ฿{u.stats.nextDeposit.toLocaleString('th-TH')}
+                      เช่าสำเร็จ {u.stats.completed} รอบ ·{' '}
+                      {u.stats.phase && u.stats.nextPrice != null
+                        ? `${PHASE_LABEL[u.stats.phase]} ค่าเช่า ฿${u.stats.nextPrice.toLocaleString('th-TH')} · `
+                        : ''}
+                      มัดจำรอบถัดไป ฿{u.stats.nextDeposit.toLocaleString('th-TH')}
                       {costPrice != null && costPrice > 0 && (
                         <>
                           {' '}

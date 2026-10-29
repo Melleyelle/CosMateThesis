@@ -67,7 +67,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     supabase
       .from('orders')
       .select('id', { count: 'exact', head: true })
-      .or('status.in.(manual_review,paid,returned,inspecting),refund_status.eq.pending')
+      .or('status.in.(awaiting_id,manual_review,paid,returned,inspecting),refund_status.eq.pending')
       .then(({ count }) => setBadges({ orders: count ?? 0 }))
   }, [pathname])
 

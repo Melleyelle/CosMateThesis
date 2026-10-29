@@ -30,6 +30,8 @@ import {
 } from '@phosphor-icons/react'
 import { StatusBadge, primaryButtonClass, secondaryButtonClass } from '@/app/components/admin/ui'
 import WebcamCapture from '@/app/components/admin/orders/WebcamCapture'
+import IdCardReview from '@/app/components/admin/IdCardReview'
+import { createClient } from '@/utils/client'
 import type { OrderSummary } from '@/utils/customer/fetchOrders'
 import type { BookingSettings } from '@/utils/customer/bookingSettings'
 import { ADMIN_STATUS_LABEL, orderBadge } from '@/utils/admin/statusTone'
@@ -106,6 +108,7 @@ export default function OrderPanel({ order, settings, today, position, onDone }:
         {position && <span className="text-xs text-muted">{position}</span>}
       </header>
 
+      {task === 'id' && <OrderIdReview key={order.id} order={order} onDone={onDone} />}
       {task === 'pack' && <PackForm key={order.id} order={order} onDone={onDone} />}
       {task === 'slip' && <SlipReview key={order.id} order={order} detail={detail} onDone={onDone} />}
       {walkIn ? (
@@ -499,6 +502,51 @@ function PackForm({ order, onDone }: { order: OrderSummary; onDone: PanelProps['
         </button>
       </Footer>
     </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// awaiting_id → ตรวจรูปบัตรประชาชน (เช่าครั้งแรก · Step 25)
+// ---------------------------------------------------------------------------
+
+function OrderIdReview({ order, onDone }: { order: OrderSummary; onDone: PanelProps['onDone'] }) {
+  const [info, setInfo] = useState<{ userId: string; reviewBy: string | null; handover: string | null } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    createClient()
+      ?.rpc('admin_order_id_card', { p_order_id: order.id })
+      .then(({ data, error: err }) => {
+        if (!alive) return
+        type Row = { user_id: string; id_review_expires_at: string | null; handover_deadline: string | null }
+        const row = ((data ?? []) as Row[])[0]
+        if (err || !row) return setError(err ? translateRpcError(err.message) : 'ไม่พบข้อมูลบัตรของออเดอร์นี้')
+        setInfo({ userId: row.user_id, reviewBy: row.id_review_expires_at, handover: row.handover_deadline })
+      })
+    return () => {
+      alive = false
+    }
+  }, [order.id])
+
+  if (error) return <div className="p-5"><ErrorBox>{error}</ErrorBox></div>
+  if (!info) return <div className="m-5 h-40 animate-pulse rounded-control bg-sunken" />
+
+  return (
+    <IdCardReview
+      userId={info.userId}
+      onDone={(msg) => onDone(`${order.orderNumber}: ${msg}`)}
+      note={
+        <p className="rounded-control border border-[#F2D49B] bg-warning-subtle px-3 py-2 font-semibold text-warning">
+          ตรวจภายใน {info.reviewBy ? formatDateTime(info.reviewBy) : '—'} ไม่งั้นออเดอร์หมดอายุเอง
+          {info.handover && (
+            <span className="block font-normal">
+              อนุมัติแล้วลูกค้ามีเวลาจ่าย 24 ชม. แต่ไม่เกิน {formatDateTime(info.handover)} ({order.deliveryMethod === 'pickup' ? 'วันรับชุด' : 'วันที่ต้องส่งชุด'})
+            </span>
+          )}
+        </p>
+      }
+    />
   )
 }
 
@@ -993,6 +1041,7 @@ function WaitingNote({ order, today }: { order: OrderSummary; today: string }) {
   const returnBy = returnByDate(order)
   const text: Record<string, string> = {
     pending_payment: 'รอลูกค้าชำระเงิน ถ้าเลยเวลาระบบจะตั้งหมดอายุและปลดล็อกชุดให้เอง',
+    awaiting_id: 'รอร้านตรวจบัตรประชาชน',
     shipped: `ชุดกำลังเดินทาง (${order.shipTrackingNo ?? 'ไม่มีเลขพัสดุ'}) รอลูกค้ากดได้รับ หรือถึงวันใช้งานระบบจะเปลี่ยนให้เอง`,
     active:
       late > 0
@@ -1000,7 +1049,7 @@ function WaitingNote({ order, today }: { order: OrderSummary; today: string }) {
         : `ชุดอยู่กับลูกค้า ต้องส่งคืนภายใน ${returnBy ? formatThaiDateWithWeekday(returnBy) : '—'}`,
     completed: 'ออเดอร์นี้จบแล้ว',
     cancelled: order.cancelReason ?? 'ออเดอร์นี้ถูกยกเลิก',
-    expired: 'ลูกค้าไม่ได้ชำระภายในเวลาที่กำหนด',
+    expired: order.cancelReason ?? 'ลูกค้าไม่ได้ชำระภายในเวลาที่กำหนด',
   }
   return (
     <p className={`px-5 py-5 text-[15px] ${order.status === 'active' && late > 0 ? 'font-semibold text-danger' : 'text-secondary'}`}>

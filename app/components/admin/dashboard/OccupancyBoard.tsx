@@ -230,7 +230,7 @@ export default function OccupancyBoard({ data }: { data: DashboardData }) {
                       const left = LABEL_W + dayDiff(start, from) * DAY_W + 2
                       const width = (dayDiff(from, to) + 1) * DAY_W - 4
                       const clipStart = dayDiff(b.from, from) // จำนวนวันที่ถูกตัดทางซ้าย
-                      const unpaid = b.status === 'pending_payment'
+                      const unpaid = b.status === 'pending_payment' || b.status === 'awaiting_id'
                       let skip = clipStart
                       return (
                         <Link

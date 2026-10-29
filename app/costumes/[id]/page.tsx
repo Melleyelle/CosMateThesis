@@ -46,8 +46,7 @@ import {
 import { CATEGORY_LABEL, FRANCHISE_LABEL, GENDER_LABEL } from '@/utils/customer/labels'
 import { fetchEvents, type CalendarEvent } from '@/utils/customer/events'
 import { addDays, formatBaht, formatThaiDateWithWeekday, todayISO } from '@/utils/dateUtils'
-import { fetchDepositRanges, quoteDeposits, type DepositRange } from '@/utils/customer/deposits'
-import { pieceDeposit as pieceDepositOf } from '@/utils/rentalTiers'
+import { fetchPriceRanges, quoteLines, type LineQuote, type PriceRange, type Range } from '@/utils/customer/deposits'
 import { calcRentalPrice } from '@/utils/customer/rentalPrice'
 import { createClient } from '@/utils/client'
 
@@ -246,15 +245,15 @@ export default function CostumeDetailPage() {
   const chosenPieces = (): string[] | undefined =>
     rentMode === 'pieces' && selectedPieces.size > 0 ? Array.from(selectedPieces) : undefined
 
-  // มัดจำขึ้นกับชุดจริงตัวที่จะได้ (Step 21): ก่อนเลือกวันแสดงช่วงของไซส์ · เลือกวันแล้วถามตัวที่จะได้จริง
-  const [depositRanges, setDepositRanges] = useState<Record<string, DepositRange>>({})
-  const [quote, setQuote] = useState<{ key: string; deposit: number | null } | null>(null)
+  // ค่าเช่า/มัดจำขึ้นกับชุดจริงตัวที่จะได้ (Step 25): ก่อนเลือกวันแสดงช่วงของไซส์ · เลือกวันแล้วถามตัวที่จะได้จริง
+  const [priceRanges, setPriceRanges] = useState<Record<string, PriceRange>>({})
+  const [quote, setQuote] = useState<{ key: string; line: LineQuote | null } | null>(null)
   const variantIdsKey = detail?.variants.map((v) => v.id).join(',') ?? ''
   useEffect(() => {
     if (!variantIdsKey) return
     let cancelled = false
-    fetchDepositRanges(variantIdsKey.split(',')).then((r) => {
-      if (!cancelled) setDepositRanges(r)
+    fetchPriceRanges(variantIdsKey.split(',')).then((r) => {
+      if (!cancelled) setPriceRanges(r)
     })
     return () => {
       cancelled = true
@@ -267,18 +266,18 @@ export default function CostumeDetailPage() {
     if (!quoteKey) return
     const [vid, start, days, method, pieceIds] = quoteKey.split('|')
     let cancelled = false
-    quoteDeposits(
+    quoteLines(
       [{ variantId: vid, startDate: start, rentalDays: Number(days), pieces: pieceIds ? pieceIds.split(',') : undefined }],
       method as DeliveryMethod,
     ).then((res) => {
-      if (!cancelled) setQuote({ key: quoteKey, deposit: res?.[0] ?? null })
+      if (!cancelled) setQuote({ key: quoteKey, line: res?.[0] ?? null })
     })
     return () => {
       cancelled = true
     }
   }, [quoteKey])
   // คำตอบของวัน/ชิ้นที่เลือกอยู่ตอนนี้เท่านั้น (กันค่าเก่าค้างระหว่างรอ)
-  const quotedDeposit = quote && quote.key === quoteKey ? quote.deposit : null
+  const quoted = quote && quote.key === quoteKey ? quote.line : null
 
   function handleRent() {
     if (!variant || !activeDate) return
@@ -344,9 +343,10 @@ export default function CostumeDetailPage() {
   const piecesTotal = pricedPieces.filter((p) => selectedPieces.has(p.id)).reduce((sum, p) => sum + (p.price ?? 0), 0)
   const piecesLaundry = pricedPieces.filter((p) => selectedPieces.has(p.id)).reduce((sum, p) => sum + p.laundryFee, 0)
 
+  // ค่าเช่าเต็มชุดวันแรก: ของตัวที่จะได้ (เลือกวันแล้ว) หรือราคาเริ่มต้นของไซส์
+  const setPrice = quoted?.price ?? variant?.packagePrice ?? 0
   // ทั้งชุดแต่ไม่รับรองเท้า → หักราคาแยกชิ้นของรองเท้าออกจากค่าเช่าวันแรก (มัดจำเท่าเดิม) · ต้องตรงกับ create_booking()
-  const shoeDiscount =
-    setShoes && !pieceMode && shoeChoice === 'none' ? Math.min(setShoes.price, variant?.packagePrice ?? 0) : 0
+  const shoeDiscount = setShoes && !pieceMode && shoeChoice === 'none' ? Math.min(setShoes.price, setPrice) : 0
   // ยังไม่ได้เลือกไซส์รองเท้า (หรือไม่รับ) — แยกชิ้นต้องเลือกไซส์เฉพาะตอนติ๊กรองเท้า
   const shoeMissing = !!setShoes && (pieceMode ? shoePieceTicked && !shoeVariantId : shoeChoice === null)
   const shoeVariants = sortSizes(setShoes?.variants ?? [])
@@ -355,22 +355,20 @@ export default function CostumeDetailPage() {
 
   // ค่าเช่า = วันแรก + วันเพิ่ม (มัดจำคิดจากราคาวันแรก ไม่ขึ้นตามจำนวนวัน)
   const price = calcRentalPrice({
-    baseRental: pieceMode ? piecesTotal : (variant?.packagePrice ?? 0) - shoeDiscount,
+    baseRental: pieceMode ? piecesTotal : setPrice - shoeDiscount,
     rentalDays,
     isPieces: pieceMode,
     settings,
   })
-  // ยังไม่ได้เลือกวัน / ยังไม่ได้รัน SQL → ใช้มัดจำของไซส์ (แยกชิ้นคิดสัดส่วน)
+  // ยังไม่ได้เลือกวัน / ยังไม่ได้รัน SQL → ใช้มัดจำเริ่มต้นของไซส์
   const variantDeposit = variant?.depositAmount ?? 0
-  const depositAmount =
-    quotedDeposit ??
-    (pieceMode ? pieceDepositOf(variantDeposit, variant?.packagePrice ?? 0, piecesTotal) : variantDeposit)
-  const range = variant ? depositRanges[variant.id] : undefined
-  const depositText = range
-    ? range.min === range.max
-      ? formatBaht(range.min)
-      : `${formatBaht(range.min)}–${formatBaht(range.max)}`
-    : formatBaht(variantDeposit)
+  const depositAmount = quoted?.deposit ?? variantDeposit
+  const range = variant ? priceRanges[variant.id] : undefined
+  const rangeText = (r: Range | undefined, fallback: number) =>
+    !r ? formatBaht(fallback) : r.min === r.max ? formatBaht(r.min) : `${formatBaht(r.min)}–${formatBaht(r.max)}`
+  const priceText = rangeText(range?.price, variant?.packagePrice ?? 0)
+  const depositText = rangeText(range?.deposit, variantDeposit)
+  const unitsVary = !!range && (range.price.min !== range.price.max || range.deposit.min !== range.deposit.max)
   const laundryFee = pieceMode ? piecesLaundry : (variant?.laundryFee ?? 0)
   const grandTotal = variant ? price.rentalPrice + depositAmount + laundryFee + shippingFee(settings, delivery) : 0
   const noPiecesYet = pieceMode && selectedPieces.size === 0
@@ -573,8 +571,8 @@ export default function CostumeDetailPage() {
             )}
             {variant && (
               <p className="mt-2 text-base text-[#263544]/60">
-                ไซส์ {variant.size}: ค่าเช่าวันแรก {formatBaht(variant.packagePrice)} · มัดจำ {depositText} (ได้คืน)
-                {range && range.min !== range.max && ' ขึ้นกับตัวชุดที่ได้ ชุดใหม่มัดจำสูงกว่า'}
+                ไซส์ {variant.size}: ค่าเช่าวันแรก {priceText} · มัดจำ {depositText} (ได้คืน)
+                {unitsVary && ' ขึ้นกับตัวชุดที่ได้ ตัวที่ใหม่กว่าราคาสูงกว่า เลือกวันแล้วจะเห็นราคาจริง'}
               </p>
             )}
 

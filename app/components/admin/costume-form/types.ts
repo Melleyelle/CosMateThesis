@@ -60,6 +60,7 @@ export type ProductInclusion = {
 export type ProductVariant = {
   id: string
   size: SizeOption
+  // ราคา/มัดจำ "เริ่มต้น" ที่ระบบเก็บในไซส์ (Step 25) — ฟอร์มไม่ให้แก้แล้ว ตอนบันทึกส่งราคาปกติ/มัดจำของชุดแทน
   packagePrice: string
   packageDays: string
   depositAmount: string
@@ -86,11 +87,27 @@ export type ProductItem = {
   itemCode: string
 }
 
-// ต้นทุนและมัดจำ (Step 21) — ตรงกับ products.cost_price / products.deposit_override
-// ต้นทุนอยู่ในช่วงเทียร์ → มัดจำคิดอัตโนมัติตามรอบของชุดแต่ละตัว ไม่ใช้มัดจำที่กรอกในไซส์
+// ต้นทุน ค่าเช่า 3 ช่วง และมัดจำ (Step 25) — ตรงกับ products.cost_price / price_new / price_normal / price_old /
+// price_locked / deposit_override · ใช้กับทุกไซส์ (ไม่ตั้งราคาแยกไซส์แล้ว) · มัดจำคิดจากตาราง deposit_tiers
 export type ProductPricing = {
   costPrice: string
-  depositOverride: string // ว่าง = ตามเทียร์
+  depositOverride: string // ว่าง = ตามตารางมัดจำ
+  priceNew: string
+  priceNormal: string
+  priceOld: string
+  priceLocked: boolean
+  // แอดมินแก้ราคาเอง → แก้ต้นทุนแล้วไม่เติมราคาที่แนะนำทับ
+  manual: boolean
+}
+
+export const EMPTY_PRICING: ProductPricing = {
+  costPrice: '',
+  depositOverride: '',
+  priceNew: '',
+  priceNormal: '',
+  priceOld: '',
+  priceLocked: false,
+  manual: false,
 }
 
 export type CostumeFormData = {
@@ -118,7 +135,7 @@ export const EMPTY_FORM_DATA: CostumeFormData = {
     isGroupSet: false,
     sizeSystem: 'clothing',
   },
-  pricing: { costPrice: '', depositOverride: '' },
+  pricing: EMPTY_PRICING,
   coverImage: null,
   images: [],
   inclusions: [],

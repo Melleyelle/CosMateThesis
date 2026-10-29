@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/cron/return-reminders", "schedule": "0 2 * * *" }
+    { "path": "/api/cron/return-reminders", "schedule": "0 2 * * *" },
+    { "path": "/api/cron/id-card-cleanup", "schedule": "30 19 * * *" }
   ]
 }

@@ -11,7 +11,7 @@ import ImagesCard from '@/app/components/admin/costume-form/Imagescard'
 import InclusionsCard from '@/app/components/admin/costume-form/Inclusionscard'
 import SizesStockCard from '@/app/components/admin/costume-form/Sizesstockcard'
 import PricingCard from '@/app/components/admin/costume-form/PricingCard'
-import { pricingMode, saveProductPricing, suggestedRent, useRentalTiers } from '@/utils/rentalTiers'
+import { pricingProblem, saveProductPricing, usePricingConfig, variantDepositOf } from '@/utils/rentalTiers'
 import { EMPTY_FORM_DATA, type CostumeFormData } from '@/app/components/admin/costume-form/types'
 import { findProductIdBySku, saveInclusionPrices, validateShoeInclusion } from '@/utils/saveInclusionPrices'
 import { validateSkuPrefix } from '@/utils/skuPrefix'
@@ -42,8 +42,7 @@ export default function NewCostumePage() {
   const supabase = createClient()
 
   const [formData, setFormData] = useState<CostumeFormData>(EMPTY_FORM_DATA)
-  const { tiers, error: tiersError } = useRentalTiers()
-  const pricing = pricingMode(tiers, formData.pricing.costPrice, formData.pricing.depositOverride)
+  const [{ tiers, phase, error: pricingConfigError }, setPhase] = usePricingConfig()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -62,9 +61,9 @@ export default function NewCostumePage() {
     if (formData.variants.length === 0) {
       return 'กรุณาเลือกอย่างน้อย 1 ไซส์'
     }
-    if (formData.variants.some((v) => !v.packagePrice || (!pricing.auto && !v.depositAmount))) {
-      return 'กรุณากรอกราคาและมัดจำให้ครบทุกไซส์'
-    }
+    if (pricingConfigError) return 'ยังไม่ได้รัน SQL Step 25 จึงบันทึกค่าเช่าแบบใหม่ไม่ได้'
+    const pricingError = pricingProblem(formData.pricing)
+    if (pricingError) return pricingError
     const rangeError = validateSizeRanges(formData.variants)
     if (rangeError) return rangeError
     if (formData.items.length === 0) {
@@ -122,10 +121,10 @@ export default function NewCostumePage() {
       })),
       p_variants: variants.map((v) => ({
         size: v.size,
-        package_price: v.packagePrice,
+        // ราคาเท่ากันทุกไซส์ (Step 25) — ระบบเปลี่ยนเป็นราคาเริ่มต้นของตัวที่ถูกสุดให้เองหลังบันทึกราคา
+        package_price: formData.pricing.priceNormal,
         package_days: v.packageDays || 1, // เลิกใช้แล้ว (v2) ลูกค้าเลือกจำนวนวันเอง
-        // มัดจำอัตโนมัติ: เก็บมัดจำรอบ 5+ (หรือค่าที่กำหนดเอง) ไว้ในไซส์ — ตอนจองคิดตามรอบของตัวจริง
-        deposit_amount: pricing.auto ? String(pricing.variantDeposit) : v.depositAmount,
+        deposit_amount: variantDepositOf(formData.pricing, tiers),
         deposit_return_hours: v.depositReturnHours,
         laundry_fee: v.laundryFee || '0',
         chest_in: v.chestIn,
@@ -157,13 +156,11 @@ export default function NewCostumePage() {
       : 'บันทึกช่วงไซส์ไม่สำเร็จ: หาชุดที่เพิ่งสร้างไม่พบ'
     if (sizeError) followUpErrors.push(sizeError)
 
-    // ต้นทุน/มัดจำกำหนดเอง (Step 21) — ยังไม่ได้รัน SQL ก็ข้าม
-    if (!tiersError && (formData.pricing.costPrice.trim() || formData.pricing.depositOverride.trim())) {
-      const pricingError = productId
-        ? await saveProductPricing(productId, formData.pricing.costPrice, formData.pricing.depositOverride)
-        : 'บันทึกต้นทุนไม่สำเร็จ: หาชุดที่เพิ่งสร้างไม่พบ'
-      if (pricingError) followUpErrors.push(pricingError)
-    }
+    // ต้นทุน ราคา 3 ช่วง มัดจำกำหนดเอง ล็อกราคา (Step 25)
+    const pricingError = productId
+      ? await saveProductPricing(productId, formData.pricing)
+      : 'บันทึกราคาไม่สำเร็จ: หาชุดที่เพิ่งสร้างไม่พบ'
+    if (pricingError) followUpErrors.push(pricingError)
 
     if (inclusions.some((inc) => inc.price.trim())) {
       const priceError = productId ? await saveInclusionPrices(productId, inclusions) : 'บันทึกราคาแยกชิ้นไม่สำเร็จ: หาชุดที่เพิ่งสร้างไม่พบ'
@@ -209,17 +206,12 @@ export default function NewCostumePage() {
             <PricingCard
               pricing={formData.pricing}
               onChange={(p) => setFormData((f) => ({ ...f, pricing: p }))}
-              mode={pricing}
               tiers={tiers}
-              tiersError={tiersError}
-              variants={formData.variants}
-              onApplyRent={(price) =>
-                setFormData((f) => ({ ...f, variants: f.variants.map((v) => ({ ...v, packagePrice: String(price) })) }))
-              }
+              phase={phase}
+              onPhaseChange={setPhase}
+              configError={pricingConfigError}
             />
             <SizesStockCard
-              autoDeposit={pricing.auto}
-              suggestedPrice={pricing.tier && pricing.cost != null ? suggestedRent(pricing.tier, pricing.cost) : null}
               skuPrefix={formData.basicInfo.skuPrefix}
               sizeSystem={formData.basicInfo.sizeSystem}
               onSizeSystemChange={(sizeSystem) =>

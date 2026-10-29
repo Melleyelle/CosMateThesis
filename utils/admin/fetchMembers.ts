@@ -1,4 +1,5 @@
 import { createClient } from '@/utils/client'
+import type { IdCardStatus } from '@/utils/customer/idCard'
 
 export type Member = {
   id: string
@@ -13,6 +14,7 @@ export type Member = {
   lastSignInAt: string | null
   orderCount: number
   lastOrderAt: string | null
+  idStatus: IdCardStatus // รูปบัตรประชาชน (Step 25) · ยังไม่ได้รัน SQL = none
 }
 
 type Row = {
@@ -35,7 +37,13 @@ export async function fetchMembers(): Promise<{ data: Member[]; error: string | 
   const supabase = createClient()
   if (!supabase) return { data: [], error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
 
-  const { data, error } = await supabase.rpc('admin_list_members')
+  const [{ data, error }, cardRes] = await Promise.all([
+    supabase.rpc('admin_list_members'),
+    supabase.from('customer_id_cards').select('user_id, status'),
+  ])
+  const idStatus = new Map(
+    cardRes.error ? [] : ((cardRes.data ?? []) as { user_id: string; status: IdCardStatus }[]).map((c) => [c.user_id, c.status]),
+  )
   if (error) {
     return {
       data: [],
@@ -59,6 +67,7 @@ export async function fetchMembers(): Promise<{ data: Member[]; error: string | 
       lastSignInAt: r.last_sign_in_at,
       orderCount: Number(r.order_count),
       lastOrderAt: r.last_order_at,
+      idStatus: idStatus.get(r.id) ?? 'none',
     })),
     error: null,
   }

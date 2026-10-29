@@ -2,6 +2,7 @@
 // ADMIN_ACTIONS ต้องตรงกับวงจรที่อนุญาตใน admin_update_order_status() (cosmate_step6_order_status.sql)
 
 export type OrderStatus =
+  | 'awaiting_id' // เช่าครั้งแรก รอร้านตรวจรูปบัตร (Step 25) — กันวันไว้ ยังจ่ายไม่ได้
   | 'pending_payment'
   | 'manual_review'
   | 'paid'
@@ -14,6 +15,7 @@ export type OrderStatus =
   | 'cancelled'
 
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
+  awaiting_id: 'รอร้านตรวจบัตร',
   pending_payment: 'รอชำระเงิน',
   manual_review: 'รอตรวจสอบการชำระ',
   paid: 'ชำระแล้ว รอจัดส่ง',
@@ -27,6 +29,7 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
 }
 
 export const ORDER_STATUS_BADGE: Record<OrderStatus, string> = {
+  awaiting_id: 'bg-[#EDE6FA] text-[#263544]',
   pending_payment: 'bg-[#FFF3B0] text-[#263544]',
   manual_review: 'bg-[#EDE6FA] text-[#263544]',
   paid: 'bg-[#FDE3EE] text-[#E5457F]',
@@ -52,6 +55,7 @@ export const CUSTOMER_STEPS: { label: string }[] = [
 
 export function customerStepIndex(status: OrderStatus): number {
   switch (status) {
+    case 'awaiting_id':
     case 'pending_payment':
       return 0
     case 'manual_review':
@@ -79,6 +83,7 @@ export type AdminAction = {
 }
 
 export const ADMIN_ACTIONS: Record<OrderStatus, AdminAction[]> = {
+  awaiting_id: [], // อนุมัติ/ไม่อนุมัติบัตรผ่าน admin_review_id_card()
   pending_payment: [
     { to: 'paid', label: 'ยืนยันชำระแล้ว', tone: 'primary' },
     { to: 'expired', label: 'หมดอายุ', tone: 'secondary' },

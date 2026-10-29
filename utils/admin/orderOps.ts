@@ -7,7 +7,7 @@ import { dayDiff, shipByDate } from '@/utils/admin/fetchDashboard'
 import { toISODate } from '@/utils/dateUtils'
 
 // งานที่แผงขวาต้องแสดงให้ออเดอร์นี้
-export type OrderTask = 'slip' | 'pack' | 'inspect' | 'refund' | 'lost' | 'view'
+export type OrderTask = 'id' | 'slip' | 'pack' | 'inspect' | 'refund' | 'lost' | 'view'
 
 export const OVERDUE_LOST_DAYS = 7 // ตรงกับ app_settings.overdue_lost_days
 
@@ -25,6 +25,7 @@ export function lateDays(order: OrderSummary, today: string): number {
 
 export function taskOf(order: OrderSummary, today: string): OrderTask {
   if (order.refundStatus === 'pending' || order.refundStatus === 'failed') return 'refund'
+  if (order.status === 'awaiting_id') return 'id' // เช่าครั้งแรก รอร้านตรวจรูปบัตร (Step 25)
   if (order.status === 'manual_review') return 'slip'
   if (order.status === 'paid') return 'pack'
   if (order.status === 'returned' || order.status === 'inspecting') return 'inspect'
@@ -43,6 +44,7 @@ export function dueOf(
   if (task === 'refund') {
     return { text: `โอนคืน ฿${(order.refundAmount ?? 0).toLocaleString('th-TH')}`, tone: order.refundStatus === 'failed' ? 'late' : 'normal', sortKey: order.updatedAt }
   }
+  if (task === 'id') return { text: 'ตรวจบัตร', tone: 'urgent', sortKey: order.createdAt }
   if (task === 'slip') return { text: 'ตรวจสลิป', tone: 'urgent', sortKey: order.createdAt }
   if (task === 'pack') {
     const pickup = order.deliveryMethod === 'pickup'

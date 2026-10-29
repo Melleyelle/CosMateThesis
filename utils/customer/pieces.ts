@@ -1,8 +1,8 @@
 import { createClient } from '@/utils/client'
-import { pieceDeposit } from '@/utils/rentalTiers'
 import { calcRentalPrice } from '@/utils/customer/rentalPrice'
 import type { BookingSettings } from '@/utils/customer/bookingSettings'
 import type { VariantSummary } from '@/utils/customer/fetchVariantSummaries'
+import type { LineQuote } from '@/utils/customer/deposits'
 
 // ชิ้นส่วนที่เช่าแยกได้ (product_inclusions ที่ตั้ง rental_price ไว้)
 export type PieceInfo = {
@@ -68,9 +68,10 @@ export type LinePrice = {
   invalid: boolean // ชิ้นที่เลือกไว้ถูกลบหรือปิดเช่าแยกไปแล้ว / รองเท้าไม่ตรงกับที่เลือก
 }
 
-// ราคาต่อรายการ: ทั้งชุดใช้ราคาไซส์ / แยกชิ้นใช้ผลรวมราคาชิ้น + ค่าวันเพิ่ม
-// มัดจำไม่ขึ้นตามจำนวนวัน และขึ้นกับชุดจริงตัวที่จะได้ (Step 21) → ส่ง quotedDeposit จาก quoteDeposits() มา
-//   ไม่มี (ยังโหลดไม่เสร็จ/ยังไม่ได้รัน SQL) = ใช้มัดจำของไซส์ · แยกชิ้นคิดสัดส่วนเหมือน public.piece_deposit()
+// ราคาต่อรายการ: ทั้งชุดใช้ค่าเช่าของตัวที่จะได้ / แยกชิ้นใช้ผลรวมราคาชิ้น + ค่าวันเพิ่ม
+// ค่าเช่าทั้งชุดและมัดจำขึ้นกับชุดจริงตัวที่จะได้ (Step 25) → ส่ง quote จาก quoteLines() มา
+//   ไม่มี (ยังโหลดไม่เสร็จ/ยังไม่ได้รัน SQL) = ใช้ราคาและมัดจำเริ่มต้นของไซส์ (แยกชิ้นใช้มัดจำของไซส์เป็นเพดาน)
+// มัดจำไม่ขึ้นตามจำนวนวัน
 // รองเท้าที่มากับชุด: ทั้งชุดไม่ส่ง shoeVariantId = ไม่รับรองเท้า หักราคาชิ้นรองเท้า (มัดจำเท่าเดิม)
 export function priceLine(
   variant: VariantSummary,
@@ -79,20 +80,21 @@ export function priceLine(
   rentalDays: number,
   settings: BookingSettings,
   shoeVariantId?: string,
-  quotedDeposit?: number | null,
+  quote?: LineQuote | null,
 ): LinePrice {
   const shoePiece = Object.values(pieces).find((p) => p.productId === variant.productId && p.isShoe)
 
   if (!pieceIds || pieceIds.length === 0) {
-    const shoeDiscount = shoePiece && !shoeVariantId ? Math.min(shoePiece.price ?? 0, variant.packagePrice) : 0
-    const p = calcRentalPrice({ baseRental: variant.packagePrice - shoeDiscount, rentalDays, isPieces: false, settings })
+    const setPrice = quote?.price ?? variant.packagePrice
+    const shoeDiscount = shoePiece && !shoeVariantId ? Math.min(shoePiece.price ?? 0, setPrice) : 0
+    const p = calcRentalPrice({ baseRental: setPrice - shoeDiscount, rentalDays, isPieces: false, settings })
     return {
       rental: p.rentalPrice,
       baseRental: p.baseRental,
       dayRate: p.dayRate,
       extraFee: p.extraFee,
       rentalDays,
-      deposit: quotedDeposit ?? variant.depositAmount,
+      deposit: quote?.deposit ?? variant.depositAmount,
       laundry: variant.laundryFee,
       pieceNames: null,
       shoeDiscount,
@@ -115,7 +117,7 @@ export function priceLine(
     dayRate: p.dayRate,
     extraFee: p.extraFee,
     rentalDays,
-    deposit: quotedDeposit ?? pieceDeposit(variant.depositAmount, variant.packagePrice, base),
+    deposit: quote?.deposit ?? variant.depositAmount,
     laundry: valid.reduce((sum, p) => sum + p.laundryFee, 0),
     pieceNames: valid.map((p) => p.name),
     shoeDiscount: 0,

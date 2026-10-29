@@ -13,12 +13,14 @@ import {
   PencilSimpleIcon,
   PlusIcon,
   ReceiptIcon,
+  ShieldCheckIcon,
   SignOutIcon,
   TrashIcon,
   type Icon,
 } from '@phosphor-icons/react'
 import { createClient } from '@/utils/client'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
+import IdCardForm from '@/app/components/customer/IdCardForm'
 import {
   AVATAR_MAX_SIZE,
   BANKS,
@@ -58,7 +60,7 @@ const primaryButtonClass =
 const secondaryButtonClass =
   'lift focus-ring rounded-full border border-line bg-white text-base font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40'
 
-type Section = 'profile' | 'address' | 'bank'
+type Section = 'profile' | 'address' | 'bank' | 'identity'
 
 const SECTIONS: { key: Section; label: string; title: string; subtitle: string; icon: Icon }[] = [
   {
@@ -81,6 +83,13 @@ const SECTIONS: { key: Section; label: string; title: string; subtitle: string; 
     title: 'บัญชีธนาคารของฉัน',
     subtitle: 'ใช้รับเงินมัดจำคืน และเงินคืนกรณีร้านยกเลิกออเดอร์ บัญชีค่าเริ่มต้นจะถูกเติมให้ตอนจอง',
     icon: BankIcon,
+  },
+  {
+    key: 'identity',
+    label: 'ยืนยันตัวตน',
+    title: 'รูปบัตรประชาชน',
+    subtitle: 'ขอครั้งเดียวก่อนเช่าครั้งแรก ส่งไว้ล่วงหน้าได้ ร้านตรวจเสร็จแล้วตอนจองจ่ายเงินได้ทันที',
+    icon: ShieldCheckIcon,
   },
 ]
 
@@ -403,7 +412,7 @@ export default function AccountPage() {
                 <h2 className="text-2xl font-bold text-[#263544]">{headerTitle}</h2>
                 {!editing && <p className="mt-1 text-base text-[#263544]/60">{current.subtitle}</p>}
               </div>
-              {!editing && section !== 'profile' && (
+              {!editing && (section === 'address' || section === 'bank') && (
                 <button
                   type="button"
                   onClick={() => (section === 'address' ? openAddress(null) : openBank(null))}
@@ -626,6 +635,8 @@ export default function AccountPage() {
               ))}
 
             {/* ---------- บัญชีธนาคาร ---------- */}
+            {section === 'identity' && <IdCardForm context="account" />}
+
             {section === 'bank' &&
               (editing?.kind === 'bank' ? (
                 <div className="space-y-5">

@@ -30,10 +30,6 @@ type Props = {
   onVariantsChange: (variants: ProductVariant[]) => void
   items: ProductItem[]
   onItemsChange: (items: ProductItem[]) => void
-  // ต้นทุนอยู่ในเทียร์ / มีมัดจำกำหนดเอง (Step 21) → ไม่ต้องกรอกมัดจำรายไซส์
-  autoDeposit?: boolean
-  // ค่าเช่าแนะนำจากต้นทุน เติมให้ไซส์ที่เพิ่งเลือก
-  suggestedPrice?: number | null
 }
 
 const SYSTEM_OPTIONS = [
@@ -134,8 +130,9 @@ function nextItemCode(skuPrefix: string, size: string, existingCodes: string[]) 
   return `${prefix}${String(next).padStart(2, '0')}`
 }
 
-// เลือกไซส์แบบกดชิป (เหมือนตัวอย่างดีไซน์) แล้วค่อยกรอกราคา/มัดจำ/จำนวนของแต่ละไซส์ที่เลือก
-// ฟิลด์หลัก (ราคา มัดจำ จำนวน) เห็นตลอด ไม่ซ่อน — ส่วนที่ซ่อนมีแค่รายละเอียดปลีกย่อยจริง ๆ
+// เลือกไซส์แบบกดชิป (เหมือนตัวอย่างดีไซน์) แล้วค่อยกรอกจำนวนของแต่ละไซส์ที่เลือก
+// ค่าเช่า/มัดจำตั้งครั้งเดียวในการ์ด "ต้นทุน ค่าเช่า และมัดจำ" ใช้กับทุกไซส์ (Step 25)
+// ฟิลด์หลัก (จำนวน) เห็นตลอด ไม่ซ่อน — ส่วนที่ซ่อนมีแค่รายละเอียดปลีกย่อยจริง ๆ
 // (จำนวนวัน/ค่าซัก/ตารางไซส์) กับรหัสชุดรายตัวที่ระบบตั้งให้อัตโนมัติอยู่แล้ว
 export default function SizesStockCard({
   skuPrefix,
@@ -145,8 +142,6 @@ export default function SizesStockCard({
   onVariantsChange,
   items,
   onItemsChange,
-  autoDeposit = false,
-  suggestedPrice = null,
 }: Props) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [showCodes, setShowCodes] = useState<Record<string, boolean>>({})
@@ -174,7 +169,7 @@ export default function SizesStockCard({
   function changeSizeSystem(next: SizeSystem) {
     if (next === sizeSystem) return
     if (variants.length > 0) {
-      const ok = window.confirm('เปลี่ยนประเภทไซส์จะล้างไซส์ ราคา และจำนวนชุดที่กรอกไว้ทั้งหมด ต้องการเปลี่ยนไหม')
+      const ok = window.confirm('เปลี่ยนประเภทไซส์จะล้างไซส์และจำนวนชุดที่กรอกไว้ทั้งหมด ต้องการเปลี่ยนไหม')
       if (!ok) return
       onVariantsChange([])
       onItemsChange([])
@@ -194,7 +189,6 @@ export default function SizesStockCard({
     } else {
       // เติมสัดส่วนจากไซส์มาตรฐานของร้านให้ทันที แอดมินแก้ต่อได้
       const variant = { ...emptyVariant(size), ...(defaultFor(size) ?? {}) }
-      if (suggestedPrice != null) variant.packagePrice = String(suggestedPrice)
       onVariantsChange([...variants, variant])
       // ไซส์ที่เพิ่งเลือกเริ่มที่ 1 ตัวเสมอ
       const itemCode = nextItemCode(skuPrefix, size, items.map((i) => i.itemCode))
@@ -235,8 +229,8 @@ export default function SizesStockCard({
 
   return (
     <SectionCard
-      title="ไซส์ ราคา และสต็อก"
-      subtitle="กดเลือกไซส์ที่มีชุดนี้ ระบบเติมสัดส่วนจากไซส์มาตรฐานของร้านให้ แล้วกรอกราคา มัดจำ และจำนวน"
+      title="ไซส์และสต็อก"
+      subtitle="กดเลือกไซส์ที่มีชุดนี้ ระบบเติมสัดส่วนจากไซส์มาตรฐานของร้านให้ แล้วกรอกจำนวน (ค่าเช่าเท่ากันทุกไซส์)"
       action={
         totalItems > 0 ? (
           <span className="whitespace-nowrap rounded-full bg-[#FCE7EF] px-4 py-1 text-sm font-semibold text-[#E5457F]">
@@ -295,7 +289,7 @@ export default function SizesStockCard({
 
         {variants.length === 0 && (
           <p className="rounded-xl bg-gray-50 px-4 py-6 text-center text-sm text-gray-400">
-            ยังไม่ได้เลือกไซส์ กดชิปไซส์ด้านบนเพื่อเริ่มตั้งราคา
+            ยังไม่ได้เลือกไซส์ กดชิปไซส์ด้านบนเพื่อเริ่มใส่จำนวนชุด
           </p>
         )}
 
@@ -331,35 +325,6 @@ export default function SizesStockCard({
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <FormField
-                    id={`price-${variant.id}`}
-                    label="ราคาเช่า 1 วัน (บาท)"
-                    type="number"
-                    min="0"
-                    step="1"
-                    required
-                    value={variant.packagePrice}
-                    onChange={(e) => updateVariant(variant.id, { packagePrice: e.target.value })}
-                  />
-                  {autoDeposit ? (
-                    <div className="space-y-1.5">
-                      <p className="block text-sm font-medium text-gray-700">มัดจำ (บาท)</p>
-                      <p className="rounded-xl border border-dashed border-gray-300 bg-[#FAFAFB] px-4 py-2.5 text-sm text-gray-500">
-                        อัตโนมัติตามรอบ
-                      </p>
-                    </div>
-                  ) : (
-                    <FormField
-                      id={`deposit-${variant.id}`}
-                      label="มัดจำ (บาท)"
-                      type="number"
-                      min="0"
-                      step="1"
-                      required
-                      value={variant.depositAmount}
-                      onChange={(e) => updateVariant(variant.id, { depositAmount: e.target.value })}
-                    />
-                  )}
                   <FormField
                     id={`qty-${variant.id}`}
                     label="จำนวนชุดที่มี (ตัว)"

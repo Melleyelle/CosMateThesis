@@ -67,10 +67,14 @@ export function StatusBadge({ tone, children }: { tone: Tone; children: ReactNod
 }
 
 // ตัวเลขสรุปแบบเรียง 1 แถวในแผงเดียว คั่นด้วยเส้นตั้ง (ไม่ใช่การ์ดแยกเหมือนกันหมด)
-export function MetricStrip({ children }: { children: ReactNode }) {
+export function MetricStrip({ children, cols = 4 }: { children: ReactNode; cols?: 4 | 5 }) {
   return (
     // gap-px บนพื้นเทา = เส้นคั่นบาง 1px ระหว่างช่อง ทั้งแนวตั้งและแนวนอน (ไม่ต้องคำนวณ border ทีละช่อง)
-    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-[#E4E3EA] bg-[#EEEDF2] lg:grid-cols-4 [&>*]:bg-white">
+    <div
+      className={`grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-[#E4E3EA] bg-[#EEEDF2] ${
+        cols === 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'
+      } [&>*]:bg-white`}
+    >
       {children}
     </div>
   )

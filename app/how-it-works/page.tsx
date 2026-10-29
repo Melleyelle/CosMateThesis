@@ -115,7 +115,8 @@ function buildPhases(s: BookingSettings): Phase[] {
           tip: (
             <>
               ชุดถูกกันไว้ให้คุณตั้งแต่กดสร้างออเดอร์ ถ้าไม่จ่ายภายใน {PENDING_EXPIRE_MINUTES} นาที
-              ออเดอร์จะหมดอายุและชุดกลับไปให้คนอื่นจองได้
+              ออเดอร์จะหมดอายุและชุดกลับไปให้คนอื่นจองได้ · เช่าครั้งแรกส่งรูปบัตรประชาชนตอนจอง
+              ร้านตรวจภายใน 24 ชม. แล้วส่งอีเมลให้จ่าย (มีเวลาจ่าย 24 ชม.) ส่งรูปไว้ก่อนในหน้าบัญชีของฉันก็ได้
             </>
           ),
         },
@@ -331,7 +332,7 @@ export default function HowItWorksPage() {
               อ่านหน้านี้จบ แล้วจองเองได้เลย
             </h1>
             <p className="mt-4 max-w-[34em] text-body text-secondary">
-              สมัครด้วย<b className="font-semibold text-brand">อีเมลอย่างเดียว</b> ไม่ต้องใช้บัตรประชาชน
+              สมัครด้วย<b className="font-semibold text-brand">อีเมลอย่างเดียว</b> ส่งรูปบัตรประชาชนครั้งเดียวตอนเช่าครั้งแรก
               เลือกจำนวนวันและวันที่จะใส่ชุด จ่ายเงิน แล้วรอรับชุดที่บ้าน
               {settings.pickupLocation && <> หรือมารับเองที่ร้าน</>} ด้านล่างคือทุกเรื่องที่ควรรู้ก่อนจ่าย
               ทั้งเงินมัดจำ วันส่งคืน และเงื่อนไขยกเลิก
@@ -445,8 +446,8 @@ export default function HowItWorksPage() {
               <ReceiptRow label="ค่าซักทำความสะอาด" value="บางชุด" />
               <ReceiptRow
                 label="เงินมัดจำ"
-                value="ตามชุด · ได้คืน"
-                note="ไม่เพิ่มตามจำนวนวันเช่า ดูยอดมัดจำของแต่ละชุดในหน้ารายละเอียดชุด"
+                value="ตามค่าเช่า · ได้คืน"
+                note="ไม่เพิ่มตามจำนวนวันเช่า ชุดตัวที่ใหม่กว่าค่าเช่าและมัดจำสูงกว่า ดูยอดของแต่ละชุดในหน้ารายละเอียดชุด"
               />
               <ReceiptRow
                 label="ค่าจัดส่ง"
@@ -470,10 +471,14 @@ export default function HowItWorksPage() {
           <aside className="mt-12 rounded-card border border-brand-soft bg-brand-subtle p-5 sm:p-6 lg:col-span-5 lg:mt-0 lg:self-start">
             <h2 className="text-h2 font-bold">ต้องเตรียมอะไรบ้าง</h2>
             <p className="mt-1 text-body text-secondary">
-              <b className="font-semibold text-brand">ไม่ต้องใช้บัตรประชาชน</b> หรือสำเนาเอกสารใด ๆ แค่มีสี่อย่างนี้
+              สมัครไม่ต้องใช้เอกสาร <b className="font-semibold text-brand">บัตรประชาชนขอครั้งเดียว</b>ตอนเช่าครั้งแรก
             </p>
             <ul className="mt-4 divide-y divide-brand-soft border-t border-brand-soft">
               <Need title="อีเมล" text="ใช้สมัครสมาชิก" />
+              <Need
+                title="รูปบัตรประชาชน"
+                text={'เช่าครั้งแรกเท่านั้น เขียนกำกับว่า "ใช้สำหรับเช่าชุดร้าน CosMate เท่านั้น" พร้อมวันที่ ร้านเก็บแค่รูป ไม่เก็บเลขบัตร'}
+              />
               <Need
                 title="ที่อยู่รับชุด"
                 text={settings.pickupLocation ? 'กรอกตอนจ่ายเงิน (รับที่ร้านใช้แค่ชื่อและเบอร์โทร)' : 'กรอกตอนจ่ายเงิน'}

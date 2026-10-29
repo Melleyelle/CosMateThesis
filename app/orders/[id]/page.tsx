@@ -10,6 +10,7 @@ import {
   ArrowUUpLeftIcon,
   CheckIcon,
   HourglassIcon,
+  IdentificationCardIcon,
   ImageIcon,
   MagnifyingGlassIcon,
   PackageIcon,
@@ -118,7 +119,10 @@ export default function OrderPage() {
         setSlip(null)
       }
     } else {
-      const { error } = await supabase.rpc('cancel_my_order', { p_order_id: order.id })
+      // รอตรวจบัตร (Step 25) ใช้ฟังก์ชันยกเลิกของตัวเอง
+      const { error } = await supabase.rpc(order.status === 'awaiting_id' ? 'cancel_my_awaiting_order' : 'cancel_my_order', {
+        p_order_id: order.id,
+      })
       if (error) setActionError(translateRpcError(error.message))
     }
 
@@ -191,8 +195,8 @@ export default function OrderPage() {
               </p>
               <p className="mt-0.5">
                 {order.status === 'expired'
-                  ? 'ไม่ได้ชำระเงินภายในเวลาที่กำหนด'
-                  : order.cancelReason ?? 'ชุดถูกปล่อยให้คนอื่นจองได้ตามปกติ'}
+                  ? (order.cancelReason ?? 'ไม่ได้ชำระเงินภายในเวลาที่กำหนด')
+                  : (order.cancelReason ?? 'ชุดถูกปล่อยให้คนอื่นจองได้ตามปกติ')}
               </p>
             </div>
           </div>
@@ -261,6 +265,48 @@ export default function OrderPage() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">
+          {/* รอร้านตรวจบัตร (เช่าครั้งแรก · Step 25) — ชุดถูกกันไว้ ยังจ่ายไม่ได้ */}
+          {order.status === 'awaiting_id' && (
+            <section className="rounded-card border border-line bg-white p-6">
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <IdentificationCardIcon size={26} weight="fill" className="mt-0.5 flex-shrink-0 text-[#E5457F]" />
+                  <div>
+                    <h2 className="text-lg font-bold text-[#263544]">ร้านกำลังตรวจบัตรประชาชนของคุณ</h2>
+                    <p className="text-base text-[#263544]/60">ชุดถูกกันไว้ให้แล้ว ยังไม่ต้องจ่ายตอนนี้</p>
+                  </div>
+                </div>
+                <Countdown orderId={order.id} column="id_review_expires_at" label="ร้านตรวจภายใน" onExpire={load} />
+              </div>
+              <ul className="list-disc space-y-1 pl-5 text-base text-[#263544]/80">
+                <li>อนุมัติแล้ว ร้านส่งอีเมลแจ้งให้ชำระเงิน มีเวลาจ่าย 24 ชม. (ไม่เกินก่อนวันส่งชุด) จ่ายที่หน้านี้</li>
+                <li>ไม่อนุมัติ ออเดอร์จะถูกยกเลิก ส่งรูปใหม่ในหน้าบัญชีของฉันแล้วจองใหม่ได้</li>
+                <li>ร้านตรวจไม่ทันเวลา ออเดอร์หมดอายุเอง ไม่มีค่าใช้จ่าย</li>
+              </ul>
+              {actionError && (
+                <p role="alert" className="mt-4 rounded-xl bg-red-50 px-4 py-2.5 text-base text-red-600">
+                  {actionError}
+                </p>
+              )}
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link
+                  href="/account"
+                  className="lift focus-ring rounded-full border border-line bg-white px-5 py-3 text-base font-semibold text-ink"
+                >
+                  ดูสถานะบัตรในบัญชีของฉัน
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => runAction('cancel')}
+                  disabled={acting !== null}
+                  className="min-h-[44px] px-3 text-base font-semibold text-red-600 hover:underline disabled:opacity-40"
+                >
+                  {acting === 'cancel' ? 'กำลังยกเลิก...' : 'ยกเลิกออเดอร์'}
+                </button>
+              </div>
+            </section>
+          )}
+
           {/* การชำระเงิน */}
           {order.status === 'pending_payment' && (
             <section className="rounded-card border border-line bg-white p-6">
@@ -269,7 +315,7 @@ export default function OrderPage() {
                   <h2 className="text-lg font-bold text-[#263544]">ชำระเงิน</h2>
                   <p className="text-base text-[#263544]/60">สแกน QR เพื่อโอนยอดด้านล่าง แล้วแนบสลิปเพื่อยืนยันการจอง</p>
                 </div>
-                <PaymentCountdown orderId={order.id} onExpire={load} />
+                <Countdown orderId={order.id} column="payment_expires_at" label="ชำระภายใน" onExpire={load} />
               </div>
 
               <PaymentQr orderId={order.id} amount={order.grandTotal} />
@@ -863,9 +909,20 @@ function PriceRow({ label, value }: { label: string; value: number }) {
   )
 }
 
-// นับถอยหลังเวลาชำระ อ่าน payment_expires_at (Step 16) แยกเอง ไม่ต้องแก้ fetchOrder
+// นับถอยหลัง อ่านเส้นตายแยกเอง ไม่ต้องแก้ fetchOrder
+//   payment_expires_at (Step 16) = เวลาชำระ · id_review_expires_at (Step 25) = ร้านต้องตรวจบัตรให้เสร็จ
 // ชุดถูกกันไว้ให้ระหว่างนี้ เลยเวลาแล้ว pg_cron จะเปลี่ยนเป็น expired และปลดล็อกชุด
-function PaymentCountdown({ orderId, onExpire }: { orderId: string; onExpire: () => void }) {
+function Countdown({
+  orderId,
+  column,
+  label,
+  onExpire,
+}: {
+  orderId: string
+  column: 'payment_expires_at' | 'id_review_expires_at'
+  label: string
+  onExpire: () => void
+}) {
   const [deadline, setDeadline] = useState<number | null>(null)
   const [now, setNow] = useState(() => Date.now())
 
@@ -874,13 +931,14 @@ function PaymentCountdown({ orderId, onExpire }: { orderId: string; onExpire: ()
     if (!supabase) return
     supabase
       .from('orders')
-      .select('payment_expires_at')
+      .select(column)
       .eq('id', orderId)
       .maybeSingle()
       .then(({ data }) => {
-        if (data?.payment_expires_at) setDeadline(new Date(data.payment_expires_at).getTime())
+        const at = (data as Record<string, string | null> | null)?.[column]
+        if (at) setDeadline(new Date(at).getTime())
       })
-  }, [orderId])
+  }, [orderId, column])
 
   useEffect(() => {
     if (deadline === null) return
@@ -897,7 +955,9 @@ function PaymentCountdown({ orderId, onExpire }: { orderId: string; onExpire: ()
 
   if (left === null) return null
 
-  const mm = String(Math.floor(left / 60000)).padStart(2, '0')
+  // เวลาชำระหลังตรวจบัตรยาวได้ถึง 24 ชม. → เกินชั่วโมงแสดง ชม.:นาที:วินาที
+  const hh = Math.floor(left / 3_600_000)
+  const mm = String(Math.floor((left % 3_600_000) / 60000)).padStart(2, '0')
   const ss = String(Math.floor((left % 60000) / 1000)).padStart(2, '0')
 
   return (
@@ -913,9 +973,9 @@ function PaymentCountdown({ orderId, onExpire }: { orderId: string; onExpire: ()
       }`}
     >
       <HourglassIcon size={18} />
-      {expired ? 'หมดเวลาชำระแล้ว' : (
+      {expired ? 'หมดเวลาแล้ว' : (
         <span>
-          ชำระภายใน <span className="font-mono tabular-nums">{mm}:{ss}</span>
+          {label} <span className="font-mono tabular-nums">{hh > 0 ? `${hh}:${mm}:${ss}` : `${mm}:${ss}`}</span>
         </span>
       )}
     </div>
