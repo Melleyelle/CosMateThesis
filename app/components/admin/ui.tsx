@@ -126,7 +126,7 @@ export const primaryButtonClass =
 export const secondaryButtonClass =
   'lift focus-ring inline-flex items-center gap-2 rounded-full border border-ink bg-white px-4 py-2 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-40'
 
-// แท็บกรองแบบเรียบ: เลือกอยู่ = กรมท่าทึบ
+// แท็บกรองแบบเรียบ: เลือกอยู่ = ชมพูแบรนด์ทึบ (เหมือน Segmented)
 export function FilterTabs<T extends string>({
   tabs,
   value,
@@ -151,7 +151,7 @@ export function FilterTabs<T extends string>({
             aria-selected={active}
             onClick={() => onChange(t.value)}
             className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
-              active ? 'bg-[#263544] text-white' : 'text-[#5B6472] hover:bg-white hover:text-[#263544]'
+              active ? 'bg-[#E5457F] text-white' : 'text-[#5B6472] hover:bg-[#FDEEF3] hover:text-[#263544]'
             }`}
           >
             {t.label}

@@ -1,6 +1,8 @@
 // ช่องกรอกและ select ที่ใช้ร่วมกันทุกสเตป หน้าตาเดียวกับ AuthField แต่แยกไฟล์
 // เพราะฟอร์มนี้อยู่คนละโฟลเดอร์ (admin) และมีปุ่ม/label หลายแบบกว่าฟอร์ม auth
 
+import DateInput from '../../DateInput'
+
 // error: ข้อความใต้ช่อง + กรอบแดง + aria-invalid · hint: คำอธิบายใต้ช่อง (ซ่อนเมื่อมี error) — ไม่ส่ง = หน้าตาเดิม
 type Feedback = { error?: string | null; hint?: React.ReactNode }
 
@@ -39,7 +41,35 @@ export function FormField({ label, id, error, hint, ...inputProps }: FieldProps)
   )
 }
 
-type TextAreaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement> & Feedback & {
+// ช่องวันที่แบบ วัน/เดือน/ปี — value/onChange เป็น 'YYYY-MM-DD'
+type DateFieldProps = Feedback & {
+  label: string
+  id: string
+  value: string
+  onChange: (iso: string) => void
+  min?: string
+  max?: string
+}
+
+export function FormDateField({ label, id, error, hint, ...dateProps }: DateFieldProps) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="block text-sm font-medium text-gray-700">
+        {label}
+      </label>
+      <DateInput
+        id={id}
+        invalid={!!error}
+        aria-describedby={error || hint ? `${id}-feedback` : undefined}
+        {...dateProps}
+        className={controlClass(!!error)}
+      />
+      <FieldFeedback id={id} error={error} hint={hint} />
+    </div>
+  )
+}
+
+type TextAreaProps =React.TextareaHTMLAttributes<HTMLTextAreaElement> & Feedback & {
   label: string
 }
 

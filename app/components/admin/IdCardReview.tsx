@@ -5,6 +5,7 @@
 // อนุมัติ = ออเดอร์ที่รอตรวจบัตรทุกใบของลูกค้าคนนี้ไปรอชำระ · ไม่อนุมัติ = ยกเลิกออเดอร์เหล่านั้นและลบรูป
 
 import { useEffect, useState, type ReactNode } from 'react'
+import { MagnifyingGlassPlusIcon } from '@phosphor-icons/react'
 import { StatusBadge, primaryButtonClass, secondaryButtonClass } from '@/app/components/admin/ui'
 import { createClient } from '@/utils/client'
 import { translateRpcError } from '@/utils/bookingErrors'
@@ -26,19 +27,29 @@ const REJECT_REASONS = [
   'ไม่ใช่บัตรประชาชน หรือบัตรหมดอายุ',
 ]
 
+// ข้อที่ต้องดูก่อนอนุมัติ — ติ๊กครบก่อนถึงกดอนุมัติได้ กันกดผ่านโดยไม่ได้ดูรูป
+const CHECKS = [
+  'เห็นรูปหน้าและชื่อชัด ชื่อตรงกับผู้จอง',
+  `มีข้อความ “${ID_CARD_WATERMARK}” พร้อมวันที่`,
+  'เป็นบัตรประชาชนที่ยังไม่หมดอายุ',
+]
+
 type Card = { status: IdCardStatus; submittedAt: string | null; filePath: string | null; rejectReason: string | null }
 
 type Props = {
   userId: string
+  // ชื่อที่ใช้จอง ไว้เทียบกับชื่อบนบัตร
+  bookerName?: string | null
   // ข้อความเพิ่มเหนือปุ่ม เช่น เส้นตายของออเดอร์
   note?: ReactNode
   onDone: (message: string) => void
 }
 
-export default function IdCardReview({ userId, note, onDone }: Props) {
+export default function IdCardReview({ userId, bookerName, note, onDone }: Props) {
   const [card, setCard] = useState<Card | null>(null)
   const [url, setUrl] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [checked, setChecked] = useState<boolean[]>(() => CHECKS.map(() => false))
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
@@ -98,14 +109,19 @@ export default function IdCardReview({ userId, note, onDone }: Props) {
   if (!card) return <div className="m-5 h-40 animate-pulse rounded-xl bg-[#F3F4F6]" />
 
   const badge = ID_STATUS_BADGE[card.status]
+  const left = checked.filter((c) => !c).length
 
   return (
     <>
       <div className="flex flex-wrap gap-5 p-5">
-        <div className="w-[280px] max-w-full flex-none">
+        <div className="w-[360px] max-w-full flex-none">
           {url ? (
-            <a href={url} target="_blank" rel="noreferrer" title="เปิดรูปเต็ม">
+            <a href={url} target="_blank" rel="noreferrer" title="เปิดรูปเต็ม" className="group relative block">
               <img src={url} alt="รูปบัตรประชาชน" className="aspect-[3/2] w-full rounded-xl border border-[#E4E3EA] bg-[#F3F4F6] object-contain" />
+              <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-xs font-medium text-white transition group-hover:bg-black/75">
+                <MagnifyingGlassPlusIcon size={14} weight="bold" />
+                เปิดรูปเต็ม
+              </span>
             </a>
           ) : (
             <div className="flex aspect-[3/2] items-center justify-center rounded-xl border border-dashed border-[#D5D9E0] p-4 text-center text-sm text-[#6B7280]">
@@ -118,12 +134,27 @@ export default function IdCardReview({ userId, note, onDone }: Props) {
             <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
             {card.submittedAt && <span className="text-[#6B7280]">ส่งเมื่อ {formatDateTime(card.submittedAt)}</span>}
           </p>
+          {bookerName && (
+            <p className="rounded-lg bg-[#F5F4F8] px-3 py-2">
+              <span className="text-[#6B7280]">ชื่อที่ต้องตรงกับบัตร</span> <b className="text-base">{bookerName}</b>
+            </p>
+          )}
           <p className="font-semibold">ตรวจก่อนอนุมัติ</p>
-          <ul className="list-disc space-y-0.5 pl-5 text-[#5B6472]">
-            <li>เห็นรูปหน้าและชื่อชัด ชื่อตรงกับผู้จอง</li>
-            <li>มีข้อความ “{ID_CARD_WATERMARK}” พร้อมวันที่</li>
-            <li>ไม่ต้องจดเลขบัตร ระบบเก็บแค่รูป</li>
-          </ul>
+          <div className="flex flex-col gap-1.5">
+            {CHECKS.map((c, i) => (
+              <label key={c} className="flex min-h-[40px] cursor-pointer items-center gap-3 rounded-lg border border-[#E4E3EA] px-3 hover:border-[#9AA3AF]">
+                <input
+                  type="checkbox"
+                  checked={checked[i]}
+                  disabled={card.status !== 'pending'}
+                  onChange={() => setChecked((prev) => prev.map((v, j) => (j === i ? !v : v)))}
+                  className="h-[18px] w-[18px] accent-[#E5457F]"
+                />
+                <span>{c}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-[#6B7280]">ไม่ต้องจดเลขบัตร ระบบเก็บแค่รูป</p>
           {card.status === 'rejected' && card.rejectReason && (
             <p className="text-[#B42318]">ไม่อนุมัติครั้งก่อน: {card.rejectReason}</p>
           )}
@@ -158,6 +189,7 @@ export default function IdCardReview({ userId, note, onDone }: Props) {
       </div>
       {card.status === 'pending' && (
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-[#EEEDF2] bg-[#FAFAFC] px-5 py-3">
+          {!rejecting && left > 0 && <p className="mr-auto text-sm text-[#5B6472]">ติ๊กอีก {left} ข้อ ถึงกดอนุมัติได้</p>}
           {rejecting ? (
             <>
               <button type="button" onClick={() => setRejecting(false)} disabled={saving} className={secondaryButtonClass}>
@@ -177,7 +209,7 @@ export default function IdCardReview({ userId, note, onDone }: Props) {
               <button type="button" onClick={() => setRejecting(true)} disabled={saving} className={secondaryButtonClass}>
                 ไม่อนุมัติ
               </button>
-              <button type="button" onClick={() => decide(true)} disabled={saving || !url} className={primaryButtonClass}>
+              <button type="button" onClick={() => decide(true)} disabled={saving || !url || left > 0} className={primaryButtonClass}>
                 {saving ? 'กำลังบันทึก…' : 'อนุมัติบัตร'}
               </button>
             </>

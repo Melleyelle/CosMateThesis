@@ -15,10 +15,11 @@ import {
   primaryButtonClass,
   StatusBadge,
 } from '@/app/components/admin/ui'
+import DateRangeFilter, { type DatePreset, type DateRange } from '@/app/components/admin/inventory/DateRangeFilter'
 import { formatEventRange } from '@/app/components/customer/events/EventTile'
 import { fetchAllEventsForAdmin, setEventPublished } from '@/utils/admin/events'
 import { EVENT_TONE, isEventPast, type CosEvent } from '@/utils/customer/events'
-import { todayISO } from '@/utils/dateUtils'
+import { addDays, todayISO, toISODate } from '@/utils/dateUtils'
 
 const TABS = [
   { value: 'upcoming', label: 'กำลังจะมาถึง' },
@@ -28,6 +29,24 @@ const TABS = [
 ] as const
 type Tab = (typeof TABS)[number]['value']
 
+// งานส่วนใหญ่อยู่ข้างหน้า → ช่วงลัดมองไปข้างหน้า (ไม่ใช่ย้อนหลังแบบหน้าอื่น)
+function monthRange(offset: number): DateRange {
+  const now = new Date()
+  return {
+    from: toISODate(new Date(now.getFullYear(), now.getMonth() + offset, 1)),
+    to: toISODate(new Date(now.getFullYear(), now.getMonth() + offset + 1, 0)),
+  }
+}
+const EVENT_PRESETS: DatePreset[] = [
+  { label: '7 วันข้างหน้า', range: () => ({ from: todayISO(), to: addDays(todayISO(), 6) }) },
+  { label: '30 วันข้างหน้า', range: () => ({ from: todayISO(), to: addDays(todayISO(), 29) }) },
+  { label: 'เดือนนี้', range: () => monthRange(0) },
+  { label: 'เดือนหน้า', range: () => monthRange(1) },
+]
+
+// งานหลายวัน: นับว่าอยู่ในช่วง ถ้ามีวันใดวันหนึ่งของงานคาบเกี่ยวกับช่วงที่เลือก
+const overlaps = (e: CosEvent, r: DateRange) => (!r.from || e.endDate >= r.from) && (!r.to || e.startDate <= r.to)
+
 // รายการงาน — เพิ่ม/แก้ไขเปิดเป็นหน้าแยก (/admin/events/new, /admin/events/[id]/edit) แบบเดียวกับคลังชุด
 export default function AdminEventsPage() {
   const [events, setEvents] = useState<CosEvent[]>([])
@@ -35,6 +54,7 @@ export default function AdminEventsPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('upcoming')
   const [search, setSearch] = useState('')
+  const [range, setRange] = useState<DateRange>({ from: '', to: '' })
 
   useEffect(() => {
     fetchAllEventsForAdmin().then(({ data, error }) => {
@@ -45,33 +65,46 @@ export default function AdminEventsPage() {
   }, [])
 
   const today = todayISO()
-  const counts = useMemo(
+  // ตัวเลขสรุปด้านบน = งานทั้งหมด (ไม่สนตัวกรอง)
+  const totals = useMemo(
     () => ({
       upcoming: events.filter((e) => e.isPublished && !isEventPast(e, today)).length,
       past: events.filter((e) => e.isPublished && isEventPast(e, today)).length,
       draft: events.filter((e) => !e.isPublished).length,
-      all: events.length,
     }),
     [events, today],
   )
+
+  // คำค้น + ช่วงวันที่ก่อน แล้วค่อยแยกแท็บ → ตัวเลขบนแท็บตรงกับรายการที่เห็น
+  const base = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return events.filter((e) => overlaps(e, range) && (!q || `${e.name} ${e.location}`.toLowerCase().includes(q)))
+  }, [events, search, range])
+  const counts = {
+    upcoming: base.filter((e) => e.isPublished && !isEventPast(e, today)).length,
+    past: base.filter((e) => e.isPublished && isEventPast(e, today)).length,
+    draft: base.filter((e) => !e.isPublished).length,
+    all: base.length,
+  }
+  const hasFilter = search.trim() !== '' || !!range.from || !!range.to
   const upcomingInterest = events
     .filter((e) => e.isPublished && !isEventPast(e, today))
     .reduce((sum, e) => sum + e.interestCount, 0)
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return events
-      .filter((e) => {
-        if (tab === 'upcoming' && (!e.isPublished || isEventPast(e, today))) return false
-        if (tab === 'past' && (!e.isPublished || !isEventPast(e, today))) return false
-        if (tab === 'draft' && e.isPublished) return false
-        if (q && !`${e.name} ${e.location}`.toLowerCase().includes(q)) return false
-        return true
-      })
-      .sort((a, b) =>
-        tab === 'upcoming' ? a.startDate.localeCompare(b.startDate) : b.startDate.localeCompare(a.startDate),
-      )
-  }, [events, tab, search, today])
+  const filtered = useMemo(
+    () =>
+      base
+        .filter((e) => {
+          if (tab === 'upcoming') return e.isPublished && !isEventPast(e, today)
+          if (tab === 'past') return e.isPublished && isEventPast(e, today)
+          if (tab === 'draft') return !e.isPublished
+          return true
+        })
+        .sort((a, b) =>
+          tab === 'upcoming' ? a.startDate.localeCompare(b.startDate) : b.startDate.localeCompare(a.startDate),
+        ),
+    [base, tab, today],
+  )
 
   async function togglePublish(ev: CosEvent) {
     const { error } = await setEventPublished(ev.id, !ev.isPublished)
@@ -94,10 +127,10 @@ export default function AdminEventsPage() {
         />
 
         <MetricStrip>
-          <Metric label="กำลังจะมาถึง" value={counts.upcoming} />
+          <Metric label="กำลังจะมาถึง" value={totals.upcoming} />
           <Metric label="คนสนใจงานที่กำลังจะมาถึง" value={upcomingInterest.toLocaleString('th-TH')} />
-          <Metric label="จบแล้ว" value={counts.past} />
-          <Metric label="ฉบับร่าง (ลูกค้ามองไม่เห็น)" value={counts.draft} />
+          <Metric label="จบแล้ว" value={totals.past} />
+          <Metric label="ฉบับร่าง (ลูกค้ามองไม่เห็น)" value={totals.draft} />
         </MetricStrip>
 
         {loadError && (
@@ -109,16 +142,19 @@ export default function AdminEventsPage() {
         <Panel className="mt-6" bodyClassName="">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EEEDF2] px-4 py-3">
             <FilterTabs tabs={TABS} value={tab} onChange={setTab} counts={counts} />
-            <label className="flex items-center gap-2 rounded-full border border-[#D5D9E0] bg-white px-3 py-1.5 focus-within:border-[#263544] focus-within:ring-2 focus-within:ring-[#263544]/10">
-              <MagnifyingGlassIcon size={16} className="text-[#6B7280]" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="ค้นชื่องาน/สถานที่"
-                aria-label="ค้นหางาน"
-                className="w-44 bg-transparent text-sm outline-none"
-              />
-            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <DateRangeFilter value={range} onChange={setRange} emptyLabel="ทุกวันที่จัดงาน" presets={EVENT_PRESETS} />
+              <label className="flex items-center gap-2 rounded-full border border-[#D5D9E0] bg-white px-3 py-2 focus-within:border-[#263544] focus-within:ring-2 focus-within:ring-[#263544]/10">
+                <MagnifyingGlassIcon size={16} className="text-[#6B7280]" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="ค้นชื่องาน/สถานที่"
+                  aria-label="ค้นหางาน"
+                  className="w-44 bg-transparent text-sm outline-none"
+                />
+              </label>
+            </div>
           </div>
 
           {loading ? (
@@ -128,7 +164,14 @@ export default function AdminEventsPage() {
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <EmptyState>{search ? 'ไม่พบงานที่ค้นหา' : 'ยังไม่มีงานในแท็บนี้'}</EmptyState>
+            <EmptyState>
+              {hasFilter ? 'ไม่พบงานตามคำค้นหรือช่วงวันที่ที่เลือก' : 'ยังไม่มีงานในแท็บนี้'}
+              {hasFilter && tab !== 'all' && counts.all > 0 && (
+                <button type="button" onClick={() => setTab('all')} className="ml-2 font-semibold text-[#C92D67] hover:underline">
+                  ดูในแท็บทั้งหมด ({counts.all})
+                </button>
+              )}
+            </EmptyState>
           ) : (
             <ul className="divide-y divide-[#EEEDF2]">
               {filtered.map((ev) => {

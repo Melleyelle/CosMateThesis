@@ -1,13 +1,15 @@
 'use client'
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useState } from 'react'
-import { MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { CaretRightIcon, MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { EmptyState, Metric, MetricStrip, PageHeader, Segmented, StatusBadge } from '../../components/admin/ui'
 import DateRangeFilter, { inDateRange, type DateRange } from '../../components/admin/inventory/DateRangeFilter'
 import { fetchMembers, type Member } from '@/utils/admin/fetchMembers'
 import IdCardReview, { ID_STATUS_BADGE } from '../../components/admin/IdCardReview'
+import MemberDrawer from '../../components/admin/members/MemberDrawer'
+import { createClient } from '@/utils/client'
 import { addDays, formatDateTime, todayISO } from '@/utils/dateUtils'
 import type { Tone } from '@/utils/admin/statusTone'
 
@@ -31,6 +33,9 @@ export default function AdminMembersPage() {
   // ตรวจรูปบัตรของสมาชิกที่ส่งไว้ล่วงหน้า (ออเดอร์ที่รอตรวจบัตรอยู่ในหน้าออเดอร์ด้วย)
   const [reviewing, setReviewing] = useState<Member | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // แผงรายละเอียด: เก็บ id ไว้ โหลดรายการใหม่แล้วแผงยังแสดงข้อมูลล่าสุดของคนเดิม
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [selfId, setSelfId] = useState<string | null>(null)
 
   function load() {
     return fetchMembers().then((res) => {
@@ -42,7 +47,18 @@ export default function AdminMembersPage() {
 
   useEffect(() => {
     load()
+    createClient()?.auth.getUser().then(({ data }) => setSelfId(data.user?.id ?? null))
   }, [])
+
+  const opened = members.find((m) => m.id === openId) ?? null
+  const nameOf = useCallback(
+    (id: string | null) => {
+      const m = id ? members.find((x) => x.id === id) : null
+      return m ? [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email || 'แอดมิน' : 'แอดมิน'
+    },
+    [members],
+  )
+  const closeDrawer = useCallback(() => setOpenId(null), [])
 
   const weekAgo = addDays(todayISO(), -6)
   const stats = useMemo(
@@ -91,7 +107,7 @@ export default function AdminMembersPage() {
   return (
     <AdminLayout>
       <div className="px-5 py-7 sm:px-8">
-        <PageHeader title="สมาชิก" description="ดูว่าใครสมัครใช้งานเข้ามาบ้าง และใครเริ่มเช่าแล้ว" />
+        <PageHeader title="สมาชิก" description="กดที่สมาชิกเพื่อดูประวัติการเช่า เขียนโน้ต หรือระงับ/แบล็กลิสต์บัญชี" />
 
         <div className="mb-6">
           <MetricStrip>
@@ -167,11 +183,11 @@ export default function AdminMembersPage() {
         )}
 
         {!loading && !loadError && (
-          <div className="overflow-x-auto rounded-2xl border border-[#E4E3EA] bg-white">
+          <div className="overflow-hidden rounded-2xl border border-[#E4E3EA] bg-white">
             {filtered.length === 0 ? (
               <EmptyState>{members.length === 0 ? 'ยังไม่มีสมาชิก' : 'ไม่พบสมาชิกตามเงื่อนไข'}</EmptyState>
             ) : (
-              <table className="w-full min-w-[940px] text-left text-sm">
+              <table className="w-full text-left text-sm">
                 <thead className="border-b border-[#EEEDF2] bg-[#FAFAFC] text-xs font-medium text-[#6B7280]">
                   <tr>
                     <th className="px-5 py-3 font-medium">สมาชิก</th>
@@ -188,9 +204,21 @@ export default function AdminMembersPage() {
                     const name = [m.firstName, m.lastName].filter(Boolean).join(' ')
                     const status = memberStatus(m)
                     return (
-                      <tr key={m.id} className="hover:bg-[#FCFCFD]">
+                      <tr
+                        key={m.id}
+                        onClick={() => setOpenId(m.id)}
+                        className={`cursor-pointer ${m.id === openId ? 'bg-[#FDEEF3]' : 'hover:bg-[#FCFCFD]'}`}
+                      >
                         <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setOpenId(m.id)
+                            }}
+                            aria-label={`ดูรายละเอียด ${name || m.email || 'สมาชิก'}`}
+                            className="flex max-w-[240px] items-center gap-3 rounded-lg text-left"
+                          >
                             {m.avatarUrl ? (
                               <img src={m.avatarUrl} alt="" className="h-9 w-9 flex-shrink-0 rounded-full object-cover" />
                             ) : (
@@ -202,7 +230,7 @@ export default function AdminMembersPage() {
                               <p className="truncate font-medium text-[#263544]">{name || 'ยังไม่ได้ตั้งชื่อ'}</p>
                               <p className="truncate text-xs text-[#6B7280]">{m.email ?? '—'}</p>
                             </div>
-                          </div>
+                          </button>
                         </td>
                         <td className="px-4 py-3.5 tabular-nums text-[#263544]">{m.phone || '—'}</td>
                         <td className="px-4 py-3.5 text-[#263544]">{formatDateTime(m.createdAt)}</td>
@@ -222,12 +250,13 @@ export default function AdminMembersPage() {
                           )}
                         </td>
                         <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 whitespace-nowrap">
                             <StatusBadge tone={ID_STATUS_BADGE[m.idStatus].tone}>{ID_STATUS_BADGE[m.idStatus].label}</StatusBadge>
                             {m.idStatus === 'pending' && (
                               <button
                                 type="button"
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation()
                                   setNotice(null)
                                   setReviewing(m)
                                 }}
@@ -239,7 +268,10 @@ export default function AdminMembersPage() {
                           </div>
                         </td>
                         <td className="px-5 py-3.5">
-                          <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+                          <span className="flex items-center justify-between gap-2 whitespace-nowrap">
+                            <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+                            <CaretRightIcon size={16} className="text-[#9AA3AF]" aria-hidden />
+                          </span>
                         </td>
                       </tr>
                     )
@@ -250,6 +282,23 @@ export default function AdminMembersPage() {
           </div>
         )}
       </div>
+
+      {opened && (
+        <MemberDrawer
+          member={opened}
+          isSelf={opened.id === selfId}
+          nameOf={nameOf}
+          onReviewId={() => {
+            setNotice(null)
+            setReviewing(opened)
+          }}
+          onChanged={(msg) => {
+            setNotice(msg)
+            load()
+          }}
+          onClose={closeDrawer}
+        />
+      )}
 
       {reviewing && (
         <div
@@ -270,6 +319,7 @@ export default function AdminMembersPage() {
             </div>
             <IdCardReview
               userId={reviewing.id}
+              bookerName={[reviewing.firstName, reviewing.lastName].filter(Boolean).join(' ') || null}
               onDone={(msg) => {
                 setReviewing(null)
                 setNotice(msg)

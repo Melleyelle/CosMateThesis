@@ -34,17 +34,27 @@ export function taskOf(order: OrderSummary, today: string): OrderTask {
   return 'view'
 }
 
+// เวลาที่เหลือให้ร้านตรวจบัตร (awaiting_id) · เหลือไม่ถึง 3 ชม. = แดง
+export function idReviewLeft(expiresAt: string | null, now = Date.now()): { text: string; tone: 'urgent' | 'late' } {
+  if (!expiresAt) return { text: 'ตรวจบัตร', tone: 'urgent' }
+  const mins = Math.floor((Date.parse(expiresAt) - now) / 60_000)
+  if (mins <= 0) return { text: 'เลยเวลาตรวจแล้ว', tone: 'late' }
+  const h = Math.floor(mins / 60)
+  return { text: h > 0 ? `เหลือ ${h} ชม. ${mins % 60} นาที` : `เหลือ ${mins} นาที`, tone: mins < 180 ? 'late' : 'urgent' }
+}
+
 // เส้นตายที่แอดมินควรเห็นในแถวรายการ
 export function dueOf(
   order: OrderSummary,
   s: BookingSettings,
   today: string,
+  now = Date.now(),
 ): { text: string; tone: 'urgent' | 'late' | 'normal'; sortKey: string } {
   const task = taskOf(order, today)
   if (task === 'refund') {
     return { text: `โอนคืน ฿${(order.refundAmount ?? 0).toLocaleString('th-TH')}`, tone: order.refundStatus === 'failed' ? 'late' : 'normal', sortKey: order.updatedAt }
   }
-  if (task === 'id') return { text: 'ตรวจบัตร', tone: 'urgent', sortKey: order.createdAt }
+  if (task === 'id') return { ...idReviewLeft(order.idReviewExpiresAt, now), sortKey: order.idReviewExpiresAt ?? order.createdAt }
   if (task === 'slip') return { text: 'ตรวจสลิป', tone: 'urgent', sortKey: order.createdAt }
   if (task === 'pack') {
     const pickup = order.deliveryMethod === 'pickup'

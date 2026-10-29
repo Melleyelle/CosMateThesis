@@ -8,6 +8,8 @@ import {
   ArrowLeftIcon,
   ArrowUUpLeftIcon,
   CaretDownIcon,
+  CaretLeftIcon,
+  CaretRightIcon,
   CheckCircleIcon,
   ImageIcon,
   MagnifyingGlassPlusIcon,
@@ -62,6 +64,24 @@ export default function CostumeDetailPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [settings, setSettings] = useState<BookingSettings>(DEFAULT_BOOKING_SETTINGS)
   const [activeImage, setActiveImage] = useState(0)
+  const thumbsRef = useRef<HTMLDivElement>(null)
+  const imageCount = detail?.images.length ?? 0
+  // ลูกศรบนรูปใหญ่: วนกลับหัว/ท้ายได้
+  const stepImage = useCallback(
+    (dir: 1 | -1) => setActiveImage((i) => (imageCount ? (i + dir + imageCount) % imageCount : 0)),
+    [imageCount],
+  )
+  // เลื่อนแถบรูปย่อให้เห็นรูปที่เลือกอยู่ (เลื่อนเฉพาะในแถบ ไม่เลื่อนทั้งหน้า)
+  useEffect(() => {
+    const strip = thumbsRef.current
+    const thumb = strip?.querySelector<HTMLElement>(`[data-thumb="${activeImage}"]`)
+    if (!strip || !thumb) return
+    strip.scrollTo({
+      top: thumb.offsetTop - strip.offsetTop - (strip.clientHeight - thumb.offsetHeight) / 2,
+      left: thumb.offsetLeft - strip.offsetLeft - (strip.clientWidth - thumb.offsetWidth) / 2,
+      behavior: 'smooth',
+    })
+  }, [activeImage])
 
   const [variantId, setVariantId] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -402,11 +422,12 @@ export default function CostumeDetailPage() {
         <div className="lg:sticky lg:top-28 lg:self-start">
           <div className="flex flex-col-reverse gap-3 lg:flex-row">
             {detail.images.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto pb-1 lg:max-h-[calc(100vh-9rem)] lg:flex-col lg:overflow-y-auto lg:overflow-x-visible lg:pb-0">
+              <div ref={thumbsRef} className="flex gap-2 overflow-x-auto pb-1 lg:max-h-[calc(100vh-9rem)] lg:flex-col lg:overflow-y-auto lg:overflow-x-visible lg:pb-0">
                 {detail.images.map((url, i) => (
                   <button
                     key={url + i}
                     type="button"
+                    data-thumb={i}
                     onClick={() => setActiveImage(i)}
                     aria-label={`รูปที่ ${i + 1}`}
                     className={`focus-ring h-20 w-16 flex-shrink-0 overflow-hidden rounded-xl border transition ${
@@ -419,13 +440,38 @@ export default function CostumeDetailPage() {
               </div>
             )}
             {/* สูงไม่เกินหน้าจอ เพื่อให้เห็นรูปทั้งรูปตอนติดอยู่ (ถ้าจอเตี้ยจะครอปบน-ล่างเล็กน้อย) */}
-            <div className="aspect-[3/4] w-full overflow-hidden rounded-3xl border border-line bg-[#FDE3EE] lg:max-h-[calc(100vh-9rem)]">
+            <div className="relative aspect-[3/4] w-full overflow-hidden rounded-3xl border border-line bg-[#FDE3EE] lg:max-h-[calc(100vh-9rem)]">
               {detail.images.length > 0 ? (
-                <img
-                  src={detail.images[activeImage]}
-                  alt={detail.name}
-                  className="h-full w-full object-cover"
-                />
+                <>
+                  <img
+                    src={detail.images[activeImage]}
+                    alt={detail.name}
+                    className="h-full w-full object-cover"
+                  />
+                  {detail.images.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => stepImage(-1)}
+                        aria-label="รูปก่อนหน้า"
+                        className="focus-ring absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-ink shadow-md backdrop-blur transition hover:bg-white"
+                      >
+                        <CaretLeftIcon size={20} weight="bold" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => stepImage(1)}
+                        aria-label="รูปถัดไป"
+                        className="focus-ring absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-ink shadow-md backdrop-blur transition hover:bg-white"
+                      >
+                        <CaretRightIcon size={20} weight="bold" />
+                      </button>
+                      <span className="absolute bottom-3 right-3 rounded-full bg-black/55 px-2.5 py-0.5 text-xs font-semibold text-white">
+                        {activeImage + 1} / {detail.images.length}
+                      </span>
+                    </>
+                  )}
+                </>
               ) : (
                 <div className="flex h-full items-center justify-center text-[#E5457F]/40">
                   <ImageIcon size={64} />

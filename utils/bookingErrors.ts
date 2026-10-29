@@ -52,6 +52,12 @@ const MESSAGES: Record<string, string> = {
   ID_REJECT_REASON_REQUIRED: 'กรุณาบอกเหตุผลที่ไม่อนุมัติ ลูกค้าจะได้ถ่ายใหม่ให้ถูก',
   INVALID_PRICING: 'ราคาหรือมัดจำไม่ถูกต้อง',
   PRODUCT_NOT_FOUND: 'ไม่พบชุดนี้ในระบบ',
+  // Step 27 · แอดมินจัดการบัญชีสมาชิก
+  MEMBER_REASON_REQUIRED: 'กรุณาใส่เหตุผลอย่างน้อย 3 ตัวอักษร',
+  INVALID_MEMBER_ACTION: 'คำสั่งจัดการบัญชีไม่ถูกต้อง',
+  CANNOT_CHANGE_SELF: 'เปลี่ยนสิทธิ์บัญชีของตัวเองไม่ได้',
+  MEMBER_NOT_FOUND: 'ไม่พบสมาชิกนี้ในระบบ',
+  admin_set_member: 'ยังไม่ได้รัน SQL Step 27 (cosmate_step27_member_admin.sql)',
 }
 
 export function translateRpcError(message: string | null | undefined): string {

@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircleIcon, EyeIcon, EyeSlashIcon, ImageIcon, TrashIcon } from '@phosphor-icons/react'
 import { EmptyState, Panel, primaryButtonClass } from '@/app/components/admin/ui'
-import { FormField, FormTextArea } from '@/app/components/admin/costume-form/FormFields'
+import { FormDateField, FormField, FormTextArea } from '@/app/components/admin/costume-form/FormFields'
 import {
   deleteEvent,
   EMPTY_EVENT_INPUT,
@@ -105,28 +105,25 @@ export default function EventForm({
                 onChange={(e) => set('name', e.target.value)}
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField
+                <FormDateField
                   id="ev-start"
                   label="วันเริ่มงาน *"
-                  type="date"
                   value={form.startDate}
                   error={errors.startDate}
-                  onChange={(e) => {
-                    const v = e.target.value
+                  onChange={(v) => {
                     set('startDate', v)
                     // งานวันเดียวเป็นส่วนใหญ่ → เติมวันสุดท้ายให้ถ้ายังว่างหรือก่อนวันเริ่ม
                     if (!form.endDate || form.endDate < v) set('endDate', v)
                   }}
                 />
-                <FormField
+                <FormDateField
                   id="ev-end"
                   label="วันสุดท้าย *"
-                  type="date"
                   min={form.startDate || undefined}
                   value={form.endDate}
                   error={errors.endDate}
                   hint={eventDays ? (eventDays === 1 ? 'งานวันเดียว' : `งาน ${eventDays} วัน`) : undefined}
-                  onChange={(e) => set('endDate', e.target.value)}
+                  onChange={(v) => set('endDate', v)}
                 />
               </div>
               <FormField

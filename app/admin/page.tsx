@@ -5,11 +5,12 @@ import Link from 'next/link'
 import {
   ArrowUUpLeftIcon,
   CheckCircleIcon,
+  IdentificationCardIcon,
   PackageIcon,
   ReceiptIcon,
 } from '@phosphor-icons/react'
 import AdminLayout from '../components/admin/AdminLayout'
-import { Metric, MetricStrip, Panel, StatusBadge } from '../components/admin/ui'
+import { Metric, MetricStrip, Panel, StatusBadge, primaryButtonClass } from '../components/admin/ui'
 import OccupancyBoard from '../components/admin/dashboard/OccupancyBoard'
 import WeeklyRevenueChart from '../components/admin/dashboard/WeeklyRevenueChart'
 import TopCostumes, { type TopCostume } from '../components/admin/dashboard/TopCostumes'
@@ -33,6 +34,7 @@ import {
   utilizationBySize,
 } from '@/utils/admin/dashboardInsights'
 import type { Tone } from '@/utils/admin/statusTone'
+import { idReviewLeft } from '@/utils/admin/orderOps'
 import type { OrderSummary } from '@/utils/customer/fetchOrders'
 import { addDays, formatBaht, formatThaiDateWithWeekday, todayISO, toISODate } from '@/utils/dateUtils'
 
@@ -114,7 +116,12 @@ export default function AdminDashboardPage() {
       })
       .sort((a, b) => a.sort - b.sort)
 
-    return { review, ship, back }
+    // ลูกค้าเช่าครั้งแรกรอตรวจบัตร — มีเส้นตาย จึงแยกเป็นแถบเตือนเหนือคิวงาน
+    const idChecks = data.orders
+      .filter((o) => o.status === 'awaiting_id')
+      .sort((a, b) => (a.idReviewExpiresAt ?? a.createdAt).localeCompare(b.idReviewExpiresAt ?? b.createdAt))
+
+    return { review, ship, back, idChecks }
   }, [data, today])
 
   // ---------------- ทุกสัปดาห์: เงินและคิว ----------------
@@ -190,7 +197,7 @@ export default function AdminDashboardPage() {
   )
   const unansweredLow = data ? data.reviews.filter(needsReply).length : 0
 
-  const taskCount = queues ? queues.review.length + queues.ship.length + queues.back.filter((t) => t.tone !== 'progress').length : 0
+  const taskCount = queues ? queues.idChecks.length + queues.review.length +queues.ship.length + queues.back.filter((t) => t.tone !== 'progress').length : 0
   const dateLabel = new Date().toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })
   const fullSizes = monthly ? monthly.sizes.filter((s) => s.rate >= UTIL_FULL).length : 0
   const skeleton = (h = 'h-48') => <div className={`m-5 ${h} animate-pulse rounded-xl bg-[#F5F4F8]`} />
@@ -213,6 +220,8 @@ export default function AdminDashboardPage() {
 
         {/* ================= ทุกเช้า ================= */}
         <SectionHeading eyebrow="ทุกเช้า" title="วันนี้ต้องทำอะไร มีอะไรไฟไหม้ไหม" first />
+
+        {queues && queues.idChecks.length > 0 && <IdCheckAlert orders={queues.idChecks} />}
 
         {/* คิวงานประจำ: จุดเดียวในหน้าที่ใช้กรอบหนา เพราะเป็นสิ่งที่ต้องลงมือ */}
         <section
@@ -415,6 +424,42 @@ export default function AdminDashboardPage() {
         </Panel>
       </div>
     </AdminLayout>
+  )
+}
+
+// แถบเตือนตรวจบัตร: แสดงออเดอร์ที่ใกล้หมดเวลาสุด 3 ใบ กดแต่ละใบเปิดออเดอร์นั้นได้ทันที
+function IdCheckAlert({ orders }: { orders: OrderSummary[] }) {
+  return (
+    <section aria-label="รอตรวจบัตรประชาชน" className="mb-4 overflow-hidden rounded-2xl border border-[#F2D49B] bg-[#FFF8EA]">
+      <div className="flex flex-wrap items-center gap-3 px-5 py-4">
+        <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white text-[#875200] ring-1 ring-inset ring-[#F2D49B]">
+          <IdentificationCardIcon size={22} weight="fill" />
+        </span>
+        <div className="min-w-0 flex-[1_1_240px]">
+          <h2 className="text-[15px] font-semibold text-[#263544]">ลูกค้าเช่าครั้งแรกรอตรวจบัตรประชาชน {orders.length} ออเดอร์</h2>
+          <p className="mt-0.5 text-xs text-[#5B6472]">ลูกค้ายังจ่ายเงินไม่ได้จนกว่าร้านจะอนุมัติ · ตรวจไม่ทันเวลา ออเดอร์จะหมดอายุเอง</p>
+        </div>
+        <Link href="/admin/orders?tab=id_review" className={primaryButtonClass}>
+          ไปตรวจบัตร
+        </Link>
+      </div>
+      <ul className="grid gap-px border-t border-[#F2D49B] bg-[#F2D49B] sm:grid-cols-3">
+        {orders.slice(0, 3).map((o) => {
+          const left = idReviewLeft(o.idReviewExpiresAt)
+          return (
+            <li key={o.id} className="bg-white">
+              <Link href={orderHref(o)} className="flex items-center gap-3 px-5 py-3 transition hover:bg-[#FFFCF5]">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-[#263544]">{o.shipName}</span>
+                  <span className="block text-xs tabular-nums text-[#6B7280]">{o.orderNumber}</span>
+                </span>
+                <StatusBadge tone={left.tone === 'late' ? 'problem' : 'action'}>{left.text}</StatusBadge>
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
   )
 }
 

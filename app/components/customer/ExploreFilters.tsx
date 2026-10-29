@@ -4,6 +4,7 @@ import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { CheckIcon, XIcon } from '@phosphor-icons/react'
 import { COLOR_OPTIONS, THEME_OPTIONS } from '@/utils/customer/filterOptions'
 import { addDays, formatBaht, formatThaiDateWithWeekday, todayISO } from '@/utils/dateUtils'
+import DateInput from '../DateInput'
 
 export type ExploreFilterState = {
   categories: string[]
@@ -121,15 +122,16 @@ export default function ExploreFilters({ value, onChange, categoryCounts }: Expl
           วันที่ใช้ชุด
         </label>
         <div className="flex items-center gap-2">
-          <input
-            id="explore-use-date"
-            type="date"
-            min={today}
-            max={addDays(today, USE_DATE_DAYS_AHEAD)}
-            value={value.useDate ?? ''}
-            onChange={(e) => onChange((current) => ({ ...current, useDate: e.target.value || null }))}
-            className="focus-ring h-11 min-w-0 flex-1 rounded-control border border-line-strong bg-surface px-3 text-body text-ink outline-none transition hover:border-secondary"
-          />
+          <div className="min-w-0 flex-1">
+            <DateInput
+              id="explore-use-date"
+              min={today}
+              max={addDays(today, USE_DATE_DAYS_AHEAD)}
+              value={value.useDate ?? ''}
+              onChange={(iso) => onChange((current) => ({ ...current, useDate: iso || null }))}
+              className="focus-ring h-11 w-full rounded-control border border-line-strong bg-surface px-3 text-body text-ink outline-none transition hover:border-secondary"
+            />
+          </div>
           {value.useDate && (
             <button
               type="button"

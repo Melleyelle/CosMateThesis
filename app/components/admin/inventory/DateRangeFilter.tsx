@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CalendarIcon } from '@phosphor-icons/react'
 import { addDays, formatThaiDate, todayISO } from '@/utils/dateUtils'
+import DateInput from '../../DateInput'
 
 export type DateRange = { from: string; to: string } // ISO 'YYYY-MM-DD', ว่าง = ไม่จำกัด
 
@@ -10,14 +11,18 @@ type Props = {
   value: DateRange
   onChange: (range: DateRange) => void
   emptyLabel?: string // ข้อความบนปุ่มตอนยังไม่เลือกช่วง
+  presets?: DatePreset[] // ไม่ส่ง = ช่วงย้อนหลัง (วันนี้ / 7 วัน / 30 วัน / เดือนนี้)
 }
 
+export type DatePreset = { label: string; range: () => DateRange }
+
 // ใช้วันที่ตามเวลาเครื่อง (ไทย) — toISOString() เป็นเวลา UTC ทำให้ช่วงตี 0–7 ได้วันที่ของเมื่อวาน
-const PRESETS = [
-  { label: 'วันนี้', from: () => todayISO() },
-  { label: '7 วันล่าสุด', from: () => addDays(todayISO(), -6) },
-  { label: '30 วันล่าสุด', from: () => addDays(todayISO(), -29) },
-  { label: 'เดือนนี้', from: () => todayISO().slice(0, 8) + '01' },
+const upToToday = (from: () => string) => () => ({ from: from(), to: todayISO() })
+const PRESETS: DatePreset[] = [
+  { label: 'วันนี้', range: upToToday(() => todayISO()) },
+  { label: '7 วันล่าสุด', range: upToToday(() => addDays(todayISO(), -6)) },
+  { label: '30 วันล่าสุด', range: upToToday(() => addDays(todayISO(), -29)) },
+  { label: 'เดือนนี้', range: upToToday(() => todayISO().slice(0, 8) + '01') },
 ]
 
 // วันที่ (YYYY-MM-DD ตามเวลาไทย) ของ timestamp — ใช้เทียบกับช่วงที่เลือก
@@ -38,7 +43,7 @@ function formatDisplay(range: DateRange, emptyLabel: string) {
   return `ถึง ${fmt(range.to)}`
 }
 
-export default function DateRangeFilter({ value, onChange, emptyLabel = 'ทุกวันที่อัปโหลด' }: Props) {
+export default function DateRangeFilter({ value, onChange, emptyLabel = 'ทุกวันที่อัปโหลด', presets = PRESETS }: Props) {
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<DateRange>(value)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -59,8 +64,8 @@ export default function DateRangeFilter({ value, onChange, emptyLabel = 'ทุ�
     setOpen(true)
   }
 
-  function applyPreset(fromFn: () => string) {
-    const range = { from: fromFn(), to: todayISO() }
+  function applyPreset(preset: DatePreset) {
+    const range = preset.range()
     setDraft(range)
     onChange(range)
     setOpen(false)
@@ -100,11 +105,11 @@ export default function DateRangeFilter({ value, onChange, emptyLabel = 'ทุ�
         <div className="absolute right-0 z-20 mt-2 w-72 rounded-2xl border border-gray-100 bg-white p-4 shadow-lg">
           <p className="mb-2 text-xs font-semibold text-gray-500">ช่วงเวลายอดนิยม</p>
           <div className="mb-4 flex flex-wrap gap-2">
-            {PRESETS.map((p) => (
+            {presets.map((p) => (
               <button
                 key={p.label}
                 type="button"
-                onClick={() => applyPreset(p.from)}
+                onClick={() => applyPreset(p)}
                 className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-[#FCE7EF] hover:text-[#E5457F]"
               >
                 {p.label}
@@ -115,21 +120,19 @@ export default function DateRangeFilter({ value, onChange, emptyLabel = 'ทุ�
           <div className="space-y-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">จากวันที่</label>
-              <input
-                type="date"
+              <DateInput
                 value={draft.from}
                 max={draft.to || undefined}
-                onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))}
+                onChange={(from) => setDraft((d) => ({ ...d, from }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#E5457F] focus:ring-2 focus:ring-[#E5457F]/15"
               />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">ถึงวันที่</label>
-              <input
-                type="date"
+              <DateInput
                 value={draft.to}
                 min={draft.from || undefined}
-                onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))}
+                onChange={(to) => setDraft((d) => ({ ...d, to }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#E5457F] focus:ring-2 focus:ring-[#E5457F]/15"
               />
             </div>

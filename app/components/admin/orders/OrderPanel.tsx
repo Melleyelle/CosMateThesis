@@ -46,6 +46,7 @@ import {
   fetchPackChecklist,
   fullAddress,
   handoverOrder,
+  idReviewLeft,
   lateDays,
   markRefund,
   receiveAndInspect,
@@ -532,13 +533,15 @@ function OrderIdReview({ order, onDone }: { order: OrderSummary; onDone: PanelPr
   if (error) return <div className="p-5"><ErrorBox>{error}</ErrorBox></div>
   if (!info) return <div className="m-5 h-40 animate-pulse rounded-control bg-sunken" />
 
+  const left = idReviewLeft(info.reviewBy)
   return (
     <IdCardReview
       userId={info.userId}
+      bookerName={order.shipName}
       onDone={(msg) => onDone(`${order.orderNumber}: ${msg}`)}
       note={
         <p className="rounded-control border border-[#F2D49B] bg-warning-subtle px-3 py-2 font-semibold text-warning">
-          ตรวจภายใน {info.reviewBy ? formatDateTime(info.reviewBy) : '—'} ไม่งั้นออเดอร์หมดอายุเอง
+          <span className={left.tone === 'late' ? 'text-danger' : ''}>{left.text}</span> · ตรวจภายใน {info.reviewBy ? formatDateTime(info.reviewBy) : '—'} ไม่งั้นออเดอร์หมดอายุเอง
           {info.handover && (
             <span className="block font-normal">
               อนุมัติแล้วลูกค้ามีเวลาจ่าย 24 ชม. แต่ไม่เกิน {formatDateTime(info.handover)} ({order.deliveryMethod === 'pickup' ? 'วันรับชุด' : 'วันที่ต้องส่งชุด'})
