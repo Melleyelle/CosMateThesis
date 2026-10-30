@@ -58,6 +58,11 @@ export function cartKeyOf({ variantId, startDate, rentalDays, pieces, shoeVarian
   return pieces && pieces.length > 0 ? `${base}:${pieces.join('.')}` : base
 }
 
+// ออเดอร์เดียวต้องใช้วันใส่และจำนวนวันเดียวกัน ต่างกัน = คนละออเดอร์ · ฐานข้อมูลบังคับซ้ำด้วย trigger (Step 33)
+export function sameOrderRound(a: CartKey, b: CartKey): boolean {
+  return a.startDate === b.startDate && a.rentalDays === b.rentalDays
+}
+
 function normalizePieces(pieces: string[] | undefined): string[] | undefined {
   const clean = Array.from(new Set((pieces ?? []).filter((p) => typeof p === 'string' && p.length > 0))).sort()
   return clean.length > 0 ? clean : undefined

@@ -6,7 +6,7 @@ import {
   type BookingSettings,
   type DeliveryMethod,
 } from '@/utils/customer/bookingSettings'
-import { fetchAllReviewsForAdmin, fetchRatingSummaries, type Review } from '@/utils/customer/reviews'
+import { fetchRatingSummaries } from '@/utils/customer/reviews'
 import { addDays, parseISODate, todayISO, toISODate } from '@/utils/dateUtils'
 import type { OrderStatus } from '@/utils/orderStatus'
 
@@ -18,13 +18,10 @@ export type InventoryItem = {
   productId: string | null
   productName: string
   productActive: boolean
-  productCreatedAt: string | null
 }
 
 // รายการหักมัดจำ/ค่าปรับ (Step 17) — late_return = ค่าปรับคืนช้า, ที่เหลือ = ชุดเสียหาย/ของไม่ครบ
 export type DeductionRow = {
-  orderId: string
-  orderItemId: string | null
   type: string
   amount: number
   createdAt: string
@@ -34,7 +31,6 @@ export type DashboardData = {
   orders: OrderSummary[]
   items: InventoryItem[]
   settings: BookingSettings
-  reviews: (Review & { productName: string })[]
   ratingAvg: number | null
   ratingCount: number
   deductions: DeductionRow[]
@@ -49,7 +45,7 @@ type ItemRow = {
   condition_status: string
   product_variants: {
     size: string
-    products: { id: string; name: string; status: string; created_at: string | null } | null
+    products: { id: string; name: string; status: string } | null
   } | null
 }
 
@@ -57,16 +53,15 @@ export async function fetchDashboard(): Promise<{ data: DashboardData | null; er
   const supabase = createClient()
   if (!supabase) return { data: null, error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
 
-  const [orders, itemsRes, settings, reviews, ratings, dedRes] = await Promise.all([
+  const [orders, itemsRes, settings, ratings, dedRes] = await Promise.all([
     fetchAllOrdersForAdmin(),
     supabase
       .from('product_items')
-      .select('id, item_code, condition_status, product_variants ( size, products ( id, name, status, created_at ) )')
+      .select('id, item_code, condition_status, product_variants ( size, products ( id, name, status ) )')
       .order('item_code'),
     fetchBookingSettings(),
-    fetchAllReviewsForAdmin(),
     fetchRatingSummaries(),
-    supabase.from('order_deductions').select('order_id, order_item_id, type, amount, created_at'),
+    supabase.from('order_deductions').select('type, amount, created_at'),
   ])
 
   if (orders.error) return { data: null, error: orders.error }
@@ -80,14 +75,11 @@ export async function fetchDashboard(): Promise<{ data: DashboardData | null; er
     productId: r.product_variants?.products?.id ?? null,
     productName: r.product_variants?.products?.name ?? 'ไม่ทราบชื่อชุด',
     productActive: r.product_variants?.products?.status === 'active',
-    productCreatedAt: r.product_variants?.products?.created_at ?? null,
   }))
 
   // ตารางเสริม (Step 17) โหลดไม่ได้ → แผงที่ใช้แสดงว่าง แต่หน้าหลักยังใช้ได้
-  type DedRow = { order_id: string; order_item_id: string | null; type: string; amount: number | string; created_at: string }
+  type DedRow = { type: string; amount: number | string; created_at: string }
   const deductions = ((dedRes.error ? [] : dedRes.data ?? []) as DedRow[]).map((d) => ({
-    orderId: d.order_id,
-    orderItemId: d.order_item_id,
     type: d.type,
     amount: Number(d.amount),
     createdAt: d.created_at,
@@ -104,7 +96,6 @@ export async function fetchDashboard(): Promise<{ data: DashboardData | null; er
       orders: orders.data,
       items,
       settings,
-      reviews: reviews.error ? [] : reviews.data,
       ratingAvg,
       ratingCount,
       deductions,

@@ -93,19 +93,21 @@ export default function WeeklyRevenueChart({ weeks }: { weeks: Week[] }) {
         )}
       </div>
 
-      {/* ตารางสำหรับโปรแกรมอ่านหน้าจอ */}
-      <table className="sr-only">
-        <caption>รายได้ค่าเช่าและค่าซักรายสัปดาห์</caption>
-        <tbody>
-          {weeks.map((w) => (
-            <tr key={w.start}>
-              <th>{formatThaiDate(w.start)}</th>
-              <td>{formatBaht(w.total)}</td>
-              <td>{w.orders} ออเดอร์</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* ตารางสำหรับโปรแกรมอ่านหน้าจอ — ใส่ sr-only ที่ div เพราะ <table> ไม่ถูกตัดด้วย overflow จะดันหน้ายาวเกินพื้นหลัง */}
+      <div className="sr-only">
+        <table>
+          <caption>รายได้ค่าเช่าและค่าซักรายสัปดาห์</caption>
+          <tbody>
+            {weeks.map((w) => (
+              <tr key={w.start}>
+                <th>{formatThaiDate(w.start)}</th>
+                <td>{formatBaht(w.total)}</td>
+                <td>{w.orders} ออเดอร์</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

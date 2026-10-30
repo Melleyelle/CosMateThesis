@@ -14,6 +14,7 @@ import {
   encodeCheckoutItems,
   parseDelivery,
   removeFromCart,
+  sameOrderRound,
   setCartDelivery,
   useCart,
   type CartItem,
@@ -68,6 +69,16 @@ export default function CartPage() {
 
   // ร้านปิดรับเอง (ไม่มีข้อมูลร้าน) → ถือเป็นจัดส่ง แม้ตะกร้าเคยตั้งไว้เป็นรับเอง
   const delivery = settings.pickupLocation ? cartDelivery : 'ship'
+
+  // แบ่งรายการตามออเดอร์ที่จะเกิด (วันใส่และจำนวนวันเดียวกัน) · วันใส่ใกล้สุดก่อน
+  const rounds = useMemo(() => {
+    const groups = new Map<string, CartItem[]>()
+    for (const item of cart) {
+      const key = `${item.startDate}:${item.rentalDays}`
+      groups.set(key, [...(groups.get(key) ?? []), item])
+    }
+    return Array.from(groups, ([key, items]) => ({ key, items })).sort((a, b) => a.key.localeCompare(b.key))
+  }, [cart])
 
   // โหลดใหม่เมื่อ (ไซส์, จำนวนวัน, วิธีรับ) ในตะกร้าเปลี่ยน — วันที่ว่างขึ้นกับทั้งจำนวนวันและวิธีรับ
   // ไซส์รองเท้าเช็กแยกจากไซส์ชุด: รองเท้าไม่ว่างไม่ทำให้ชุดจองไม่ได้ (Step 29)
@@ -134,11 +145,12 @@ export default function CartPage() {
     return !!item.shoeVariantId && !!unavailable[unavailableKey(item.shoeVariantId, item.rentalDays, delivery)]?.has(item.startDate)
   }
 
-  // ครั้งแรกที่โหลดเสร็จ เลือกทุกรายการที่ยังจองได้ไว้ให้ (สูงสุด 10 รายการต่อออเดอร์)
+  // ครั้งแรกที่โหลดเสร็จ เลือกกลุ่มแรกที่ยังจองได้ไว้ให้ (สูงสุด 10 รายการต่อออเดอร์)
   // (ปรับ state ระหว่าง render ตามแนวทางของ React แทนการใช้ effect)
   if (!loading && !selectionReady) {
     setSelectionReady(true)
-    setSelected(cart.filter((i) => statusOf(i) === 'ok').slice(0, MAX_ITEMS_PER_ORDER).map(keyOf))
+    const firstRound = rounds.map((r) => r.items.filter((i) => statusOf(i) === 'ok')).find((ok) => ok.length > 0) ?? []
+    setSelected(firstRound.slice(0, MAX_ITEMS_PER_ORDER).map(keyOf))
   }
 
   // ชุดแนะนำ: ไม่ซ้ำกับของที่อยู่ในตะกร้า
@@ -181,23 +193,22 @@ export default function CartPage() {
   const shipping = selectedItems.length > 0 ? shippingFee(settings, delivery) : 0
   const grandTotal = totals.rental + totals.deposit + totals.laundry + shipping
 
-  const selectableKeys = cart.filter((i) => statusOf(i) === 'ok').map(keyOf)
-  const allSelected = selectableKeys.length > 0 && selectableKeys.every((k) => selected.includes(k))
-
+  // เลือกรายการกลุ่มอื่น = ย้ายไปจองกลุ่มนั้น รายการกลุ่มเดิมหลุดจากที่เลือก
   function toggleItem(item: CartItem) {
     const k = keyOf(item)
     setSelected((prev) => {
       if (prev.includes(k)) return prev.filter((x) => x !== k)
-      if (prev.length >= MAX_ITEMS_PER_ORDER) {
+      const sameRound = cart.filter((i) => prev.includes(keyOf(i)) && sameOrderRound(i, item)).map(keyOf)
+      if (sameRound.length >= MAX_ITEMS_PER_ORDER) {
         alert(`เลือกได้สูงสุด ${MAX_ITEMS_PER_ORDER} รายการต่อออเดอร์`)
         return prev
       }
-      return [...prev, k]
+      return [...sameRound, k]
     })
   }
 
-  function toggleAll() {
-    setSelected(allSelected ? [] : selectableKeys.slice(0, MAX_ITEMS_PER_ORDER))
+  function toggleRound(keys: string[], allSelected: boolean) {
+    setSelected(allSelected ? [] : keys.slice(0, MAX_ITEMS_PER_ORDER))
   }
 
   function handleRemove(item: CartItem) {
@@ -243,139 +254,156 @@ export default function CartPage() {
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
           <div>
-            <label className="mb-4 flex w-fit cursor-pointer items-center gap-2.5 text-base font-semibold text-[#263544]">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={toggleAll}
-                disabled={selectableKeys.length === 0}
-                className="h-5 w-5 accent-[#E5457F]"
-              />
-              เลือกทั้งหมด <span className="font-normal text-[#263544]/60">({selectableKeys.length})</span>
-            </label>
-
-            <ul className="space-y-4">
-              {cart.map((item) => {
-                const v = variants[item.variantId]
-                const status = statusOf(item)
-                const isSelected = selected.includes(keyOf(item)) && status === 'ok'
-                const timeline = v ? getRentalTimeline(item.startDate, item.rentalDays, settings, delivery) : null
-                const line = v ? priceOf(v, item) : null
+            {rounds.length > 1 && (
+              <p className="mb-4 rounded-xl bg-[#F7F7F8] px-3 py-2 text-base text-[#263544]">
+                ออเดอร์หนึ่งต้องใช้วันใส่และจำนวนวันเช่าเดียวกัน จึงจองได้ทีละกลุ่ม กลุ่มที่เหลือจะรออยู่ในตะกร้าให้จองเป็นออเดอร์ใหม่
+              </p>
+            )}
+            <div className="space-y-8">
+              {rounds.map((round) => {
+                const roundKeys = round.items.filter((i) => statusOf(i) === 'ok').map(keyOf)
+                const roundSelected = roundKeys.length > 0 && roundKeys.every((k) => selected.includes(k))
 
                 return (
-                  <li
-                    key={keyOf(item)}
-                    // เลือกอยู่ = เส้นเข้ม · ไม่ได้เลือก = เส้นจาง (กล่องกดไม่ได้ จึงไม่มีเงา)
-                    className={`flex gap-4 rounded-card border bg-white p-4 transition ${
-                      isSelected ? 'border-line' : 'border-line-subtle'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      disabled={status !== 'ok'}
-                      onChange={() => toggleItem(item)}
-                      aria-label="เลือกรายการนี้"
-                      className="mt-1 h-5 w-5 flex-shrink-0 accent-[#E5457F] disabled:opacity-30"
-                    />
-                    <div className="h-28 w-24 flex-shrink-0 overflow-hidden rounded-xl border border-line bg-[#FDE3EE] sm:h-32 sm:w-28">
-                      {v?.coverImageUrl ? (
-                        <img src={v.coverImageUrl} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-[#E5457F]/40">
-                          <ImageIcon size={28} />
-                        </div>
-                      )}
-                    </div>
+                  <section key={round.key}>
+                    <label className="mb-4 flex w-fit cursor-pointer items-center gap-2.5 text-base font-semibold text-[#263544]">
+                      <input
+                        type="checkbox"
+                        checked={roundSelected}
+                        onChange={() => toggleRound(roundKeys, roundSelected)}
+                        disabled={roundKeys.length === 0}
+                        className="h-5 w-5 accent-[#E5457F]"
+                      />
+                      ใส่วัน {formatThaiDateLong(round.items[0].startDate)} · เช่า {round.items[0].rentalDays} วัน{' '}
+                      <span className="font-normal text-[#263544]/60">({roundKeys.length})</span>
+                    </label>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          {v ? (
-                            <Link
-                              href={`/costumes/${v.productId}`}
-                              className="line-clamp-2 text-lg font-bold text-[#263544] underline-offset-2 hover:underline"
-                            >
-                              {v.productName}
-                            </Link>
-                          ) : (
-                            <p className="text-lg font-semibold text-[#263544]/50">ชุดที่ไม่เปิดให้เช่าแล้ว</p>
-                          )}
-                          {v && <p className="text-base text-[#263544]/70">ไซส์: {v.size}</p>}
-                          {item.shoeVariantId && variants[item.shoeVariantId] && (
-                            <p className="text-base text-[#263544]/70">
-                              รองเท้า: EU {variants[item.shoeVariantId].size}
-                              {item.shoeSubstitute && shoeBusy(item) && ' · ไซส์นี้ไม่ว่าง ร้านจัดหาคู่ใกล้เคียงให้'}
-                            </p>
-                          )}
-                          {!!line?.shoeDiscount && (
-                            <p className="text-base text-[#263544]/70">ไม่รับรองเท้า (−{formatBaht(line.shoeDiscount)})</p>
-                          )}
-                          {line?.pieceNames && (
-                            <p className="text-base text-[#263544]/70">
-                              เช่าแยกชิ้น: <span className="text-[#263544]">{line.pieceNames.join(', ')}</span>
-                            </p>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemove(item)}
-                          aria-label="ลบออกจากตะกร้า"
-                          className="nudge flex-shrink-0 rounded-full p-1.5 text-[#263544]/60 hover:text-red-600"
-                        >
-                          <TrashIcon size={22} />
-                        </button>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
-                        {timeline && (
-                          <div className="rounded-xl bg-[#F7F7F8] px-3 py-2 text-base text-[#263544]">
-                            <p className="font-semibold">
-                              {formatThaiDateLong(timeline.useDate)} – {formatThaiDateLong(timeline.returnBy)}
-                            </p>
-                            <p className="text-sm text-[#263544]/60">
-                              {delivery === 'pickup'
-                                ? 'รับชุดที่ร้านวันใส่'
-                                : `ชุดถึงมือคุณ ${formatThaiDateLong(timeline.receiveDate)} (ไม่นับวันเช่า)`}
-                            </p>
-                          </div>
-                        )}
-                        {v && line && (
-                          <div className="text-right">
-                            <p className="text-xl font-extrabold text-brand">
-                              {formatBaht(line.rental)}
-                              <span className="text-base font-semibold text-[#263544]/60"> / {line.rentalDays} วัน</span>
-                            </p>
-                            {line.rentalDays > 1 && (
-                              <p className="text-sm text-[#263544]/60">
-                                วันแรก {formatBaht(line.baseRental)} + {line.rentalDays - 1} วัน ×{' '}
-                                {formatBaht(line.dayRate)}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {status !== 'ok' && (
-                        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-[#FFF3B0] px-3 py-2 text-base text-[#263544]">
-                          <WarningCircleIcon size={16} className="flex-shrink-0" />
-                          {STATUS_MESSAGE[status]}
-                          {v && status !== 'closed' && (
-                            <Link href={`/costumes/${v.productId}`} className="font-semibold underline">
-                              {status === 'pieces_changed'
-                                ? 'เลือกชิ้นใหม่'
-                                : status === 'bad_days' || status === 'shoe_busy'
-                                  ? 'เลือกใหม่'
-                                  : 'เลือกวันใหม่'}
-                            </Link>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </li>
+                    <ul className="space-y-4">
+                      {round.items.map((item) => {
+                        const v = variants[item.variantId]
+                        const status = statusOf(item)
+                        const isSelected = selected.includes(keyOf(item)) && status === 'ok'
+                        const timeline = v ? getRentalTimeline(item.startDate, item.rentalDays, settings, delivery) : null
+                        const line = v ? priceOf(v, item) : null
+        
+                        return (
+                          <li
+                            key={keyOf(item)}
+                            // เลือกอยู่ = เส้นเข้ม · ไม่ได้เลือก = เส้นจาง (กล่องกดไม่ได้ จึงไม่มีเงา)
+                            className={`flex gap-4 rounded-card border bg-white p-4 transition ${
+                              isSelected ? 'border-line' : 'border-line-subtle'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={status !== 'ok'}
+                              onChange={() => toggleItem(item)}
+                              aria-label="เลือกรายการนี้"
+                              className="mt-1 h-5 w-5 flex-shrink-0 accent-[#E5457F] disabled:opacity-30"
+                            />
+                            <div className="h-28 w-24 flex-shrink-0 overflow-hidden rounded-xl border border-line bg-[#FDE3EE] sm:h-32 sm:w-28">
+                              {v?.coverImageUrl ? (
+                                <img src={v.coverImageUrl} alt="" className="h-full w-full object-cover" />
+                              ) : (
+                                <div className="flex h-full items-center justify-center text-[#E5457F]/40">
+                                  <ImageIcon size={28} />
+                                </div>
+                              )}
+                            </div>
+        
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  {v ? (
+                                    <Link
+                                      href={`/costumes/${v.productId}`}
+                                      className="line-clamp-2 text-lg font-bold text-[#263544] underline-offset-2 hover:underline"
+                                    >
+                                      {v.productName}
+                                    </Link>
+                                  ) : (
+                                    <p className="text-lg font-semibold text-[#263544]/50">ชุดที่ไม่เปิดให้เช่าแล้ว</p>
+                                  )}
+                                  {v && <p className="text-base text-[#263544]/70">ไซส์: {v.size}</p>}
+                                  {item.shoeVariantId && variants[item.shoeVariantId] && (
+                                    <p className="text-base text-[#263544]/70">
+                                      รองเท้า: EU {variants[item.shoeVariantId].size}
+                                      {item.shoeSubstitute && shoeBusy(item) && ' · ไซส์นี้ไม่ว่าง ร้านจัดหาคู่ใกล้เคียงให้'}
+                                    </p>
+                                  )}
+                                  {!!line?.shoeDiscount && (
+                                    <p className="text-base text-[#263544]/70">ไม่รับรองเท้า (−{formatBaht(line.shoeDiscount)})</p>
+                                  )}
+                                  {line?.pieceNames && (
+                                    <p className="text-base text-[#263544]/70">
+                                      เช่าแยกชิ้น: <span className="text-[#263544]">{line.pieceNames.join(', ')}</span>
+                                    </p>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemove(item)}
+                                  aria-label="ลบออกจากตะกร้า"
+                                  className="nudge flex-shrink-0 rounded-full p-1.5 text-[#263544]/60 hover:text-red-600"
+                                >
+                                  <TrashIcon size={22} />
+                                </button>
+                              </div>
+        
+                              <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+                                {timeline && (
+                                  <div className="rounded-xl bg-[#F7F7F8] px-3 py-2 text-base text-[#263544]">
+                                    <p className="font-semibold">
+                                      {formatThaiDateLong(timeline.useDate)} – {formatThaiDateLong(timeline.returnBy)}
+                                    </p>
+                                    <p className="text-sm text-[#263544]/60">
+                                      {delivery === 'pickup'
+                                        ? 'รับชุดที่ร้านวันใส่'
+                                        : `ชุดถึงมือคุณ ${formatThaiDateLong(timeline.receiveDate)} (ไม่นับวันเช่า)`}
+                                    </p>
+                                  </div>
+                                )}
+                                {v && line && (
+                                  <div className="text-right">
+                                    <p className="text-xl font-extrabold text-brand">
+                                      {formatBaht(line.rental)}
+                                      <span className="text-base font-semibold text-[#263544]/60"> / {line.rentalDays} วัน</span>
+                                    </p>
+                                    {line.rentalDays > 1 && (
+                                      <p className="text-sm text-[#263544]/60">
+                                        วันแรก {formatBaht(line.baseRental)} + {line.rentalDays - 1} วัน ×{' '}
+                                        {formatBaht(line.dayRate)}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+        
+                              {status !== 'ok' && (
+                                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-[#FFF3B0] px-3 py-2 text-base text-[#263544]">
+                                  <WarningCircleIcon size={16} className="flex-shrink-0" />
+                                  {STATUS_MESSAGE[status]}
+                                  {v && status !== 'closed' && (
+                                    <Link href={`/costumes/${v.productId}`} className="font-semibold underline">
+                                      {status === 'pieces_changed'
+                                        ? 'เลือกชิ้นใหม่'
+                                        : status === 'bad_days' || status === 'shoe_busy'
+                                          ? 'เลือกใหม่'
+                                          : 'เลือกวันใหม่'}
+                                    </Link>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </section>
                 )
               })}
-            </ul>
+            </div>
           </div>
 
           <aside className="h-fit rounded-card border border-line bg-white p-6 lg:sticky lg:top-24">

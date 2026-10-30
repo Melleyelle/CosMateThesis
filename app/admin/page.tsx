@@ -13,8 +13,6 @@ import AdminLayout from '../components/admin/AdminLayout'
 import { Metric, MetricStrip, Panel, StatusBadge, primaryButtonClass } from '../components/admin/ui'
 import OccupancyBoard from '../components/admin/dashboard/OccupancyBoard'
 import WeeklyRevenueChart from '../components/admin/dashboard/WeeklyRevenueChart'
-import TopCostumes, { type TopCostume } from '../components/admin/dashboard/TopCostumes'
-import { DamageByCause, IdleCostumes, UTIL_FULL, UtilizationBySize } from '../components/admin/dashboard/StockPanels'
 import { StarDisplay } from '../components/customer/StarRating'
 import {
   BLOCKING,
@@ -25,20 +23,13 @@ import {
   weeklyRevenue,
   type DashboardData,
 } from '@/utils/admin/fetchDashboard'
-import {
-  damageSummary,
-  depositsHeld,
-  expiredRate,
-  idleCostumes,
-  incomeBySource,
-  utilizationBySize,
-} from '@/utils/admin/dashboardInsights'
+import { depositsHeld, expiredRate, incomeBySource } from '@/utils/admin/dashboardInsights'
 import type { Tone } from '@/utils/admin/statusTone'
 import { idReviewLeft } from '@/utils/admin/orderOps'
 import type { OrderSummary } from '@/utils/customer/fetchOrders'
 import { addDays, formatBaht, formatThaiDateWithWeekday, todayISO, toISODate } from '@/utils/dateUtils'
 
-// หน้าแรกหลังร้าน แบ่งตามรอบที่เจ้าของร้านเปิดดู: ทุกเช้า / ทุกสัปดาห์ / ทุกเดือน
+// หน้าแรกหลังร้าน แบ่งตามรอบที่เจ้าของร้านเปิดดู: ทุกเช้า / ทุกสัปดาห์
 // ทุกแผงต้องตอบได้ว่า "ดูแล้วจะทำอะไรต่อ" — คำอธิบายใต้หัวแผงเขียนเป็นคู่ ข้อมูล → การตัดสินใจ
 
 type Task = { order: OrderSummary; tone: Tone; when: string; sort: number }
@@ -145,61 +136,8 @@ export default function AdminDashboardPage() {
 
   const weeks = useMemo(() => (data ? weeklyRevenue(data.orders, 8) : []), [data])
 
-  // ---------------- ทุกเดือน: สต็อกชุด ----------------
-  const monthly = useMemo(() => {
-    if (!data) return null
-    return {
-      sizes: utilizationBySize(data, today, 30),
-      idle: idleCostumes(data, today, 60),
-      damage: damageSummary(data, today, 90),
-    }
-  }, [data, today])
-
-  const top: TopCostume[] = useMemo(() => {
-    if (!data) return []
-    const since = addDays(today, -90)
-    const map = new Map<string, TopCostume>()
-    for (const o of data.orders) {
-      if (!BLOCKING.includes(o.status)) continue
-      for (const l of o.lines) {
-        if (!l.productId || l.startDate < since) continue
-        const cur = map.get(l.productId) ?? {
-          productId: l.productId,
-          name: l.productName,
-          coverImageUrl: l.coverImageUrl,
-          bookings: 0,
-          rating: null,
-        }
-        cur.bookings += 1
-        map.set(l.productId, cur)
-      }
-    }
-    const ratingOf = new Map<string, { sum: number; n: number }>()
-    for (const r of data.reviews) {
-      if (r.isHidden) continue
-      const cur = ratingOf.get(r.productId) ?? { sum: 0, n: 0 }
-      ratingOf.set(r.productId, { sum: cur.sum + r.rating, n: cur.n + 1 })
-    }
-    return Array.from(map.values())
-      .map((t) => {
-        const r = ratingOf.get(t.productId)
-        return { ...t, rating: r ? r.sum / r.n : null }
-      })
-      .sort((a, b) => b.bookings - a.bookings)
-      .slice(0, 5)
-  }, [data, today])
-
-  // รีวิว 1–2 ดาวที่ยังไม่ตอบขึ้นก่อน แล้วตามด้วยรีวิวล่าสุด
-  const needsReply = (r: DashboardData['reviews'][number]) => !r.isHidden && r.rating <= 2 && !r.adminReply
-  const reviews = useMemo(
-    () => (data ? [...data.reviews.filter(needsReply), ...data.reviews.filter((r) => !needsReply(r))] : []),
-    [data],
-  )
-  const unansweredLow = data ? data.reviews.filter(needsReply).length : 0
-
   const taskCount = queues ? queues.idChecks.length + queues.review.length +queues.ship.length + queues.back.filter((t) => t.tone !== 'progress').length : 0
   const dateLabel = new Date().toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })
-  const fullSizes = monthly ? monthly.sizes.filter((s) => s.rate >= UTIL_FULL).length : 0
   const skeleton = (h = 'h-48') => <div className={`m-5 ${h} animate-pulse rounded-xl bg-[#F5F4F8]`} />
 
   return (
@@ -333,94 +271,6 @@ export default function AdminDashboardPage() {
           description="ค่าเช่า + ค่าซัก จากออเดอร์ที่ชำระแล้ว ตามวันที่สั่ง (ไม่รวมมัดจำ) → ดูแนวโน้ม เทียบกับช่วงที่มีงานอีเวนต์"
         >
           {data ? <WeeklyRevenueChart weeks={weeks} /> : skeleton()}
-        </Panel>
-
-        {/* ================= ทุกเดือน ================= */}
-        <SectionHeading eyebrow="ทุกเดือน" title="ชุดตัวไหนควรซื้อเพิ่ม ซ่อม หรือเลิกเช่า" />
-
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Panel
-            className="lg:col-span-2"
-            bodyClassName=""
-            title="อัตราการใช้งานรายชุดและไซส์"
-            description={`30 วันล่าสุด วันที่ถูกล็อก ÷ วันทั้งหมด → เกิน ${Math.round(UTIL_FULL * 100)}% ซื้อเพิ่มเฉพาะไซส์นั้น${
-              monthly ? ` (ตอนนี้ ${fullSizes} ไซส์)` : ''
-            }`}
-          >
-            {monthly ? <UtilizationBySize rows={monthly.sizes} /> : skeleton()}
-          </Panel>
-          <Panel
-            title="ชุดที่ไม่ถูกเช่า 60 วัน"
-            description="ชุดนอนตู้ = ทุนจม → ลดราคา จัดเซ็ตกับชุดยอดนิยม ถ่ายรูปใหม่ หรือขายออก"
-            bodyClassName=""
-          >
-            {monthly ? <IdleCostumes rows={monthly.idle} today={today} /> : skeleton()}
-          </Panel>
-        </div>
-
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <Panel
-            title="ความเสียหายแยกตามสาเหตุ"
-            description="90 วันล่าสุด → ชิ้นส่วนหายบ่อยใส่ถุงแยก ติดป้าย · เสียบ่อยขึ้นมัดจำ · เสียซ้ำหลายครั้งปลดระวาง"
-            bodyClassName=""
-          >
-            {monthly ? <DamageByCause summary={monthly.damage} /> : skeleton()}
-          </Panel>
-          <Panel title="ชุดที่ถูกเช่ามากที่สุด" description="90 วันล่าสุด → ใช้คู่กับอัตราการใช้งานก่อนตัดสินใจซื้อเพิ่ม" bodyClassName="">
-            {data ? <TopCostumes items={top} /> : skeleton()}
-          </Panel>
-        </div>
-
-        <Panel
-          className="mt-4"
-          title="รีวิว"
-          description={
-            unansweredLow > 0
-              ? `รีวิว 1–2 ดาวที่ยังไม่ตอบ ${unansweredLow} รายการ ขึ้นก่อน → ตอบทุกอัน และตรวจสภาพจริงของชุดนั้น`
-              : 'รีวิวล่าสุด · รีวิว 1–2 ดาวที่ยังไม่ตอบจะขึ้นก่อนเสมอ'
-          }
-          bodyClassName=""
-          action={
-            <Link href="/admin/reviews" className="text-xs font-medium text-[#C92D67] hover:underline">
-              จัดการรีวิว
-            </Link>
-          }
-        >
-          {!data ? (
-            skeleton('h-24')
-          ) : reviews.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-[#6B7280]">
-              ยังไม่มีรีวิว ลูกค้ารีวิวได้หลังออเดอร์ &quot;เสร็จสิ้น&quot;
-            </p>
-          ) : (
-            <ul className="divide-y divide-[#EEEDF2]">
-              {reviews.slice(0, Math.max(4, unansweredLow)).map((r) => (
-                <li key={r.id} className="flex flex-wrap items-start gap-x-4 gap-y-1 px-5 py-3.5">
-                  <div className="w-full min-w-0 sm:w-56">
-                    <p className="truncate text-sm font-medium text-[#263544]">{r.productName}</p>
-                    <div className="mt-0.5 flex items-center gap-2">
-                      <StarDisplay value={r.rating} size={12} />
-                      <span className="text-xs text-[#6B7280]">{r.reviewerName}</span>
-                    </div>
-                  </div>
-                  <p className="line-clamp-2 min-w-0 flex-1 text-sm text-[#5B6472]">
-                    {r.comment ?? <span className="italic text-[#9AA3AF]">ไม่มีข้อความ</span>}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    {r.isHidden ? (
-                      <StatusBadge tone="closed">ซ่อนอยู่</StatusBadge>
-                    ) : needsReply(r) ? (
-                      <StatusBadge tone="problem">ควรตอบ</StatusBadge>
-                    ) : r.adminReply ? (
-                      <StatusBadge tone="done">ตอบแล้ว</StatusBadge>
-                    ) : (
-                      <StatusBadge tone="waiting">ยังไม่ตอบ</StatusBadge>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
         </Panel>
       </div>
     </AdminLayout>

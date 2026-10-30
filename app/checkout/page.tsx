@@ -18,7 +18,7 @@ import CustomerLayout from '@/app/components/customer/CustomerLayout'
 import IdCardForm from '@/app/components/customer/IdCardForm'
 import { canBook, fetchMyIdCard, type MyIdCard } from '@/utils/customer/idCard'
 import { createClient } from '@/utils/client'
-import { cartKeyOf, decodeCheckoutItems, parseDelivery, removeFromCart, type CartKey } from '@/utils/customer/cart'
+import { cartKeyOf, decodeCheckoutItems, parseDelivery, removeFromCart, sameOrderRound, type CartKey } from '@/utils/customer/cart'
 import { fetchPieces, priceLine, type PieceInfo } from '@/utils/customer/pieces'
 import { quoteLines, type LineQuote } from '@/utils/customer/deposits'
 import { fetchVariantSummaries, type VariantSummary } from '@/utils/customer/fetchVariantSummaries'
@@ -258,7 +258,9 @@ function CheckoutInner() {
               ? pickup
                 ? `วันใช้งานกระชั้นเกินไป (รับวันนี้ได้ถ้าจองก่อน ${settings.pickupCutoffHour}:00)`
                 : `วันใช้งานกระชั้นเกินไป (ต้องจองล่วงหน้าอย่างน้อย ${minStartOffset(settings, 'ship')} วัน)`
-              : null,
+              : !sameOrderRound(r, requested[0])
+                ? 'ออเดอร์เดียวต้องใช้วันใส่และจำนวนวันเช่าเดียวกัน กรุณาจองรายการนี้เป็นออเดอร์ใหม่'
+                : null,
     }
   })
   const hasProblem = lines.some((l) => l.problem)
@@ -576,14 +578,14 @@ function CheckoutInner() {
           </section>
 
           {/* ---------------- การจัดส่ง + วิธีชำระ ---------------- */}
-          {/* จัดส่ง: ขนส่งหลายเจ้าเต็มความกว้าง วิธีชำระไปอยู่บรรทัดถัดไป */}
-          <div className={`grid gap-6 ${pickup ? 'sm:grid-cols-2' : ''}`}>
+          {/* อยู่ข้างกัน · ขนส่งหลายเจ้าเรียงลงในคอลัมน์ซ้าย */}
+          <div className="grid gap-6 sm:grid-cols-2">
             <div>
               <h2 className="mb-3 text-lg font-bold text-[#263544]">การจัดส่ง</h2>
               {pickup ? (
                 <FixedChoice label="รับเองที่ร้าน" />
               ) : (
-                <div role="radiogroup" aria-label="เลือกขนส่ง" className="grid gap-2 sm:grid-cols-2">
+                <div role="radiogroup" aria-label="เลือกขนส่ง" className="grid gap-2">
                   {settings.shipCarriers.map((c) => (
                     <ShipChoice
                       key={c.code}
@@ -596,7 +598,7 @@ function CheckoutInner() {
                 </div>
               )}
             </div>
-            <div className={pickup ? '' : 'sm:w-1/2 sm:pr-1'}>
+            <div>
               <h2 className="mb-3 text-lg font-bold text-[#263544]">วิธีการชำระ</h2>
               <FixedChoice label="QR พร้อมเพย์" />
             </div>

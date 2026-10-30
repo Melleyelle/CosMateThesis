@@ -9,6 +9,7 @@ const MESSAGES: Record<string, string> = {
   START_DATE_TOO_SOON: 'วันที่เลือกกระชั้นเกินไป กรุณาเลือกวันที่ไกลกว่านี้',
   DATE_UNAVAILABLE: 'วันที่เลือกเพิ่งถูกจองไป กรุณากลับไปเลือกวันใหม่',
   INVALID_RENTAL_DAYS: 'จำนวนวันเช่าไม่ถูกต้อง กรุณากลับไปเลือกจำนวนวันใหม่',
+  ORDER_ROUND_MISMATCH: 'ออเดอร์เดียวต้องใช้วันใส่และจำนวนวันเช่าเดียวกัน รายการวันอื่นกรุณาจองเป็นออเดอร์ใหม่',
   INVALID_DELIVERY_METHOD: 'วิธีรับชุดไม่ถูกต้อง กรุณาเลือกใหม่',
   INVALID_ADDRESS: 'กรุณากรอกที่อยู่จัดส่งให้ครบ',
   HANDOVER_TO_REQUIRED: 'กรอกชื่อผู้มารับชุดก่อนยืนยันส่งมอบ',
@@ -82,6 +83,7 @@ export function isDateProblem(message: string | null | undefined): boolean {
       message.includes('SHOE_UNAVAILABLE') ||
       message.includes('START_DATE_TOO_SOON') ||
       message.includes('ID_REVIEW_NO_TIME') ||
+      message.includes('ORDER_ROUND_MISMATCH') ||
       message.includes('INVALID_RENTAL_DAYS'))
   )
 }
