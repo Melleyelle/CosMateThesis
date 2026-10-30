@@ -46,11 +46,23 @@ export type ProductImage = {
   error: string | null
 }
 
+// off = ไม่เปิดเช่าแยก · auto = ระบบคำนวณจากระดับชิ้นและลดตามช่วงชุด · manual = ราคาตายตัว
+export type PieceRentMode = 'off' | 'auto' | 'manual'
+export type PieceWeight = 1 | 2 | 3
+
+export const PIECE_WEIGHTS: { value: PieceWeight; label: string }[] = [
+  { value: 3, label: 'ชิ้นหลัก' },
+  { value: 2, label: 'ชิ้นรอง' },
+  { value: 1, label: 'ชิ้นเสริม' },
+]
+
 export type ProductInclusion = {
   id: string
   name: string
   imageUrl: string
-  price: string // ค่าเช่าเมื่อลูกค้าเลือกแยกชิ้น — เว้นว่าง = ไม่เปิดให้เช่าแยก (product_inclusions.rental_price)
+  rentMode: PieceRentMode
+  weight: PieceWeight | null // ระดับชิ้น ใช้แบ่งค่าเช่าเต็มชุด (product_inclusions.price_weight, Step 30)
+  price: string // ราคาตายตัวเมื่อ rentMode = 'manual' (product_inclusions.rental_price)
   laundryFee: string // ค่าซักรีดเมื่อเช่าแยกชิ้น (ไม่บังคับ, ว่าง = 0) (product_inclusions.laundry_fee)
   // ชิ้นนี้คือรองเท้าที่มากับชุด → id สินค้ารองเท้าในคลัง ('' = ชิ้นส่วนทั่วไป) (product_inclusions.shoe_product_id, Step 19)
   shoeProductId: string
@@ -64,7 +76,6 @@ export type ProductVariant = {
   packagePrice: string
   packageDays: string
   depositAmount: string
-  depositReturnHours: string
   laundryFee: string
   // ช่วงสัดส่วนที่ใส่ได้ หน่วยนิ้ว — ค่าต่ำสุดเก็บที่ chest_in/waist_in/hip_in เดิม ค่าสูงสุดที่ *_max_in (Step 18)
   chestIn: string

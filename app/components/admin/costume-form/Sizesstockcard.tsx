@@ -103,7 +103,6 @@ function emptyVariant(size: SizeOption): ProductVariant {
     packagePrice: '',
     packageDays: '1', // เลิกใช้แล้ว (v2) — บันทึกไว้เผื่อคอลัมน์ package_days ห้ามว่าง
     depositAmount: '',
-    depositReturnHours: '72',
     laundryFee: '',
     chestIn: '',
     chestMaxIn: '',
@@ -412,21 +411,12 @@ export default function SizesStockCard({
                     size={14}
                     className={`transition-transform ${expanded[variant.id] ? 'rotate-180' : ''}`}
                   />
-                  {isShoes ? 'คืนมัดจำ และค่าซัก (ไม่บังคับ)' : 'คืนมัดจำ, ค่าซัก, ความยาวชุด และส่วนสูง (ไม่บังคับ)'}
+                  {isShoes ? 'ค่าซัก (ไม่บังคับ)' : 'ค่าซัก, ความยาวชุด และส่วนสูง (ไม่บังคับ)'}
                 </button>
 
                 {expanded[variant.id] && (
                   <div className="mt-3 grid grid-cols-2 gap-4 border-t border-gray-100 pt-4 sm:grid-cols-3">
                     {/* จำนวนวันในแพ็กเกจเลิกใช้แล้ว (v2): ลูกค้าเลือกจำนวนวันเองตอนจอง วันที่ 2 เป็นต้นไปคิดตาม extra_day_rate */}
-                    <FormField
-                      id={`deposit-hours-${variant.id}`}
-                      label="คืนมัดจำภายใน (ชั่วโมง)"
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={variant.depositReturnHours}
-                      onChange={(e) => updateVariant(variant.id, { depositReturnHours: e.target.value })}
-                    />
                     <FormField
                       id={`laundry-${variant.id}`}
                       label="ค่าซักรีด (บาท)"

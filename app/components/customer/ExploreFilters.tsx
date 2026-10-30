@@ -16,7 +16,7 @@ export type ExploreFilterState = {
   character: string | null // เลือกได้หลังเลือกเรื่องแล้วเท่านั้น
   priceMin: number | null // null = ไม่จำกัด (ต่ำกว่า PRICE_FLOOR ก็ผ่าน)
   priceMax: number | null // null = ไม่จำกัด (เกิน PRICE_CEILING ก็ผ่าน)
-  useDate: string | null // วันที่จะใส่ชุด (YYYY-MM-DD) → แสดงเฉพาะชุดที่มีไซส์ว่างวันนั้น
+  useDate: string | null // วันที่จะใส่ชุด (YYYY-MM-DD) → แสดงชุดที่ยังไม่มีคนจองไปใส่ครบทุกตัววันนั้น
 }
 
 // เลือกวันใส่ชุดล่วงหน้าได้เท่ากับปฏิทินหน้ารายละเอียดชุด
@@ -145,7 +145,7 @@ export default function ExploreFilters({ value, onChange, categoryCounts }: Expl
         </div>
         <p className="mt-2 text-body-sm text-muted">
           {value.useDate
-            ? `แสดงเฉพาะชุดที่มีไซส์ว่างให้ใส่วัน${formatThaiDateWithWeekday(value.useDate)}`
+            ? `แสดงชุดที่ยังไม่มีคนจองใส่วัน${formatThaiDateWithWeekday(value.useDate)} ตรวจวันจองได้อีกครั้งที่หน้าชุด`
             : 'เลือกวันที่จะใส่ เพื่อดูเฉพาะชุดที่ยังว่างวันนั้น'}
         </p>
       </FilterSection>

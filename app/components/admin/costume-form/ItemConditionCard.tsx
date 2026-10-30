@@ -26,7 +26,8 @@ const UNSHIPPED = ['pending_payment', 'manual_review', 'paid']
 
 type Booking = { orderNumber: string; status: string; startDate: string; endDate: string }
 // สถิติรายตัว (Step 21): เช่าสำเร็จกี่รอบ ค่าเช่าสะสม มัดจำรอบถัดไป — null = ยังไม่ได้รัน SQL
-type UnitStats = { completed: number; income: number; phase: PricePhase | null; nextPrice: number | null; nextDeposit: number }
+// wear = รอบการใช้งาน (Step 30): เช่าแยกชิ้นนับตามสัดส่วน ใช้ตัดสินช่วงชุดเก่า · null = ยังไม่ได้รัน SQL
+type UnitStats = { completed: number; wear: number | null; income: number; phase: PricePhase | null; nextPrice: number | null; nextDeposit: number }
 type Unit = { id: string; code: string; size: string; condition: Condition; bookings: Booking[]; stats: UnitStats | null }
 
 type Row = {
@@ -73,6 +74,7 @@ async function fetchUnits(productId: string, today: string): Promise<{ units: Un
   type StatRow = {
     item_id: string
     completed_rentals: number
+    wear_rounds?: number | string | null
     rental_income: number | string
     phase?: PricePhase | null
     next_price?: number | string | null
@@ -83,6 +85,7 @@ async function fetchUnits(productId: string, today: string): Promise<{ units: Un
       r.item_id,
       {
         completed: r.completed_rentals,
+        wear: r.wear_rounds == null ? null : Number(r.wear_rounds),
         income: Number(r.rental_income),
         phase: r.phase ?? null,
         nextPrice: r.next_price == null ? null : Number(r.next_price),
@@ -244,7 +247,8 @@ export default function ItemConditionCard({
                   </p>
                   {u.stats && (
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs tabular-nums text-gray-500">
-                      เช่าสำเร็จ {u.stats.completed} รอบ ·{' '}
+                      เช่าสำเร็จ {u.stats.completed} รอบ
+                      {u.stats.wear != null && u.stats.wear !== u.stats.completed && ` (นับการใช้งาน ${u.stats.wear} รอบ)`} ·{' '}
                       {u.stats.phase && u.stats.nextPrice != null
                         ? `${PHASE_LABEL[u.stats.phase]} ค่าเช่า ฿${u.stats.nextPrice.toLocaleString('th-TH')} · `
                         : ''}

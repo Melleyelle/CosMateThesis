@@ -20,7 +20,6 @@ export type CostumeVariant = {
   size: string
   packagePrice: number // ราคาเช่า 1 วัน (v2)
   depositAmount: number
-  depositReturnHours: number
   laundryFee: number
   availableUnits: number
   chart: CostumeSizeChart | null
@@ -57,7 +56,8 @@ export type CostumeDetail = {
   sizeSystem: 'clothing' | 'shoes'
   images: string[]
   // price = ค่าเช่าเมื่อเลือกแยกชิ้น (null = ชิ้นนี้ไม่เปิดให้เช่าแยก)
-  inclusions: { id: string; name: string; imageUrl: string | null; price: number | null; laundryFee: number }[]
+  // price = rental_price · ราคาจริงตามตัวที่ได้คำนวณด้วย piecePrices() · weight = ระดับชิ้น (Step 30)
+  inclusions: { id: string; name: string; imageUrl: string | null; price: number | null; weight: number | null; laundryFee: number }[]
   variants: CostumeVariant[]
   shoes: SetShoes | null
 }
@@ -76,7 +76,6 @@ type CostumeVariantRow = {
   size: string
   package_price: number | string | null
   deposit_amount: number | string | null
-  deposit_return_hours: number | string | null
   laundry_fee: number | string | null
   size_charts: SizeChartRow | SizeChartRow[] | null
   product_items: { condition_status: string }[] | null
@@ -176,7 +175,7 @@ export async function fetchCostumeDetail(productId: string): Promise<{
       product_images ( image_url, display_order ),
       product_inclusions!product_id ( id, name, image_url, display_order ),
       product_variants (
-        id, size, package_price, deposit_amount, deposit_return_hours, laundry_fee,
+        id, size, package_price, deposit_amount, laundry_fee,
         size_charts ( chest_in, waist_in, hip_in, length_in, recommended_height_min, recommended_height_max ),
         product_items ( condition_status )
       )
@@ -204,6 +203,12 @@ export async function fetchCostumeDetail(productId: string): Promise<{
       if (r.laundry_fee != null) laundryById.set(r.id, Number(r.laundry_fee))
     }
   }
+  // ระดับชิ้น (Step 30) ดึงแยก — ยังไม่ได้รัน SQL ก็ใช้ราคาตายตัวตามเดิม
+  const { data: weightRows, error: weightError } = await supabase
+    .from('product_inclusions')
+    .select('id, price_weight')
+    .eq('product_id', productId)
+  const weightById = new Map((weightError ? [] : (weightRows ?? [])).map((r) => [r.id as string, r.price_weight as number | null]))
   // ช่วงไซส์ + ประเภทไซส์ (Step 18) ดึงแยก — ยังไม่ได้รัน SQL หน้าชุดยังแสดงตารางไซส์ค่าเดียวได้
   const variantIds = (product.product_variants ?? []).map((v) => v.id)
   const [rangeRes, systemRes] = await Promise.all([
@@ -239,7 +244,6 @@ export async function fetchCostumeDetail(productId: string): Promise<{
     size: variant.size,
     packagePrice: Number(variant.package_price ?? 0),
     depositAmount: Number(variant.deposit_amount ?? 0),
-    depositReturnHours: Number(variant.deposit_return_hours ?? 72),
     laundryFee: Number(variant.laundry_fee ?? 0),
     availableUnits: (variant.product_items ?? []).filter((item) => item.condition_status === 'available').length,
     chart: withRange(mapSizeChart(variant.size_charts), rangeByVariant.get(variant.id)),
@@ -270,6 +274,7 @@ export async function fetchCostumeDetail(productId: string): Promise<{
           name: inclusion.name,
           imageUrl: inclusion.image_url,
           price: priceById.get(inclusion.id) ?? null,
+          weight: weightById.get(inclusion.id) ?? null,
           laundryFee: laundryById.get(inclusion.id) ?? 0,
         })),
       variants,

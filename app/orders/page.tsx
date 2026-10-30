@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { CaretRightIcon, ImageIcon, StarIcon } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
+import EmptyState from '@/app/components/EmptyState'
 import { fetchMyOrders, type OrderSummary } from '@/utils/customer/fetchOrders'
 import { ORDER_STATUS_BADGE, ORDER_STATUS_LABEL } from '@/utils/orderStatus'
 import { formatBaht, formatThaiDateWithWeekday } from '@/utils/dateUtils'
@@ -70,12 +71,14 @@ export default function MyOrdersPage() {
 
       {!loading && !loadError && orders.length === 0 && (
         // empty state ตาม design v2: ไม่มีกรอบและไม่มีพื้น
-        <div className="px-6 py-16 text-center">
-          <p className="text-[#263544]/60">ยังไม่มีออเดอร์</p>
-          <Link href="/costumes" className="mt-3 inline-block font-semibold text-[#E5457F] hover:underline">
-            เริ่มเลือกชุดกันเลย
-          </Link>
-        </div>
+        <EmptyState
+          title="ยังไม่มีออเดอร์"
+          action={
+            <Link href="/costumes" className="font-semibold text-[#E5457F] hover:underline">
+              เริ่มเลือกชุดกันเลย
+            </Link>
+          }
+        />
       )}
 
       {!loading && !loadError && orders.length > 0 && (

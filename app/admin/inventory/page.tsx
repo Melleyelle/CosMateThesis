@@ -346,6 +346,7 @@ export default function InventoryPage() {
         {!loading && !loadError && filtered.length === 0 && (
           <EmptyState
             className="rounded-2xl border border-[#E4E3EA] bg-white"
+            illustration={false}
             title={costumes.length === 0 ? 'ยังไม่มีชุดในร้านเลย' : 'ไม่พบชุดที่ตรงกับตัวกรองนี้'}
             description={
               costumes.length === 0

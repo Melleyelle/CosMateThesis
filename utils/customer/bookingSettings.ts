@@ -1,6 +1,10 @@
 import { createClient } from '@/utils/client'
 import { addDays, formatBaht } from '@/utils/dateUtils'
 import { SHIP_CARRIERS, type ShipCarrier } from '@/utils/tracking'
+import { DEFAULT_PIECE_SETTINGS, type PieceSettings } from '@/utils/customer/rentalPrice'
+
+// ค่าสำรองเมื่อยังไม่ได้รัน Step 32 · ค่าจริงอยู่ที่ app_settings.deposit_return_hours
+export const DEFAULT_DEPOSIT_RETURN_HOURS = 72
 
 export type BookingSettings = {
   bufferDaysBefore: number
@@ -10,12 +14,14 @@ export type BookingSettings = {
   // ขนส่งที่เปิดให้เลือก + ค่าส่งของแต่ละเจ้า (Step 20) เรียงตาม SHIP_CARRIERS · ไม่ว่างเสมอ
   shipCarriers: ShipCarrierOption[]
   lateFeePerDay: number
+  depositReturnHours: number // โอนมัดจำคืนภายในกี่ชั่วโมง ใช้ทั้งร้าน (Step 32)
   maxPendingOrders: number | null // null = ฐานข้อมูลยังไม่มีคอลัมน์ max_pending_orders
   // ลูกค้าเลือกจำนวนวันเช่าเอง (v2) — อ่านจาก app_settings ผ่าน get_rental_day_settings()
   minRentalDays: number
   maxRentalDays: number
   extraDayRate: number // ค่าเช่าเพิ่มต่อวันตั้งแต่วันที่ 2 (เช่าทั้งชุด) และเป็นเพดานของการเช่าแยกชิ้น
   pieceExtraDayPercent: number // ค่าเช่าเพิ่มต่อวันของการเช่าแยกชิ้น เป็น % ของราคาชิ้นรวม
+  pieceSettings: PieceSettings // ราคาแยกชิ้นตามระดับชิ้น (Step 30)
   // รับเองที่ร้าน (v3) — pickupLocation = null คือร้านไม่เปิดให้รับเอง (ซ่อนตัวเลือก)
   pickupLeadDays: number
   pickupCutoffHour: number // จองหลังเวลานี้ (เวลาไทย) รับวันนี้ไม่ได้ — ใช้เมื่อ pickupLeadDays = 0
@@ -42,13 +48,15 @@ export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
   shippingFlatRate: 0,
   shipCarriers: [{ ...SHIP_CARRIERS[0], fee: 0 }], // Step 26: จัดส่งเฉพาะ EMS
   lateFeePerDay: 0,
+  depositReturnHours: DEFAULT_DEPOSIT_RETURN_HOURS,
   maxPendingOrders: null,
   minRentalDays: 1,
   maxRentalDays: 5,
   extraDayRate: 400,
   pieceExtraDayPercent: 50,
+  pieceSettings: DEFAULT_PIECE_SETTINGS,
   pickupLeadDays: 0,
-  pickupCutoffHour: 15,
+  pickupCutoffHour: 18,
   pickupLocation: null,
 }
 
@@ -121,11 +129,25 @@ export function getRentalTimeline(
   }
 }
 
+// ยังไม่ได้รัน Step 30 = ค่าเริ่มต้น (ชิ้นเดิมไม่มีระดับ จึงยังเป็นราคาตายตัว)
+export async function fetchPieceSettings(): Promise<PieceSettings> {
+  const supabase = createClient()
+  if (!supabase) return DEFAULT_PIECE_SETTINGS
+  const { data, error } = await supabase.rpc('get_piece_price_settings')
+  if (error || !data) return DEFAULT_PIECE_SETTINGS
+  const d = data as Record<string, unknown>
+  return {
+    markupPercent: settingValue(d.markup_percent, DEFAULT_PIECE_SETTINGS.markupPercent),
+    minPrice: settingValue(d.min_price, DEFAULT_PIECE_SETTINGS.minPrice),
+    roundTo: settingValue(d.round_to, DEFAULT_PIECE_SETTINGS.roundTo) || DEFAULT_PIECE_SETTINGS.roundTo,
+  }
+}
+
 export async function fetchBookingSettings(): Promise<BookingSettings> {
   const supabase = createClient()
   if (!supabase) return DEFAULT_BOOKING_SETTINGS
 
-  const [{ data, error }, rental, fees] = await Promise.all([
+  const [{ data, error }, rental, fees, pieceSettings, returnHours] = await Promise.all([
     supabase
       .from('booking_settings')
       // ใช้ * เพื่อให้คอลัมน์เสริม (max_pending_orders) ที่อาจยังไม่มี ไม่ทำให้ทั้ง query error
@@ -134,12 +156,17 @@ export async function fetchBookingSettings(): Promise<BookingSettings> {
       .maybeSingle(),
     supabase.rpc('get_rental_day_settings'),
     supabase.rpc('get_ship_carrier_fees'),
+    fetchPieceSettings(),
+    supabase.rpc('get_deposit_return_hours'),
   ])
 
   const flatRate = error || !data ? DEFAULT_BOOKING_SETTINGS.shippingFlatRate : settingValue(data.shipping_flat_rate, 0)
   const shipCarriers = parseShipCarriers(fees.error ? null : fees.data, flatRate)
-  const base = error || !data ? { ...DEFAULT_BOOKING_SETTINGS, shipCarriers } : {
+  const depositReturnHours = settingValue(returnHours.error ? null : returnHours.data, DEFAULT_DEPOSIT_RETURN_HOURS) || DEFAULT_DEPOSIT_RETURN_HOURS
+  const base = error || !data ? { ...DEFAULT_BOOKING_SETTINGS, shipCarriers, pieceSettings, depositReturnHours } : {
     ...DEFAULT_BOOKING_SETTINGS,
+    pieceSettings,
+    depositReturnHours,
     bufferDaysBefore: settingValue(data.buffer_days_before, DEFAULT_BOOKING_SETTINGS.bufferDaysBefore),
     bufferDaysAfter: settingValue(data.buffer_days_after, DEFAULT_BOOKING_SETTINGS.bufferDaysAfter),
     minLeadDays: settingValue(data.min_lead_days, DEFAULT_BOOKING_SETTINGS.minLeadDays),

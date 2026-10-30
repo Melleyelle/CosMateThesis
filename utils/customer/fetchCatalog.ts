@@ -127,33 +127,23 @@ export async function fetchCatalog(limit?: number): Promise<{ data: CatalogCostu
 }
 
 /**
- * วันเริ่มใช้งาน (วันใส่ชุด) ที่จองไม่ได้ของหลายไซส์ — RPC เดียวกับปฏิทินหน้ารายละเอียดชุด
- * จึงคิด buffer ขนส่ง/ซัก และจำนวนชุดจริงเหมือนกันทุกจุด
- * ตัวกรองหน้ารวมชุดถามแค่ "วันนั้นใส่ได้อย่างน้อย rentalDays วันไหม" (ค่าเริ่มต้น 1 วัน) ลูกค้าเลือกจำนวนวันจริงที่หน้าชุด
- * ยิงทีละกลุ่มเพื่อไม่ให้ส่งคำขอพร้อมกันมากเกินไปเมื่อแคตตาล็อกใหญ่
+ * วันที่ชุดจริงทุกตัวของไซส์ถูกจองไปใส่หมด (Step 31) ใช้กับตัวกรองหน้ารวมชุด
+ * ไม่นับวันขนส่ง/ซัก และไม่สนว่าวันนั้นยังจองได้ไหม ตัวที่จองได้จริงตรวจอีกครั้งที่หน้าชุดและตอนจอง
  */
-export async function fetchUnavailableStartDates(
+export async function fetchFullyWornDates(
   variantIds: string[],
   daysAhead: number,
-  rentalDays = 1,
 ): Promise<{ data: Map<string, Set<string>>; error: string | null }> {
-  const result = new Map<string, Set<string>>()
   const supabase = createClient()
-  if (!supabase) return { data: result, error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
+  if (!supabase) return { data: new Map(), error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
 
   const ids = Array.from(new Set(variantIds))
-  const BATCH = 8
-  for (let i = 0; i < ids.length; i += BATCH) {
-    const batch = ids.slice(i, i + BATCH)
-    const responses = await Promise.all(
-      batch.map((id) =>
-        supabase.rpc('get_unavailable_start_dates', { p_variant_id: id, p_days_ahead: daysAhead, p_rental_days: rentalDays }),
-      ),
-    )
-    for (const [j, { data, error }] of responses.entries()) {
-      if (error) return { data: new Map(), error: error.message }
-      result.set(batch[j], new Set(((data ?? []) as string[]).map((d) => String(d).slice(0, 10))))
-    }
+  const { data, error } = await supabase.rpc('get_fully_worn_dates', { p_variant_ids: ids, p_days_ahead: daysAhead })
+  if (error) return { data: new Map(), error: error.message }
+
+  const result = new Map(ids.map((id) => [id, new Set<string>()]))
+  for (const row of (data ?? []) as { variant_id: string; worn_date: string }[]) {
+    result.get(row.variant_id)?.add(String(row.worn_date).slice(0, 10))
   }
   return { data: result, error: null }
 }

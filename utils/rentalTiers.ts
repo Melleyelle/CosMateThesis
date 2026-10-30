@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/utils/client'
 import type { ProductPricing } from '@/app/components/admin/costume-form/types'
+import { fetchPieceSettings } from '@/utils/customer/bookingSettings'
+import { DEFAULT_PIECE_SETTINGS, type PieceSettings } from '@/utils/customer/rentalPrice'
 
 // ค่าเช่าตามช่วงอายุชุด + มัดจำตามตารางเดิมของร้าน (SQL Step 25 · docs/deposit-pricing-spec.md v2)
 // ตัวเลขมัดจำอยู่ในตาราง deposit_tiers ที่เดียว · ราคา/มัดจำจริงตอนจองคิดในฐานข้อมูล
@@ -89,17 +91,18 @@ export async function fetchPhaseSettings(): Promise<PhaseSettings> {
   return { oldEnabled: d.old_enabled ?? true, oldAfter: Number(d.old_after ?? 10) }
 }
 
-// ฟอร์มชุด: โหลดตารางมัดจำ + ค่าตั้งช่วงชุดเก่าครั้งเดียว · error = ยังไม่ได้รัน Step 25
+// ฟอร์มชุด: โหลดตารางมัดจำ + ค่าตั้งช่วงชุดเก่า + ค่าตั้งราคาแยกชิ้นครั้งเดียว · error = ยังไม่ได้รัน Step 25
 export function usePricingConfig() {
   const [state, setState] = useState<{
     tiers: DepositTier[]
     phase: PhaseSettings
+    pieceSettings: PieceSettings
     error: string | null
-  }>({ tiers: [], phase: DEFAULT_PHASE_SETTINGS, error: null })
+  }>({ tiers: [], phase: DEFAULT_PHASE_SETTINGS, pieceSettings: DEFAULT_PIECE_SETTINGS, error: null })
   useEffect(() => {
     let cancelled = false
-    Promise.all([fetchDepositTiers(), fetchPhaseSettings()]).then(([tiers, phase]) => {
-      if (!cancelled) setState({ tiers: tiers.data, phase, error: tiers.error })
+    Promise.all([fetchDepositTiers(), fetchPhaseSettings(), fetchPieceSettings()]).then(([tiers, phase, pieceSettings]) => {
+      if (!cancelled) setState({ tiers: tiers.data, phase, pieceSettings, error: tiers.error })
     })
     return () => {
       cancelled = true

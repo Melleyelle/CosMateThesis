@@ -1,5 +1,5 @@
 import { createClient } from '@/utils/client'
-import { calcRentalPrice } from '@/utils/customer/rentalPrice'
+import { calcRentalPrice, capPiecesTotal, piecePrices } from '@/utils/customer/rentalPrice'
 import type { BookingSettings } from '@/utils/customer/bookingSettings'
 import type { VariantSummary } from '@/utils/customer/fetchVariantSummaries'
 import type { LineQuote } from '@/utils/customer/deposits'
@@ -9,7 +9,8 @@ export type PieceInfo = {
   id: string
   productId: string
   name: string
-  price: number | null // null = ชิ้นนี้ไม่เปิดให้เช่าแยก
+  price: number | null // rental_price · null = ชิ้นนี้ไม่เปิดให้เช่าแยก · ราคาจริงตามตัวที่ได้ดู piecePrices()
+  weight: number | null // ระดับชิ้น (Step 30) · null = ราคาตายตัว
   laundryFee: number
   displayOrder: number
   isShoe: boolean // รองเท้าที่มากับชุด (Step 19) — ราคานี้หักออกเมื่อเช่าทั้งชุดแต่ไม่รับรองเท้า
@@ -39,6 +40,12 @@ export async function fetchPieces(productIds: string[]): Promise<Record<string, 
   if (res.error) res = await supabase.from('product_inclusions').select(columns).in('product_id', ids)
   const { data, error } = res
   if (error) return {}
+  // ระดับชิ้น (Step 30) ดึงแยก — ยังไม่ได้รัน SQL ก็ใช้ราคาตายตัวตามเดิม
+  const { data: weightRows, error: weightError } = await supabase
+    .from('product_inclusions')
+    .select('id, price_weight')
+    .in('product_id', ids)
+  const weightById = new Map((weightError ? [] : (weightRows ?? [])).map((r) => [r.id as string, r.price_weight as number | null]))
 
   const result: Record<string, PieceInfo> = {}
   for (const r of (data ?? []) as PieceRow[]) {
@@ -47,6 +54,7 @@ export async function fetchPieces(productIds: string[]): Promise<Record<string, 
       productId: r.product_id,
       name: r.name,
       price: r.rental_price == null ? null : Number(r.rental_price),
+      weight: weightById.get(r.id) ?? null,
       laundryFee: Number(r.laundry_fee ?? 0),
       displayOrder: r.display_order ?? 0,
       isShoe: !!r.shoe_product_id,
@@ -68,8 +76,8 @@ export type LinePrice = {
   invalid: boolean // ชิ้นที่เลือกไว้ถูกลบหรือปิดเช่าแยกไปแล้ว / รองเท้าไม่ตรงกับที่เลือก
 }
 
-// ราคาต่อรายการ: ทั้งชุดใช้ค่าเช่าของตัวที่จะได้ / แยกชิ้นใช้ผลรวมราคาชิ้น + ค่าวันเพิ่ม
-// ค่าเช่าทั้งชุดและมัดจำขึ้นกับชุดจริงตัวที่จะได้ (Step 25) → ส่ง quote จาก quoteLines() มา
+// ราคาต่อรายการ: ทั้งชุดใช้ค่าเช่าของตัวที่จะได้ / แยกชิ้นใช้ผลรวมราคาชิ้น (ไม่เกินค่าเช่าทั้งชุด) + ค่าวันเพิ่ม
+// ค่าเช่าทั้งชุด ราคาชิ้น และมัดจำขึ้นกับชุดจริงตัวที่จะได้ (Step 25, 30) → ส่ง quote จาก quoteLines() มา
 //   ไม่มี (ยังโหลดไม่เสร็จ/ยังไม่ได้รัน SQL) = ใช้ราคาและมัดจำเริ่มต้นของไซส์ (แยกชิ้นใช้มัดจำของไซส์เป็นเพดาน)
 // มัดจำไม่ขึ้นตามจำนวนวัน
 // รองเท้าที่มากับชุด: ทั้งชุดไม่ส่ง shoeVariantId = ไม่รับรองเท้า หักราคาชิ้นรองเท้า (มัดจำเท่าเดิม)
@@ -109,7 +117,14 @@ export function priceLine(
   const invalid =
     chosen.some((p) => !p || p.productId !== variant.productId || p.price == null) || shoeChosen !== !!shoeVariantId
   const valid = chosen.filter((p): p is PieceInfo => !!p && p.price != null).sort((a, b) => a.displayOrder - b.displayOrder)
-  const base = valid.reduce((sum, p) => sum + (p.price ?? 0), 0)
+  const unitPrice = quote?.price ?? variant.packagePrice
+  const prices = piecePrices(
+    Object.values(pieces).filter((x) => x.productId === variant.productId),
+    unitPrice,
+    settings.pieceSettings,
+  )
+  const total = valid.reduce((sum, x) => sum + (prices[x.id] ?? 0), 0)
+  const base = capPiecesTotal(total, unitPrice, shoePiece && !shoeChosen ? (shoePiece.price ?? 0) : 0)
   const p = calcRentalPrice({ baseRental: base, rentalDays, isPieces: true, settings })
   return {
     rental: p.rentalPrice,

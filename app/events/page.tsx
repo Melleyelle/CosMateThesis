@@ -260,7 +260,7 @@ function EventsExplorer() {
             ))}
           </div>
         ) : loadError ? (
-          <EmptyState title="โหลดอีเวนต์ไม่สำเร็จ" description={loadError} />
+          <EmptyState title="โหลดอีเวนต์ไม่สำเร็จ" description={loadError} illustration={false} />
         ) : filtered.length === 0 ? (
           <EmptyState
             title={hasFilter ? 'ไม่พบงานที่ตรงกับตัวกรอง' : tab === 'past' ? 'ยังไม่มีงานที่ผ่านมา' : 'ยังไม่มีอีเวนต์ในช่วงนี้'}

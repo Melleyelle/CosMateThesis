@@ -9,7 +9,6 @@ export type VariantSummary = {
   packagePrice: number // ราคาเช่า 1 วัน (v2) — วันที่ 2 เป็นต้นไปคิดตาม calcRentalPrice()
   depositAmount: number
   laundryFee: number
-  depositReturnHours: number
   productId: string
   productName: string
   characterName: string | null
@@ -24,7 +23,6 @@ type Row = {
   package_price: number | string
   deposit_amount: number | string
   laundry_fee: number | string | null
-  deposit_return_hours: number | null
   product_items: { condition_status: string }[] | null
   products: {
     id: string
@@ -48,7 +46,7 @@ export async function fetchVariantSummaries(
   const { data, error } = await supabase
     .from('product_variants')
     .select(
-      `id, size, package_price, deposit_amount, laundry_fee, deposit_return_hours,
+      `id, size, package_price, deposit_amount, laundry_fee,
        product_items ( condition_status ),
        products ( id, name, character_name, series_name, cover_image_url, status )`,
     )
@@ -65,7 +63,6 @@ export async function fetchVariantSummaries(
       packagePrice: Number(row.package_price),
       depositAmount: Number(row.deposit_amount),
       laundryFee: Number(row.laundry_fee ?? 0),
-      depositReturnHours: row.deposit_return_hours ?? 72,
       productId: row.products.id,
       productName: row.products.name,
       characterName: row.products.character_name,

@@ -12,6 +12,7 @@ import ImagesCard from '@/app/components/admin/costume-form/Imagescard'
 import InclusionsCard from '@/app/components/admin/costume-form/Inclusionscard'
 import SizesStockCard from '@/app/components/admin/costume-form/Sizesstockcard'
 import PricingCard from '@/app/components/admin/costume-form/PricingCard'
+import { DEFAULT_DEPOSIT_RETURN_HOURS } from '@/utils/customer/bookingSettings'
 import { pricingProblem, saveProductPricing, usePricingConfig, variantDepositOf } from '@/utils/rentalTiers'
 import ItemConditionCard from '@/app/components/admin/costume-form/ItemConditionCard'
 import { PageHeader, primaryButtonClass, secondaryButtonClass } from '@/app/components/admin/ui'
@@ -54,7 +55,7 @@ export default function EditCostumePage() {
   const supabase = createClient()
 
   const [formData, setFormData] = useState<CostumeFormData>(EMPTY_FORM_DATA)
-  const [{ tiers, phase, error: pricingConfigError }, setPhase] = usePricingConfig()
+  const [{ tiers, phase, pieceSettings, error: pricingConfigError }, setPhase] = usePricingConfig()
   const [originalVariantIds, setOriginalVariantIds] = useState<Set<string>>(new Set())
   const [originalItemIds, setOriginalItemIds] = useState<Set<string>>(new Set())
 
@@ -174,7 +175,7 @@ export default function EditCostumePage() {
         package_price: formData.pricing.priceNormal,
         package_days: v.packageDays || 1, // เลิกใช้แล้ว (v2) — คงค่าเดิมของไซส์ที่มีอยู่
         deposit_amount: variantDepositOf(formData.pricing, tiers),
-        deposit_return_hours: v.depositReturnHours,
+        deposit_return_hours: DEFAULT_DEPOSIT_RETURN_HOURS, // คอลัมน์เลิกใช้แล้ว (Step 32) RPC ยังรับค่านี้อยู่
         laundry_fee: v.laundryFee || '0',
         chest_in: v.chestIn,
         waist_in: v.waistIn,
@@ -201,7 +202,7 @@ export default function EditCostumePage() {
     }
 
     const sizeError = await saveSizeDetails(productId, basicInfo.sizeSystem, variants)
-    const priceError = await saveInclusionPrices(productId, inclusions)
+    const priceError = await saveInclusionPrices(productId, inclusions, formData.pricing, pieceSettings)
     // ต้นทุน ราคา 3 ช่วง มัดจำกำหนดเอง ล็อกราคา (Step 25) — บันทึกทุกครั้งเพื่อให้ลบค่าเดิมออกได้
     const pricingError = await saveProductPricing(productId, formData.pricing)
     setSaving(false)
@@ -307,6 +308,8 @@ export default function EditCostumePage() {
             />
             <InclusionsCard
               excludeProductId={productId}
+              pricing={formData.pricing}
+              pieceSettings={pieceSettings}
               inclusions={formData.inclusions}
               onChange={(inclusions) => setFormData((f) => ({ ...f, inclusions }))}
             />

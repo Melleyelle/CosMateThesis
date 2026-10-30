@@ -49,7 +49,7 @@ import { CATEGORY_LABEL, FRANCHISE_LABEL, GENDER_LABEL } from '@/utils/customer/
 import { fetchEvents, type CalendarEvent } from '@/utils/customer/events'
 import { addDays, formatBaht, formatThaiDateWithWeekday, todayISO } from '@/utils/dateUtils'
 import { fetchPriceRanges, quoteLines, type LineQuote, type PriceRange, type Range } from '@/utils/customer/deposits'
-import { calcRentalPrice } from '@/utils/customer/rentalPrice'
+import { calcRentalPrice, capPiecesTotal, piecePrices } from '@/utils/customer/rentalPrice'
 import { createClient } from '@/utils/client'
 import { fetchUnavailableDates, unavailableKey } from '@/utils/customer/fetchVariantSummaries'
 
@@ -389,11 +389,14 @@ export default function CostumeDetailPage() {
   const pricedPieces = detail.inclusions.filter((inc) => inc.price != null)
   const canSplit = pricedPieces.length > 0
   const pieceMode = canSplit && rentMode === 'pieces'
-  const piecesTotal = pricedPieces.filter((p) => selectedPieces.has(p.id)).reduce((sum, p) => sum + (p.price ?? 0), 0)
   const piecesLaundry = pricedPieces.filter((p) => selectedPieces.has(p.id)).reduce((sum, p) => sum + p.laundryFee, 0)
 
   // ค่าเช่าเต็มชุดวันแรก: ของตัวที่จะได้ (เลือกวันแล้ว) หรือราคาเริ่มต้นของไซส์
   const setPrice = quoted?.price ?? variant?.packagePrice ?? 0
+  // ราคาชิ้นตามตัวที่จะได้ · ยอดรวมไม่เกินค่าเช่าทั้งชุด (ไม่ได้ติ๊กรองเท้า = ไม่เกินค่าเช่าทั้งชุดแบบไม่รับรองเท้า) · ต้องตรงกับ pieces_rent()
+  const piecePriceOf = piecePrices(detail.inclusions, setPrice, settings.pieceSettings)
+  const piecesSum = pricedPieces.filter((p) => selectedPieces.has(p.id)).reduce((sum, p) => sum + (piecePriceOf[p.id] ?? 0), 0)
+  const piecesTotal = capPiecesTotal(piecesSum, setPrice, setShoes && !shoePieceTicked ? setShoes.price : 0)
   // ทั้งชุดแต่ไม่รับรองเท้า → หักราคาแยกชิ้นของรองเท้าออกจากค่าเช่าวันแรก (มัดจำเท่าเดิม) · ต้องตรงกับ create_booking()
   const shoeDiscount = setShoes && !pieceMode && shoeChoice === 'none' ? Math.min(setShoes.price, setPrice) : 0
   // ยังไม่ได้เลือกไซส์รองเท้า (หรือไม่รับ) — แยกชิ้นต้องเลือกไซส์เฉพาะตอนติ๊กรองเท้า
@@ -416,6 +419,10 @@ export default function CostumeDetailPage() {
   const rangeText = (r: Range | undefined, fallback: number) =>
     !r ? formatBaht(fallback) : r.min === r.max ? formatBaht(r.min) : `${formatBaht(r.min)}–${formatBaht(r.max)}`
   const priceText = rangeText(range?.price, variant?.packagePrice ?? 0)
+  // ยังไม่เลือกวัน = ช่วงราคาชิ้นของตัวที่พร้อมเช่า · เลือกวันแล้ว = ราคาของตัวที่จะได้
+  const pieceMin = !quoted && range ? piecePrices(detail.inclusions, range.price.min, settings.pieceSettings) : piecePriceOf
+  const pieceMax = !quoted && range ? piecePrices(detail.inclusions, range.price.max, settings.pieceSettings) : piecePriceOf
+  const pieceText = (id: string) => rangeText({ min: pieceMin[id], max: pieceMax[id] }, piecePriceOf[id])
   const depositText = rangeText(range?.deposit, variantDeposit)
   const unitsVary = !!range && (range.price.min !== range.price.max || range.deposit.min !== range.deposit.max)
   const laundryFee = pieceMode ? piecesLaundry : (variant?.laundryFee ?? 0)
@@ -1011,11 +1018,16 @@ export default function CostumeDetailPage() {
                                   </span>
                                 )}
                               </span>
-                              <span className="tabular-nums text-[#263544]/70">{formatBaht(p.price)}</span>
+                              <span className="tabular-nums text-[#263544]/70">{pieceText(p.id)}</span>
                             </label>
                           </li>
                         ))}
                       </ul>
+                      {piecesSum > piecesTotal && (
+                        <p role="status" className="mt-2 rounded-xl bg-sunken px-3 py-2 text-sm text-[#263544]/80">
+                          ยอดรวมเกินค่าเช่าทั้งชุด คิดแค่ {formatBaht(piecesTotal)} · เช่าทั้งชุดได้ครบทุกชิ้นในราคาใกล้เคียงกัน
+                        </p>
+                      )}
                     </>
                   )}
                 </div>
@@ -1110,7 +1122,7 @@ export default function CostumeDetailPage() {
                 </button>
               </div>
               <p className="mt-2 text-center text-base text-[#263544]/50">
-                มัดจำคืนภายใน {variant.depositReturnHours} ชม. หลังร้านได้รับชุดคืนและตรวจสภาพเรียบร้อย
+                มัดจำคืนภายใน {settings.depositReturnHours} ชม. หลังร้านได้รับชุดคืนและตรวจสภาพเรียบร้อย
               </p>
             </section>
           )}

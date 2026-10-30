@@ -16,6 +16,7 @@ import {
   XIcon,
 } from '@phosphor-icons/react'
 import CustomerLayout from '@/app/components/customer/CustomerLayout'
+import { EmptyIllustration } from '@/app/components/EmptyState'
 import BannerSticker, { riseDelay } from '@/app/components/customer/BannerSticker'
 import CostumeGridCard, { CARD_MEDIA } from '@/app/components/customer/CostumeGridCard'
 import Pagination from '@/app/components/customer/Pagination'
@@ -27,7 +28,7 @@ import ExploreFilters, {
   priceRangeLabel,
   type ExploreFilterState,
 } from '@/app/components/customer/ExploreFilters'
-import { fetchCatalog, fetchUnavailableStartDates, type CatalogCostume } from '@/utils/customer/fetchCatalog'
+import { fetchCatalog, fetchFullyWornDates, type CatalogCostume } from '@/utils/customer/fetchCatalog'
 import { formatThaiDate, isISODate } from '@/utils/dateUtils'
 import { COLOR_OPTIONS, THEME_OPTIONS } from '@/utils/customer/filterOptions'
 import { fetchSizeStock, type SizeStock } from '@/utils/sizeStock'
@@ -35,7 +36,7 @@ import { fetchSizeStock, type SizeStock } from '@/utils/sizeStock'
 // หน้านี้ทดลอง design v2 แนว Gumroad (design-v2-gumroad.md) ผ่าน .theme-v2 ที่ตัวห่อของหน้า:
 // เส้นเข้ม 1px ทุกการ์ด/ปุ่ม/ช่องกรอก · เงาแข็งโผล่เฉพาะตอน hover (.lift) · ปุ่มหลักชมพู · ไม่มีพื้นดำ
 
-const PAGE_SIZE = 12
+const PAGE_SIZE = 9
 
 const SORT_OPTIONS = [
   { value: 'newest', label: 'สินค้าใหม่' },
@@ -101,7 +102,7 @@ function ExploreInner() {
     setPage(1)
   }
 
-  // วันไม่ว่างของทุกไซส์ (ล่วงหน้า USE_DATE_DAYS_AHEAD วัน) — โหลดครั้งเดียวตอนเลือกวันครั้งแรก
+  // วันที่ทุกตัวของไซส์ถูกจองไปใส่หมด (ล่วงหน้า USE_DATE_DAYS_AHEAD วัน) — โหลดครั้งเดียวตอนเลือกวันครั้งแรก
   // หลังจากนั้นเปลี่ยนวันกี่ครั้งก็กรองได้ทันที ไม่ต้องยิงใหม่
   const [unavailableByVariant, setUnavailableByVariant] = useState<Map<string, Set<string>> | null>(null)
   const [availabilityError, setAvailabilityError] = useState<string | null>(null)
@@ -112,7 +113,7 @@ function ExploreInner() {
     if (!filters.useDate || unavailableByVariant || costumes.length === 0) return
     if (availabilityRequested.current === availabilityAttempt) return
     availabilityRequested.current = availabilityAttempt
-    fetchUnavailableStartDates(
+    fetchFullyWornDates(
       costumes.flatMap((c) => c.rentableVariants.map((v) => v.id)),
       USE_DATE_DAYS_AHEAD,
     ).then((res) => {
@@ -175,7 +176,7 @@ function ExploreInner() {
         const haystack = `${c.name} ${c.characterName ?? ''} ${c.seriesName ?? ''}`.toLowerCase()
         if (!haystack.includes(keyword)) return false
       }
-      // ว่างวันที่เลือก = มีอย่างน้อย 1 ไซส์ (ตรงกับไซส์ที่กรองไว้ ถ้ามี) ที่เริ่มเช่าวันนั้นได้
+      // ว่างวันที่เลือก = มีอย่างน้อย 1 ไซส์ (ตรงกับไซส์ที่กรองไว้ ถ้ามี) ที่ยังไม่มีคนจองไปใส่ครบทุกตัว ไม่สนว่าวันนั้นจองได้ไหม
       if (f.useDate && unavailableByVariant) {
         const date = f.useDate
         const free = c.rentableVariants.some(
@@ -550,8 +551,8 @@ function ExploreInner() {
 
           {!busy && !loadError && results.length === 0 && (
             <div className={`px-4 text-center ${suggestions.length > 0 ? 'pb-10 pt-12' : 'py-16'}`}>
-              <MagnifyingGlassIcon size={32} className="mx-auto text-muted" />
-              <p className="mt-3 text-h3 font-semibold text-ink">
+              <EmptyIllustration />
+              <p className="mt-4 text-h3 font-semibold text-ink">
                 {costumes.length === 0
                   ? 'ยังไม่มีชุดที่เปิดให้เช่า'
                   : filters.useDate

@@ -33,7 +33,6 @@ const EXAMPLE_RENTAL_DAYS = 2
 // นโยบายร้านที่ยังไม่อยู่ใน booking_settings (ดู PRODUCT.md) ถ้าเปลี่ยนนโยบาย แก้ที่นี่ที่เดียว
 const CANCEL_FREE_DAYS_BEFORE = 3
 const PENDING_EXPIRE_MINUTES = 30
-const DEPOSIT_REFUND_HOURS = 72
 
 // ที่อยู่หน้าร้าน แสดงในหัวข้อ "ร้านอยู่ที่ไหน"
 const STORE_NAME = 'CosMate'
@@ -172,11 +171,11 @@ function buildPhases(s: BookingSettings): Phase[] {
         {
           title: 'ได้มัดจำคืน',
           icon: HandCoinsIcon,
-          when: `ภายใน ${DEPOSIT_REFUND_HOURS} ชม.`,
+          when: `ภายใน ${s.depositReturnHours} ชม.`,
           text: (
             <>
               ร้านตรวจสภาพชุดเมื่อได้รับคืน ถ้าเรียบร้อยจะโอนมัดจำเข้าบัญชีที่คุณให้ไว้
-              ภายใน {DEPOSIT_REFUND_HOURS} ชั่วโมง จากนั้นคุณรีวิวชุดได้เลย
+              ภายใน {s.depositReturnHours} ชั่วโมง จากนั้นคุณรีวิวชุดได้เลย
             </>
           ),
         },
@@ -241,9 +240,9 @@ const FAQS: { q: string; a: (s: BookingSettings) => ReactNode }[] = [
   },
   {
     q: 'เงินมัดจำจะได้คืนเมื่อไร',
-    a: () => (
+    a: (s) => (
       <>
-        ภายใน <b className="font-semibold text-brand">{DEPOSIT_REFUND_HOURS} ชั่วโมง</b> หลังร้านได้รับชุดคืนและตรวจสภาพเรียบร้อย
+        ภายใน <b className="font-semibold text-brand">{s.depositReturnHours} ชั่วโมง</b> หลังร้านได้รับชุดคืนและตรวจสภาพเรียบร้อย
         โอนเข้าบัญชีที่คุณระบุไว้ตอนชำระเงิน (หรือบัญชีใน &ldquo;บัญชีของฉัน&rdquo;)
       </>
     ),
@@ -362,7 +361,7 @@ export default function HowItWorksPage() {
               unit={settings.pickupLocation ? 'รับที่ร้านฟรี' : undefined}
             />
             <Fact label="ยกเลิกได้ถึง" value={CANCEL_FREE_DAYS_BEFORE} unit="วันก่อนงาน" />
-            <Fact label="มัดจำคืนภายใน" value={DEPOSIT_REFUND_HOURS} unit="ชั่วโมง" />
+            <Fact label="มัดจำคืนภายใน" value={settings.depositReturnHours} unit="ชั่วโมง" />
           </dl>
         </header>
 

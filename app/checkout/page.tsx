@@ -276,7 +276,6 @@ function CheckoutInner() {
     { rental: 0, deposit: 0, laundry: 0 },
   )
   const grandTotal = totals.rental + totals.deposit + totals.laundry + shipping
-  const returnHours = Math.max(...lines.map((l) => l.variant?.depositReturnHours ?? 72), 72)
   const latestReturn = lines.reduce<string | null>(
     (max, l) => (l.timeline && (!max || l.timeline.returnBy > max) ? l.timeline.returnBy : max),
     null,
@@ -674,7 +673,7 @@ function CheckoutInner() {
                           ใช้บัญชีนี้
                         </button>
                         <p className="text-base text-[#263544]/60">
-                          ร้านโอนมัดจำคืนภายใน {returnHours} ชม. หลังได้รับชุดคืนและตรวจสภาพเรียบร้อย
+                          ร้านโอนมัดจำคืนภายใน {settings.depositReturnHours} ชม. หลังได้รับชุดคืนและตรวจสภาพเรียบร้อย
                         </p>
                       </div>
                     </div>

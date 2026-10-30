@@ -1,5 +1,5 @@
 import { createClient } from '@/utils/client'
-import { EMPTY_PRICING, type CostumeFormData, type ProductPricing } from '@/app/components/admin/costume-form/types'
+import { EMPTY_PRICING, type CostumeFormData, type PieceWeight, type ProductPricing } from '@/app/components/admin/costume-form/types'
 import { isAutoCost, suggestedPrices } from '@/utils/rentalTiers'
 
 // โหลดข้อมูลชุดเดิมทั้งหมดมาใส่ในฟอร์มเดียวกับหน้า "เพิ่มชุดใหม่" เพื่อแก้ไข
@@ -23,7 +23,7 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
       product_images ( id, image_url, display_order ),
       product_inclusions!product_id ( id, name, image_url, display_order ),
       product_variants (
-        id, size, package_price, package_days, deposit_amount, deposit_return_hours, laundry_fee,
+        id, size, package_price, package_days, deposit_amount, laundry_fee,
         size_charts ( chest_in, waist_in, hip_in, length_in, recommended_height_min, recommended_height_max ),
         product_items ( id, item_code )
       )
@@ -63,18 +63,30 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
     .select('id, shoe_product_id')
     .eq('product_id', productId)
   const shoeById = new Map((shoeRows ?? []).map((r) => [r.id, (r.shoe_product_id as string | null) ?? '']))
+  // ระดับชิ้น (Step 30) ดึงแยก — ยังไม่ได้รัน SQL ก็เปิดฟอร์มได้ (ราคาตายตัวตามเดิม)
+  const { data: weightRows, error: weightError } = await supabase
+    .from('product_inclusions')
+    .select('id, price_weight')
+    .eq('product_id', productId)
+  const weightById = new Map((weightError ? [] : (weightRows ?? [])).map((r) => [r.id, r.price_weight as PieceWeight | null]))
 
   const inclusions = (data.product_inclusions ?? [])
     .slice()
     .sort((a, b) => a.display_order - b.display_order)
-    .map((inc) => ({
-      id: inc.id,
-      name: inc.name,
-      imageUrl: inc.image_url ?? '',
-      price: priceById.get(inc.id) ?? '',
-      laundryFee: laundryById.get(inc.id) ?? '',
-      shoeProductId: shoeById.get(inc.id) ?? '',
-    }))
+    .map((inc) => {
+      const price = priceById.get(inc.id) ?? ''
+      const weight = weightById.get(inc.id) ?? null
+      return {
+        id: inc.id,
+        name: inc.name,
+        imageUrl: inc.image_url ?? '',
+        rentMode: !price ? ('off' as const) : weight ? ('auto' as const) : ('manual' as const),
+        weight,
+        price,
+        laundryFee: laundryById.get(inc.id) ?? '',
+        shoeProductId: shoeById.get(inc.id) ?? '',
+      }
+    })
 
   // ช่วงไซส์ + ประเภทไซส์ (Step 18) ดึงแยก — ยังไม่ได้รัน SQL ก็เปิดฟอร์มได้ (ถือว่าเป็นค่าเดียว/เสื้อผ้า)
   const variantIds = (data.product_variants ?? []).map((v) => v.id)
@@ -117,7 +129,6 @@ export async function fetchCostumeForEdit(productId: string): Promise<{
       packagePrice: v.package_price != null ? String(v.package_price) : '',
       packageDays: v.package_days != null ? String(v.package_days) : '2',
       depositAmount: v.deposit_amount != null ? String(v.deposit_amount) : '',
-      depositReturnHours: v.deposit_return_hours != null ? String(v.deposit_return_hours) : '72',
       laundryFee: v.laundry_fee != null ? String(v.laundry_fee) : '',
       chestIn: chart?.chest_in != null ? String(chart.chest_in) : '',
       waistIn: chart?.waist_in != null ? String(chart.waist_in) : '',

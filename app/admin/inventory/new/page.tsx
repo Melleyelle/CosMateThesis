@@ -11,9 +11,10 @@ import ImagesCard from '@/app/components/admin/costume-form/Imagescard'
 import InclusionsCard from '@/app/components/admin/costume-form/Inclusionscard'
 import SizesStockCard from '@/app/components/admin/costume-form/Sizesstockcard'
 import PricingCard from '@/app/components/admin/costume-form/PricingCard'
+import { DEFAULT_DEPOSIT_RETURN_HOURS } from '@/utils/customer/bookingSettings'
 import { pricingProblem, saveProductPricing, usePricingConfig, variantDepositOf } from '@/utils/rentalTiers'
 import { EMPTY_FORM_DATA, type CostumeFormData } from '@/app/components/admin/costume-form/types'
-import { findProductIdBySku, saveInclusionPrices, validateShoeInclusion } from '@/utils/saveInclusionPrices'
+import { findProductIdBySku, isPieceOpen, saveInclusionPrices, validateShoeInclusion } from '@/utils/saveInclusionPrices'
 import { validateSkuPrefix } from '@/utils/skuPrefix'
 import { saveSizeDetails, validateSizeRanges } from '@/utils/sizeDefaults'
 
@@ -42,7 +43,7 @@ export default function NewCostumePage() {
   const supabase = createClient()
 
   const [formData, setFormData] = useState<CostumeFormData>(EMPTY_FORM_DATA)
-  const [{ tiers, phase, error: pricingConfigError }, setPhase] = usePricingConfig()
+  const [{ tiers, phase, pieceSettings, error: pricingConfigError }, setPhase] = usePricingConfig()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -125,7 +126,7 @@ export default function NewCostumePage() {
         package_price: formData.pricing.priceNormal,
         package_days: v.packageDays || 1, // เลิกใช้แล้ว (v2) ลูกค้าเลือกจำนวนวันเอง
         deposit_amount: variantDepositOf(formData.pricing, tiers),
-        deposit_return_hours: v.depositReturnHours,
+        deposit_return_hours: DEFAULT_DEPOSIT_RETURN_HOURS, // คอลัมน์เลิกใช้แล้ว (Step 32) RPC ยังรับค่านี้อยู่
         laundry_fee: v.laundryFee || '0',
         chest_in: v.chestIn,
         waist_in: v.waistIn,
@@ -162,8 +163,10 @@ export default function NewCostumePage() {
       : 'บันทึกราคาไม่สำเร็จ: หาชุดที่เพิ่งสร้างไม่พบ'
     if (pricingError) followUpErrors.push(pricingError)
 
-    if (inclusions.some((inc) => inc.price.trim())) {
-      const priceError = productId ? await saveInclusionPrices(productId, inclusions) : 'บันทึกราคาแยกชิ้นไม่สำเร็จ: หาชุดที่เพิ่งสร้างไม่พบ'
+    if (inclusions.some(isPieceOpen)) {
+      const priceError = productId
+        ? await saveInclusionPrices(productId, inclusions, formData.pricing, pieceSettings)
+        : 'บันทึกราคาแยกชิ้นไม่สำเร็จ: หาชุดที่เพิ่งสร้างไม่พบ'
       if (priceError) followUpErrors.push(priceError)
     }
     if (followUpErrors.length > 0) {
@@ -223,6 +226,8 @@ export default function NewCostumePage() {
               onItemsChange={(items) => setFormData((f) => ({ ...f, items }))}
             />
             <InclusionsCard
+              pricing={formData.pricing}
+              pieceSettings={pieceSettings}
               inclusions={formData.inclusions}
               onChange={(inclusions) => setFormData((f) => ({ ...f, inclusions }))}
             />
