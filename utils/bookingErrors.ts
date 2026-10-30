@@ -58,6 +58,12 @@ const MESSAGES: Record<string, string> = {
   CANNOT_CHANGE_SELF: 'เปลี่ยนสิทธิ์บัญชีของตัวเองไม่ได้',
   MEMBER_NOT_FOUND: 'ไม่พบสมาชิกนี้ในระบบ',
   admin_set_member: 'ยังไม่ได้รัน SQL Step 27 (cosmate_step27_member_admin.sql)',
+  // Step 29 · รองเท้าที่ร้านจัดหาให้
+  SHOE_SOURCING_PENDING: 'ยังมีรองเท้าที่รอจัดหา กด "จัดหาได้แล้ว" หรือ "หาไม่ได้" ด้านบนก่อน ยอดคืนเงินขึ้นกับข้อนี้',
+  SHOE_SOURCING_LOCKED: 'ออเดอร์นี้จบแล้ว แก้สถานะจัดหารองเท้าไม่ได้ (ยอดคืนเงินคำนวณไปแล้ว)',
+  SHOE_SOURCING_NOT_FOUND: 'รายการนี้ไม่มีรองเท้าที่ต้องจัดหา ลองรีเฟรชหน้า',
+  SHOE_SOURCING_BAD_STATUS: 'สถานะจัดหารองเท้าไม่ถูกต้อง',
+  admin_set_shoe_sourcing: 'ยังไม่ได้รัน SQL Step 29 (cosmate_step29_shoe_sourcing.sql)',
 }
 
 export function translateRpcError(message: string | null | undefined): string {

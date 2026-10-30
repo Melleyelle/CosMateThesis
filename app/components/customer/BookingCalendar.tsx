@@ -208,11 +208,7 @@ export default function BookingCalendar({
                 )
               )}
               {dayEvents && (
-                <span className="absolute right-1.5 top-1.5 flex gap-0.5" aria-hidden="true">
-                  {dayEvents.slice(0, 2).map((ev) => (
-                    <span key={ev.id} className="h-1.5 w-1.5 rounded-full bg-info ring-1 ring-white" />
-                  ))}
-                </span>
+                <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-info ring-1 ring-white" aria-hidden="true" />
               )}
             </button>
           )
@@ -246,9 +242,6 @@ export default function BookingCalendar({
 
       {/* คำอธิบายสี */}
       <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-body-sm text-secondary">
-        <Legend swatch="bg-brand-soft" label={pickup ? 'วันส่งคืน' : 'วันรับชุด / ส่งคืน'} />
-        <Legend swatch="bg-brand" label="วันใส่ชุด" />
-        <Legend swatch="bg-warning-subtle ring-1 ring-inset ring-warning/40" label="เริ่มคิดค่าล่าช้า" />
         {events.length > 0 && <Legend swatch="bg-info" label="มีงานอีเวนต์" dot />}
         <Legend swatch="bg-sunken ring-1 ring-inset ring-line-subtle" label="ไซส์ที่เลือกถูกจองแล้ว" />
         {multiSize && (
@@ -257,10 +250,6 @@ export default function BookingCalendar({
             ใต้วันที่ = ไซส์ที่ถูกจองวันนั้น
           </span>
         )}
-        <span className="flex items-center gap-1.5">
-          <span className="text-muted/50 line-through">12</span>
-          เลือกเป็นวันใส่ไม่ได้
-        </span>
       </div>
 
       {/* งานอีเวนต์ของเดือนที่แสดง */}

@@ -203,6 +203,20 @@ function ExploreInner() {
     })
   }, [costumes, filters, search, sort, unavailableByVariant])
 
+  // ค้นไม่เจอ → แนะนำชุดคะแนนรีวิวดีสุด (เสมอกันเอาชุดใหม่กว่า) แทนการปล่อยหน้าว่าง
+  const suggestions = useMemo(
+    () =>
+      [...costumes]
+        .sort(
+          (a, b) =>
+            (b.avgRating ?? 0) - (a.avgRating ?? 0) ||
+            b.reviewCount - a.reviewCount ||
+            b.createdAt.localeCompare(a.createdAt),
+        )
+        .slice(0, 6),
+    [costumes],
+  )
+
   const totalPages = Math.max(1, Math.ceil(results.length / PAGE_SIZE))
   const pageItems = results.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const activeCount = countActiveFilters(filters)
@@ -535,7 +549,7 @@ function ExploreInner() {
           )}
 
           {!busy && !loadError && results.length === 0 && (
-            <div className="px-4 py-16 text-center">
+            <div className={`px-4 text-center ${suggestions.length > 0 ? 'pb-10 pt-12' : 'py-16'}`}>
               <MagnifyingGlassIcon size={32} className="mx-auto text-muted" />
               <p className="mt-3 text-h3 font-semibold text-ink">
                 {costumes.length === 0
@@ -558,6 +572,26 @@ function ExploreInner() {
                   ล้างตัวกรองแล้วลองใหม่
                 </button>
               )}
+            </div>
+          )}
+
+          {!busy && !loadError && results.length === 0 && suggestions.length > 0 && (
+            <div className="pb-4">
+              {/* เส้นคั่นแยกส่วนแนะนำออกจากข้อความ "ไม่พบ" ด้านบน */}
+              <div className="flex items-center gap-4">
+                <h2 className="text-h2 font-bold text-brand">ชุดที่คุณอาจสนใจ</h2>
+                <span aria-hidden="true" className="h-px flex-1 bg-line-subtle" />
+              </div>
+              <div className="mt-6 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3">
+                {suggestions.map((c) => (
+                  <CostumeGridCard
+                    key={c.id}
+                    variant="gumroad"
+                    costume={c}
+                    sizes={sizeStock ? (sizeStock.get(c.id) ?? []) : undefined}
+                  />
+                ))}
+              </div>
             </div>
           )}
 

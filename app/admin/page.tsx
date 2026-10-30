@@ -466,7 +466,7 @@ function IdCheckAlert({ orders }: { orders: OrderSummary[] }) {
 function SectionHeading({ eyebrow, title, first = false }: { eyebrow: string; title: string; first?: boolean }) {
   return (
     <div className={`mb-3 flex items-baseline gap-3 ${first ? '' : 'mt-10 border-t border-[#E4E3EA] pt-6'}`}>
-      <span className="rounded-full bg-[#263544] px-2.5 py-0.5 text-xs font-semibold text-white">{eyebrow}</span>
+      <span className="rounded-full bg-brand px-2.5 py-0.5 text-xs font-semibold text-white">{eyebrow}</span>
       <h2 className="text-lg font-bold text-[#263544]">{title}</h2>
     </div>
   )

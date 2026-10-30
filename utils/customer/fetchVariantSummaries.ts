@@ -77,23 +77,21 @@ export async function fetchVariantSummaries(
   return { data: result, error: null }
 }
 
-// มีรองเท้าที่มากับชุด → ต่อท้ายไซส์ชุดด้วย "~ไซส์รองเท้า" (ว่างต้องคนละรายการกับแบบไม่รับรองเท้า)
-export const unavailableKey = (variantId: string, rentalDays: number, delivery: DeliveryMethod, shoeVariantId?: string) =>
-  `${shoeVariantId ? `${variantId}~${shoeVariantId}` : variantId}:${rentalDays}:${delivery}`
+export const unavailableKey = (variantId: string, rentalDays: number, delivery: DeliveryMethod) =>
+  `${variantId}:${rentalDays}:${delivery}`
 
-// วันที่เริ่มใช้งานไม่ได้ของหลาย (ไซส์, รองเท้า, จำนวนวัน, วิธีรับ) พร้อมกัน (ใช้ตรวจของในตะกร้าว่ายังว่างอยู่ไหม)
-// ผลเก็บตาม unavailableKey() เพราะวันที่เริ่มไม่ได้ขึ้นกับจำนวนวันที่เช่า วิธีรับชุด และรองเท้าที่เลือก
+// วันที่เริ่มใช้งานไม่ได้ของหลาย (ไซส์, จำนวนวัน, วิธีรับ) พร้อมกัน (ใช้ตรวจของในตะกร้าว่ายังว่างอยู่ไหม)
+// ผลเก็บตาม unavailableKey() เพราะวันที่เริ่มไม่ได้ขึ้นกับจำนวนวันที่เช่าและวิธีรับชุด
+// รองเท้าที่มากับชุดไม่ล็อกชุด (Step 29) → ส่งไซส์รองเท้าเป็น variantId ของตัวเองแยกจากไซส์ชุด
 export async function fetchUnavailableDates(
-  requests: { variantId: string; rentalDays: number; delivery: DeliveryMethod; shoeVariantId?: string }[],
+  requests: { variantId: string; rentalDays: number; delivery: DeliveryMethod }[],
   daysAhead = 180,
 ): Promise<Record<string, Set<string>>> {
   const supabase = createClient()
   const result: Record<string, Set<string>> = {}
   if (!supabase) return result
 
-  const unique = new Map(
-    requests.map((r) => [unavailableKey(r.variantId, r.rentalDays, r.delivery, r.shoeVariantId), r]),
-  )
+  const unique = new Map(requests.map((r) => [unavailableKey(r.variantId, r.rentalDays, r.delivery), r]))
   await Promise.all(
     Array.from(unique.entries()).map(async ([key, r]) => {
       const { data } = await supabase.rpc('get_unavailable_start_dates', {
@@ -101,7 +99,6 @@ export async function fetchUnavailableDates(
         p_days_ahead: daysAhead,
         p_rental_days: r.rentalDays,
         p_delivery_method: r.delivery,
-        ...(r.shoeVariantId ? { p_shoe_variant_id: r.shoeVariantId } : {}),
       })
       result[key] = new Set(((data ?? []) as string[]).map((d) => String(d).slice(0, 10)))
     }),

@@ -44,14 +44,17 @@ export type CartKey = {
   pieces?: string[] // id ชิ้นส่วนที่เช่าแยก (เรียงแล้ว) — ไม่มี = เช่าทั้งชุด
   // ไซส์รองเท้าที่มากับชุด (variant ของสินค้ารองเท้า, Step 19) — ไม่มี = ไม่รับรองเท้า / ชุดไม่มีรองเท้า
   shoeVariantId?: string
+  // ยอมรับคู่ใกล้เคียงที่ร้านจัดหาให้ ถ้ารองเท้าไซส์นี้ไม่ว่าง (Step 29) — ใช้คู่กับ shoeVariantId เท่านั้น
+  shoeSubstitute?: boolean
 }
 
 export type CartItem = CartKey
 
 // ไซส์ + รองเท้า + วัน + จำนวนวัน + ชิ้นที่เลือก คือหนึ่งรายการ (ต่างกันข้อใดข้อหนึ่ง = คนละรายการ)
-export function cartKeyOf({ variantId, startDate, rentalDays, pieces, shoeVariantId }: CartKey): string {
-  // ใช้ "." คั่นชิ้น ไม่ใช้ "+" เพราะใน query string "+" ถูกอ่านเป็นช่องว่าง · รองเท้าต่อท้ายไซส์ชุดด้วย "~"
-  const base = `${shoeVariantId ? `${variantId}~${shoeVariantId}` : variantId}:${startDate}:${rentalDays}`
+export function cartKeyOf({ variantId, startDate, rentalDays, pieces, shoeVariantId, shoeSubstitute }: CartKey): string {
+  // ใช้ "." คั่นชิ้น ไม่ใช้ "+" เพราะใน query string "+" ถูกอ่านเป็นช่องว่าง · รองเท้าต่อท้ายไซส์ชุดด้วย "~" · ยอมรับคู่ใกล้เคียงต่อท้ายด้วย "*"
+  const shoe = shoeVariantId ? `~${shoeVariantId}${shoeSubstitute ? '*' : ''}` : ''
+  const base = `${variantId}${shoe}:${startDate}:${rentalDays}`
   return pieces && pieces.length > 0 ? `${base}:${pieces.join('.')}` : base
 }
 
@@ -84,7 +87,8 @@ function isCartItem(value: unknown): value is CartItem {
     item.variantId.length > 0 &&
     isISODate(item.startDate) &&
     (item.pieces === undefined || Array.isArray(item.pieces)) &&
-    (item.shoeVariantId === undefined || typeof item.shoeVariantId === 'string')
+    (item.shoeVariantId === undefined || typeof item.shoeVariantId === 'string') &&
+    (item.shoeSubstitute === undefined || typeof item.shoeSubstitute === 'boolean')
   )
 }
 
@@ -96,7 +100,12 @@ function readCart(): CartItem[] {
     return Array.isArray(stored)
       ? stored
           .filter(isCartItem)
-          .map((i) => ({ ...i, rentalDays: normalizeDays(i.rentalDays), pieces: normalizePieces(i.pieces) }))
+          .map((i) => ({
+            ...i,
+            rentalDays: normalizeDays(i.rentalDays),
+            pieces: normalizePieces(i.pieces),
+            shoeSubstitute: (!!i.shoeVariantId && i.shoeSubstitute) || undefined,
+          }))
       : []
   } catch {
     return []
@@ -178,6 +187,7 @@ export function addToCart(
   delivery: DeliveryMethod,
   pieces?: string[],
   shoeVariantId?: string,
+  shoeSubstitute?: boolean,
 ): 'added' | 'exists' | 'login' | 'mismatch' {
   if (!cartStorageKey()) return 'login'
   const items = readCart()
@@ -188,6 +198,7 @@ export function addToCart(
     rentalDays: normalizeDays(rentalDays),
     pieces: normalizePieces(pieces),
     shoeVariantId: shoeVariantId || undefined,
+    shoeSubstitute: (!!shoeVariantId && shoeSubstitute) || undefined,
   }
   const key = cartKeyOf(item)
   if (items.some((i) => cartKeyOf(i) === key)) return 'exists'
@@ -208,7 +219,7 @@ export function removeFromCart(itemsToRemove: CartKey[]) {
 }
 
 // รูปแบบใน URL: variantId:YYYY-MM-DD:วัน หรือ variantId:YYYY-MM-DD:วัน:pieceId.pieceId
-// มีรองเท้า: variantId~shoeVariantId:… · ลิงก์ก่อน v2 ไม่มีช่องจำนวนวัน (variantId:YYYY-MM-DD[:pieceIds]) → อ่านเป็น 1 วัน
+// มีรองเท้า: variantId~shoeVariantId:… (ยอมรับคู่ใกล้เคียง: variantId~shoeVariantId*:…) · ลิงก์ก่อน v2 ไม่มีช่องจำนวนวัน (variantId:YYYY-MM-DD[:pieceIds]) → อ่านเป็น 1 วัน
 export function encodeCheckoutItems(items: CartKey[]): string {
   return items.map(cartKeyOf).join(',')
 }
@@ -219,7 +230,8 @@ export function decodeCheckoutItems(value: string | null): CartKey[] {
   const unique = new Map<string, CartKey>()
   for (const entry of value.split(',')) {
     const [variantPart, startDate, third, fourth] = entry.split(':')
-    const [variantId, shoeVariantId] = (variantPart ?? '').split('~')
+    const [variantId, shoePart] = (variantPart ?? '').split('~')
+    const shoeVariantId = shoePart?.replace(/\*$/, '')
     if (!variantId || !isISODate(startDate)) continue
     const hasDays = third !== undefined && /^\d+$/.test(third)
     const pieceList = hasDays ? fourth : third
@@ -230,6 +242,7 @@ export function decodeCheckoutItems(value: string | null): CartKey[] {
       rentalDays: hasDays ? normalizeDays(third) : 1,
       pieces: normalizePieces(pieceList?.split(/[.+ ]/)),
       shoeVariantId: shoeVariantId || undefined,
+      shoeSubstitute: (!!shoeVariantId && !!shoePart?.endsWith('*')) || undefined,
     }
     unique.set(cartKeyOf(item), item)
   }

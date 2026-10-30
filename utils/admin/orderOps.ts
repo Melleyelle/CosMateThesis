@@ -1,6 +1,6 @@
 // ข้อมูลเสริมและคำสั่งของหน้าออเดอร์แอดมิน (คิวงาน) — ต้องรัน Step 16 และ 17 แล้ว
 import { createClient } from '@/utils/client'
-import type { OrderSummary } from '@/utils/customer/fetchOrders'
+import type { OrderSummary, ShoeSourcingStatus } from '@/utils/customer/fetchOrders'
 import type { OrderStatus } from '@/utils/orderStatus'
 import type { BookingSettings } from '@/utils/customer/bookingSettings'
 import { dayDiff, shipByDate } from '@/utils/admin/fetchDashboard'
@@ -309,6 +309,14 @@ export async function markRefund(orderId: string, status: 'transferred' | 'faile
   const supabase = createClient()
   if (!supabase) return { error: 'Supabase ยังไม่ได้ตั้งค่า' }
   const { error } = await supabase.rpc('admin_mark_refund', { p_order_id: orderId, p_status: status })
+  return { error: error?.message ?? null }
+}
+
+// รองเท้าที่ร้านต้องจัดหา (Step 29): sourced = หาได้แล้ว · refund = หาไม่ได้ คืนค่ารองเท้า · pending = ย้อนกลับไปรอจัดหา
+export async function setShoeSourcing(lineId: string, status: ShoeSourcingStatus, note: string) {
+  const supabase = createClient()
+  if (!supabase) return { error: 'Supabase ยังไม่ได้ตั้งค่า' }
+  const { error } = await supabase.rpc('admin_set_shoe_sourcing', { p_line_id: lineId, p_status: status, p_note: note.trim() || null })
   return { error: error?.message ?? null }
 }
 

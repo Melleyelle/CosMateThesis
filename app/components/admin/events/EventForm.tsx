@@ -291,12 +291,12 @@ export default function EventForm({
                       key={t}
                       className={`flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#E5457F]/40 ${
                         form.tone === t
-                          ? 'border-[#263544] bg-[#263544] font-semibold text-white'
+                          ? 'border-brand bg-brand font-semibold text-white'
                           : 'border-[#D5D9E0] text-[#5B6472] hover:border-[#9AA3AF]'
                       }`}
                     >
                       <input type="radio" name="tone" value={t} checked={form.tone === t} onChange={() => set('tone', t)} className="sr-only" />
-                      <span className={`h-3 w-3 rounded-full ring-1 ring-white/70 ${EVENT_TONE[t].dot}`} />
+                      <span className={`h-3 w-3 rounded-full ring-1 ring-white ${EVENT_TONE[t].dot}`} />
                       {EVENT_TONE[t].label}
                     </label>
                   ))}
@@ -383,7 +383,7 @@ export function PhotoModeration({ eventId }: { eventId: string }) {
                   disabled={busy === p.id}
                   onClick={() => toggle(p)}
                   className={`mt-1 w-full rounded-full px-2 py-1 text-xs font-semibold ${
-                    p.isHidden ? 'bg-[#263544] text-white' : 'border border-[#D5D9E0] text-[#B42318]'
+                    p.isHidden ? 'lift focus-ring border border-ink bg-brand text-white active:bg-brand-strong' : 'border border-[#D5D9E0] text-[#B42318]'
                   }`}
                 >
                   {p.isHidden ? 'แสดงอีกครั้ง' : 'ซ่อนรูป'}

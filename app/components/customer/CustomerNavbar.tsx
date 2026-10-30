@@ -23,7 +23,6 @@ const NAV_LINKS = [
   { href: '/', label: 'หน้าหลัก' },
   { href: '/costumes', label: 'สำรวจชุด' },
   { href: '/events', label: 'อีเวนต์' },
-  { href: '/how-it-works', label: 'วิธีการเช่า' },
 ]
 
 export default function CustomerNavbar() {

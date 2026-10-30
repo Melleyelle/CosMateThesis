@@ -24,7 +24,6 @@ const LINK_GROUPS = [
   {
     title: 'ช่วยเหลือ',
     links: [
-      { href: '/how-it-works', label: 'วิธีการเช่า' },
       { href: '/events', label: 'อีเวนต์คอสเพลย์' },
       { href: '/orders', label: 'ติดตามออเดอร์' },
       { href: '/favorites', label: 'รายการโปรด' },
@@ -83,7 +82,7 @@ export default function CustomerFooter() {
             <li>
               <a href="mailto:support@cosmate.com" className="flex items-center gap-2 transition hover:text-[#E5457F]">
                 <EnvelopeSimpleIcon size={18} className="shrink-0 text-[#E5457F]" />
-                support@cosmate.com
+                cosmaterental@gmail.com
               </a>
             </li>
             <li>

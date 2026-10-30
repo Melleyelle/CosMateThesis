@@ -8,7 +8,8 @@ export type InspectedEmailData = {
   orderId: string;
   deposit: number;
   deductions: { label: string; note: string | null; amount: number }[];
-  refund: number; // ยอดที่จะโอนคืน (ตามที่ฐานข้อมูลบันทึก)
+  refund: number; // ยอดที่จะโอนคืน (ตามที่ฐานข้อมูลบันทึก) รวมค่ารองเท้าที่หาไม่ได้แล้ว
+  shoeRefund: number; // ค่ารองเท้าที่ร้านหาคู่ใกล้เคียงไม่ได้ คืนพร้อมมัดจำ (Step 29)
   lost: boolean; // ไม่ได้รับชุดคืน → ริบมัดจำ
   refundHours: number; // โอนคืนภายในกี่ชั่วโมง
 };
@@ -17,13 +18,14 @@ export function inspectedEmail(d: InspectedEmailData) {
   const orderUrl = orderUrlOf(d.orderId);
   const deducted = d.deductions.reduce((s, x) => s + x.amount, 0);
   const owe = Math.max(0, deducted - d.deposit);
+  const shoeNote = d.shoeRefund > 0 ? ` (รวมค่ารองเท้าที่ร้านหาให้ไม่ได้ ${baht(d.shoeRefund)})` : '';
 
   const outcome = d.lost
     ? {
         subject: `แจ้งริบมัดจำออเดอร์ ${d.orderNumber}`,
         heading: 'ร้านไม่ได้รับชุดคืนตามกำหนด',
         intro: `ร้านยังไม่ได้รับชุดในออเดอร์ของคุณ และเลยกำหนดคืนมานานเกินเกณฑ์ จึงริบมัดจำ ${baht(d.deposit)}
-          หากคุณส่งชุดคืนแล้ว กรุณาติดต่อร้านพร้อมเลขพัสดุโดยเร็ว`,
+          ${d.shoeRefund > 0 ? `ส่วนค่ารองเท้าที่ร้านหาให้ไม่ได้ ${baht(d.shoeRefund)} ร้านจะโอนคืนตามปกติ ` : ''}หากคุณส่งชุดคืนแล้ว กรุณาติดต่อร้านพร้อมเลขพัสดุโดยเร็ว`,
       }
     : owe > 0
       ? {
@@ -37,13 +39,13 @@ export function inspectedEmail(d: InspectedEmailData) {
             subject: `ผลตรวจสภาพชุดออเดอร์ ${d.orderNumber} · คืนมัดจำ ${baht(d.refund)}`,
             heading: 'ผลตรวจสภาพชุด: หักมัดจำบางส่วน',
             intro: `ร้านตรวจชุดที่คุณส่งคืนแล้ว มีรายการที่ต้องหักจากมัดจำตามด้านล่าง
-              ยอดที่เหลือ ${baht(d.refund)} จะโอนคืนภายใน ${d.refundHours} ชม.`,
+              ยอดที่เหลือ ${baht(d.refund)}${shoeNote} จะโอนคืนภายใน ${d.refundHours} ชม.`,
           }
         : {
             subject: `ผลตรวจสภาพชุดออเดอร์ ${d.orderNumber} · คืนมัดจำเต็มจำนวน`,
             heading: 'ผลตรวจสภาพชุด: คืนมัดจำเต็มจำนวน',
             intro: `ขอบคุณที่ดูแลชุดเป็นอย่างดี ร้านตรวจแล้วไม่มีรายการหัก
-              จะโอนมัดจำคืนเต็ม ${baht(d.refund)} ภายใน ${d.refundHours} ชม.`,
+              จะโอนมัดจำคืนเต็ม ${baht(d.refund)}${shoeNote} ภายใน ${d.refundHours} ชม.`,
           };
 
   const rows = [
@@ -55,6 +57,7 @@ export function inspectedEmail(d: InspectedEmailData) {
         `<span style="color:${DANGER}">−${baht(x.amount)}</span>${x.note ? `<br><span style="color:${MUTED};font-weight:400;font-size:13px">${escapeHtml(x.note)}</span>` : ''}`,
       ),
     ),
+    ...(d.shoeRefund > 0 ? [row('คืนค่ารองเท้า (ร้านหาคู่ใกล้เคียงไม่ได้)', `+${baht(d.shoeRefund)}`)] : []),
     owe > 0 ? row('ต้องชำระเพิ่ม', `<span style="color:${DANGER}">${baht(owe)}</span>`) : row('ยอดที่จะได้คืน', baht(d.refund)),
   ];
 
@@ -75,6 +78,7 @@ export function inspectedEmail(d: InspectedEmailData) {
     outcome.heading,
     `ออเดอร์ ${d.orderNumber} · มัดจำ ${baht(d.deposit)}`,
     ...d.deductions.map((x) => `หัก ${x.label}${x.note ? ` (${x.note})` : ''}: −${baht(x.amount)}`),
+    d.shoeRefund > 0 ? `คืนค่ารองเท้า (ร้านหาคู่ใกล้เคียงไม่ได้): +${baht(d.shoeRefund)}` : '',
     owe > 0 ? `ต้องชำระเพิ่ม: ${baht(owe)}` : `ยอดที่จะได้คืน: ${baht(d.refund)}`,
     orderUrl ? `ดูออเดอร์: ${orderUrl}` : '',
   ]

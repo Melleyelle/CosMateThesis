@@ -4,7 +4,7 @@
 // ซ้าย: รายการตามแท็บ (เรียงตามเส้นตาย) · ขวา: ฟอร์มของงานที่ออเดอร์นั้นต้องทำ
 // ทำเสร็จแล้วเลื่อนไปออเดอร์ถัดไปในคิวเดียวกันเอง — ไม่ต้องกดเข้า-ออกทีละหน้า
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { CheckCircleIcon, IdentificationCardIcon, MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react'
 import AdminLayout from '../../components/admin/AdminLayout'
@@ -14,7 +14,7 @@ import OrderPanel from '../../components/admin/orders/OrderPanel'
 import { fetchAllOrdersForAdmin, type OrderSummary } from '@/utils/customer/fetchOrders'
 import { orderBadge } from '@/utils/admin/statusTone'
 import { dueOf, idReviewLeft, taskOf, type OrderTask } from '@/utils/admin/orderOps'
-import { todayISO } from '@/utils/dateUtils'
+import { addDays, formatThaiDate, formatThaiDateWithWeekday, toISODate, todayISO } from '@/utils/dateUtils'
 import { DEFAULT_BOOKING_SETTINGS, fetchBookingSettings, type BookingSettings } from '@/utils/customer/bookingSettings'
 
 // ค่า value เดิมคงไว้ เพราะหน้าภาพรวมลิงก์มาด้วย ?tab=...
@@ -30,6 +30,8 @@ const TABS: TabDef[] = [
   { value: 'id_review', label: 'ตรวจบัตร', group: 'todo', note: 'เช่าครั้งแรก รอร้านอนุมัติก่อนจ่าย', match: (_, t) => t === 'id' },
   { value: 'review', label: 'ตรวจยอดชำระ', group: 'todo', note: 'สลิปที่รอร้านยืนยัน', match: (_, t) => t === 'slip' },
   { value: 'to_ship', label: 'รอแพ็กส่ง', group: 'todo', note: 'ชำระแล้ว ต้องแพ็กและส่ง', match: (_, t) => t === 'pack' },
+  // ซ้อนกับคิวอื่นได้ (เช่น รอแพ็กส่ง) — งานนี้ต้องจบก่อนส่งของ
+  { value: 'shoe_sourcing', label: 'จัดหารองเท้า', group: 'todo', note: 'ไซส์ที่ลูกค้าเลือกไม่ว่าง โทรคุยแล้วหาคู่ใกล้เคียง', match: needsShoeSourcing },
   { value: 'returning', label: 'รับคืนและตรวจ', group: 'todo', note: 'ชุดกลับมาแล้ว / เลยกำหนดคืน', match: (_, t) => t === 'inspect' || t === 'lost' },
   { value: 'refund', label: 'รอโอนเงินคืน', group: 'todo', note: 'ต้องโอนเงินคืนลูกค้า', match: (_, t) => t === 'refund' },
   { value: 'unpaid', label: 'รอลูกค้าชำระ', group: 'tracking', match: (o) => o.status === 'pending_payment' },
@@ -39,11 +41,23 @@ const TABS: TabDef[] = [
   { value: 'all', label: 'ทั้งหมด', group: 'all', match: () => true },
 ]
 
+function needsShoeSourcing(o: OrderSummary): boolean {
+  return o.status !== 'cancelled' && o.status !== 'expired' && o.lines.some((l) => l.shoeSourcing?.status === 'pending')
+}
+
 // คิวงานของร้าน = ช่องตัวเลขด้านบน · สถานะอื่น (ติดตาม/ปิดแล้ว/ทั้งหมด) = segmented ในแถวตัวกรอง
 const TODO_TABS = TABS.filter((t) => t.group === 'todo')
 // "รอโอนเงินคืน" อยู่ทั้งในคิวงานและแถบนี้ (เรียงตามลำดับชีวิตออเดอร์ ก่อน "เสร็จสิ้น") ให้เห็นยอดค้างโอนตอนไล่ดูสถานะ
 const OTHER_TAB_ORDER = ['unpaid', 'renting', 'refund', 'done', 'closed', 'all']
 const OTHER_TABS = OTHER_TAB_ORDER.map((v) => TABS.find((t) => t.value === v)).filter((t): t is TabDef => !!t)
+
+const createdDay = (o: OrderSummary) => toISODate(new Date(o.createdAt))
+
+function dayLabel(day: string, today: string): string {
+  if (day === today) return 'วันนี้'
+  if (day === addDays(today, -1)) return 'เมื่อวาน'
+  return day.slice(0, 4) === today.slice(0, 4) ? formatThaiDateWithWeekday(day) : formatThaiDate(day, true)
+}
 
 function fetchPageData() {
   return Promise.all([fetchAllOrdersForAdmin(), fetchBookingSettings()])
@@ -135,6 +149,7 @@ function AdminOrdersInner() {
   }, [loading, counts])
 
   const current = TABS.find((t) => t.value === tab) ?? TABS[0]
+  const compact = current.group !== 'todo'
   const list = useMemo(() => {
     const rows = base.filter((r) => current.match(r.order, r.task))
     // งานของร้าน: ด่วนสุดอยู่บน · ที่เหลือ: ใหม่สุดอยู่บน
@@ -195,7 +210,7 @@ function AdminOrdersInner() {
 
         {/* คิวงานที่ร้านต้องทำ — แบบเดียวกับตัวเลขสรุปหน้าคลังชุด กดช่องเพื่อเปิดคิว · มีงานค้าง = ตัวเลขสีส้ม */}
         <div className="mb-6">
-          <MetricStrip cols={5}>
+          <MetricStrip cols={6}>
             {TODO_TABS.map((t) => {
               const count = counts[t.value] ?? 0
               return (
@@ -288,55 +303,76 @@ function AdminOrdersInner() {
                   <EmptyState>{orders.length === 0 ? 'ยังไม่มีออเดอร์ในระบบ' : current.group === 'todo' ? 'คิวนี้ว่างแล้ว' : 'ไม่มีออเดอร์ในกลุ่มนี้'}</EmptyState>
                 </div>
               ) : (
-                list.map(({ order: o, due, task }) => {
+                list.map(({ order: o, due, task }, i) => {
                   const active = o.id === selectedId
                   const first = o.lines[0]
                   const badge = orderBadge(o)
                   const idCheck = task === 'id'
+                  const item = first ? `${first.productName}${first.size ? ` · ${first.size}` : ''}${o.lines.length > 1 ? ` +${o.lines.length - 1}` : ''}` : '—'
+                  const dueText = due.text && !idCheck && (
+                    <span className={`whitespace-nowrap text-xs font-semibold ${due.tone === 'late' ? 'text-danger' : due.tone === 'urgent' ? 'text-warning' : 'text-secondary'}`}>
+                      {due.text}
+                    </span>
+                  )
+                  // คิวงานเรียงตามเส้นตาย จึงคั่นวันเฉพาะแท็บดูย้อนหลัง (เรียงตามวันสั่ง)
+                  const day = createdDay(o)
+                  const newDay = compact && (i === 0 || createdDay(list[i - 1].order) !== day)
                   return (
-                    <button
-                      key={o.id}
-                      type="button"
-                      onClick={() => select(o.id)}
-                      aria-current={active ? 'true' : undefined}
-                      className={`flex flex-col gap-0.5 overflow-hidden rounded-card border px-4 py-3 text-left transition ${
-                        active ? 'border-line bg-brand-subtle' : idCheck ? 'border-[#F2D49B] bg-white hover:border-line' : 'border-line-subtle bg-white hover:border-line'
-                      }`}
-                    >
-                      {/* แถบหัวการ์ด: บอกว่าต้องตรวจบัตร + เวลาที่เหลือ เห็นได้แม้อยู่แท็บ "ทั้งหมด" */}
-                      {idCheck && (
-                        <span className="-mx-4 -mt-3 mb-2 flex items-center gap-2 border-b border-[#F2D49B] bg-warning-subtle px-4 py-2 text-xs font-semibold text-warning">
-                          <IdentificationCardIcon size={16} weight="fill" className="flex-none" />
-                          <span className="flex-1">ตรวจบัตรประชาชน · เช่าครั้งแรก</span>
-                          <span className={`whitespace-nowrap tabular-nums ${due.tone === 'late' ? 'text-danger' : ''}`}>{due.text}</span>
-                        </span>
+                    <Fragment key={o.id}>
+                      {newDay && (
+                        <h3 className="flex-none bg-[#F5F4F8] pb-0.5 pt-2 text-xs font-semibold text-secondary first:pt-0 lg:sticky lg:top-0 lg:z-10">
+                          {dayLabel(day, today)}
+                        </h3>
                       )}
-                      <span className="flex items-baseline justify-between gap-2">
-                        <span className="font-mono text-sm font-bold text-ink">{o.orderNumber}</span>
-                        {due.text && !idCheck && (
-                          <span className={`whitespace-nowrap text-xs font-semibold ${due.tone === 'late' ? 'text-danger' : due.tone === 'urgent' ? 'text-warning' : 'text-secondary'}`}>
-                            {due.text}
+                      <button
+                        type="button"
+                        onClick={() => select(o.id)}
+                        aria-current={active ? 'true' : undefined}
+                        className={`flex flex-none flex-col gap-0.5 overflow-hidden rounded-card border px-4 text-left transition ${compact ? 'py-2' : 'py-3'} ${
+                          active ? 'border-line-subtle bg-brand-subtle' : idCheck ? 'border-[#F2D49B] bg-white hover:border-line' : 'border-line-subtle bg-white hover:border-line'
+                        }`}
+                      >
+                        {/* แถบหัวการ์ด: บอกว่าต้องตรวจบัตร + เวลาที่เหลือ เห็นได้แม้อยู่แท็บ "ทั้งหมด" */}
+                        {idCheck && (
+                          <span className={`-mx-4 mb-2 flex items-center gap-2 border-b border-[#F2D49B] bg-warning-subtle px-4 py-2 text-xs font-semibold text-warning ${compact ? '-mt-2' : '-mt-3'}`}>
+                            <IdentificationCardIcon size={16} weight="fill" className="flex-none" />
+                            <span className="flex-1">ตรวจบัตรประชาชน · เช่าครั้งแรก</span>
+                            <span className={`whitespace-nowrap tabular-nums ${due.tone === 'late' ? 'text-danger' : ''}`}>{due.text}</span>
                           </span>
                         )}
-                      </span>
-                      <span className="font-semibold text-ink">
-                        {o.shipName}
-                        {o.deliveryMethod === 'pickup' && (
-                          <span className="ml-2 rounded-full border border-line px-1.5 py-px text-[11px] font-semibold text-secondary">
-                            รับที่ร้าน
-                          </span>
+                        {compact ? (
+                          // แท็บดูย้อนหลัง: 2 บรรทัด ไล่ดูได้มากกว่าต่อจอ
+                          <>
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="font-mono text-sm font-bold text-ink">{o.orderNumber}</span>
+                              {!idCheck && <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>}
+                            </span>
+                            <span className="flex items-baseline justify-between gap-2">
+                              <span className="min-w-0 truncate text-sm text-secondary">
+                                <span className="font-semibold text-ink">{o.shipName}</span> · {item}
+                              </span>
+                              {dueText}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="flex items-baseline justify-between gap-2">
+                              <span className="font-mono text-sm font-bold text-ink">{o.orderNumber}</span>
+                              {dueText}
+                            </span>
+                            <span className="font-semibold text-ink">
+                              {o.shipName}
+                              {o.deliveryMethod === 'pickup' && (
+                                <span className="ml-2 rounded-full border border-line px-1.5 py-px text-[11px] font-semibold text-secondary">
+                                  รับที่ร้าน
+                                </span>
+                              )}
+                            </span>
+                            <span className="truncate text-sm text-secondary">{item}</span>
+                          </>
                         )}
-                      </span>
-                      <span className="truncate text-sm text-secondary">
-                        {first ? `${first.productName}${first.size ? ` · ${first.size}` : ''}` : '—'}
-                        {o.lines.length > 1 && ` +${o.lines.length - 1}`}
-                      </span>
-                      {current.group !== 'todo' && !idCheck && (
-                        <span className="mt-1">
-                          <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
-                        </span>
-                      )}
-                    </button>
+                      </button>
+                    </Fragment>
                   )
                 })
               )}

@@ -515,6 +515,16 @@ export default function OrderPage() {
                     {line.pieceNames && (
                       <p className="text-[#263544]/60">เช่าแยกชิ้น: {line.pieceNames.join(', ')}</p>
                     )}
+                    {line.shoeSourcing && (
+                      <p className="text-[#263544]/60">
+                        รองเท้า{line.shoeSourcing.size && ` ไซส์ ${line.shoeSourcing.size}`}:{' '}
+                        {line.shoeSourcing.status === 'pending'
+                          ? 'ไซส์นี้ไม่ว่าง ร้านกำลังจัดหาคู่ใกล้เคียง และจะโทรคุยกับคุณก่อนส่ง'
+                          : line.shoeSourcing.status === 'sourced'
+                            ? 'ร้านจัดหาคู่ใกล้เคียงให้แล้ว'
+                            : `หาคู่ใกล้เคียงไม่ได้ ร้านคืนค่ารองเท้า ${formatBaht(line.shoeSourcing.amount)} ให้`}
+                      </p>
+                    )}
                     {line.bundledWith ? (
                       <p className="text-[#263544]/60">รองเท้าที่มากับ {line.bundledWith} · รวมในค่าเช่าชุดแล้ว</p>
                     ) : (

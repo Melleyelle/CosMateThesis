@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import SectionCard from './Sectioncard'
 import { FormField } from './FormFields'
+import { primaryButtonClass } from '../ui'
 import type { ProductPricing } from './types'
 import {
   AUTO_COST_MAX,
@@ -286,7 +287,7 @@ function PhaseSettingsRow({ phase, onChange }: { phase: PhaseSettings; onChange:
             type="button"
             onClick={save}
             disabled={saving}
-            className="rounded-full bg-[#263544] px-4 py-1.5 font-semibold text-white disabled:opacity-50"
+            className={primaryButtonClass}
           >
             {saving ? 'กำลังบันทึก…' : 'บันทึก (ทุกชุด)'}
           </button>

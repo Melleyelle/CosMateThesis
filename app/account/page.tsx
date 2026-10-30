@@ -368,10 +368,10 @@ export default function AccountPage() {
                         type="button"
                         onClick={() => selectSection(key)}
                         aria-current={active ? 'page' : undefined}
-                        // เมนูที่เลือก = สถานะที่เลือก: พื้น brand-soft เส้น 1px ตัวดำหนา (ไม่ใช้ตัวชมพู)
+                        // เมนูที่เลือก = สถานะที่เลือก: พื้น brand-soft ไม่มีเส้นขอบ ตัวดำหนา (ไม่ใช้ตัวชมพู)
                         className={`focus-ring flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-base ${
                           active
-                            ? 'border-line bg-brand-soft font-bold text-ink'
+                            ? 'border-transparent bg-brand-soft font-bold text-ink'
                             : 'nudge-x border-transparent font-medium text-[#263544]'
                         }`}
                       >

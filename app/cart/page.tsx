@@ -39,7 +39,7 @@ import {
 } from '@/utils/customer/bookingSettings'
 import { addDays, formatBaht, formatThaiDateLong, todayISO } from '@/utils/dateUtils'
 
-type ItemStatus = 'ok' | 'closed' | 'pieces_changed' | 'too_soon' | 'booked' | 'bad_days'
+type ItemStatus = 'ok' | 'closed' | 'pieces_changed' | 'too_soon' | 'booked' | 'bad_days' | 'shoe_busy'
 
 const STATUS_MESSAGE: Record<Exclude<ItemStatus, 'ok'>, string> = {
   closed: 'ชุดหรือไซส์นี้ปิดให้เช่าแล้ว',
@@ -47,6 +47,7 @@ const STATUS_MESSAGE: Record<Exclude<ItemStatus, 'ok'>, string> = {
   too_soon: 'วันที่เลือกกระชั้นเกินไปแล้ว กรุณาเลือกวันใหม่',
   booked: 'วันที่เลือกถูกจองไปแล้ว กรุณาเลือกวันใหม่',
   bad_days: 'จำนวนวันเช่านี้ไม่เปิดให้จองแล้ว กรุณาเลือกใหม่',
+  shoe_busy: 'รองเท้าไซส์ที่เลือกไม่ว่างช่วงนี้ เลือกไซส์อื่น หรือให้ร้านจัดหาคู่ใกล้เคียงให้',
 }
 
 export default function CartPage() {
@@ -69,9 +70,16 @@ export default function CartPage() {
   const delivery = settings.pickupLocation ? cartDelivery : 'ship'
 
   // โหลดใหม่เมื่อ (ไซส์, จำนวนวัน, วิธีรับ) ในตะกร้าเปลี่ยน — วันที่ว่างขึ้นกับทั้งจำนวนวันและวิธีรับ
+  // ไซส์รองเท้าเช็กแยกจากไซส์ชุด: รองเท้าไม่ว่างไม่ทำให้ชุดจองไม่ได้ (Step 29)
   const requestKey = useMemo(
     () =>
-      Array.from(new Set(cart.map((i) => unavailableKey(i.variantId, i.rentalDays, cartDelivery, i.shoeVariantId))))
+      Array.from(
+        new Set(
+          cart.flatMap((i) =>
+            [i.variantId, i.shoeVariantId].filter((id): id is string => !!id).map((id) => unavailableKey(id, i.rentalDays, cartDelivery)),
+          ),
+        ),
+      )
         .sort()
         .join(','),
     [cart, cartDelivery],
@@ -81,12 +89,11 @@ export default function CartPage() {
     if (!ready) return
     let cancelled = false
     const requests = (requestKey ? requestKey.split(',') : []).map((k) => {
-      const [variantPart, days, method] = k.split(':')
-      const [variantId, shoeVariantId] = variantPart.split('~')
-      return { variantId, shoeVariantId: shoeVariantId || undefined, rentalDays: Number(days), delivery: parseDelivery(method) }
+      const [variantId, days, method] = k.split(':')
+      return { variantId, rentalDays: Number(days), delivery: parseDelivery(method) }
     })
     // ไซส์รองเท้าโหลดมาพร้อมไซส์ชุด เพื่อแสดงไซส์ และรู้ว่ารองเท้ายังเปิดให้เช่าอยู่ไหม
-    const ids = requests.flatMap((r) => (r.shoeVariantId ? [r.variantId, r.shoeVariantId] : [r.variantId]))
+    const ids = Array.from(new Set(requests.map((r) => r.variantId)))
     Promise.all([fetchVariantSummaries(ids), fetchUnavailableDates(requests), fetchBookingSettings()]).then(
       async ([v, u, s]) => {
         const p = await fetchPieces(Object.values(v.data).map((x) => x.productId))
@@ -116,10 +123,15 @@ export default function CartPage() {
     if (priceOf(v, item).invalid || (item.shoeVariantId && !variants[item.shoeVariantId])) return 'pieces_changed'
     if (item.rentalDays < settings.minRentalDays || item.rentalDays > settings.maxRentalDays) return 'bad_days'
     if (item.startDate < minStart) return 'too_soon'
-    if (unavailable[unavailableKey(item.variantId, item.rentalDays, delivery, item.shoeVariantId)]?.has(item.startDate)) {
+    if (unavailable[unavailableKey(item.variantId, item.rentalDays, delivery)]?.has(item.startDate)) {
       return 'booked'
     }
+    if (shoeBusy(item) && !item.shoeSubstitute) return 'shoe_busy'
     return 'ok'
+  }
+
+  function shoeBusy(item: CartItem): boolean {
+    return !!item.shoeVariantId && !!unavailable[unavailableKey(item.shoeVariantId, item.rentalDays, delivery)]?.has(item.startDate)
   }
 
   // ครั้งแรกที่โหลดเสร็จ เลือกทุกรายการที่ยังจองได้ไว้ให้ (สูงสุด 10 รายการต่อออเดอร์)
@@ -291,7 +303,10 @@ export default function CartPage() {
                           )}
                           {v && <p className="text-base text-[#263544]/70">ไซส์: {v.size}</p>}
                           {item.shoeVariantId && variants[item.shoeVariantId] && (
-                            <p className="text-base text-[#263544]/70">รองเท้า: EU {variants[item.shoeVariantId].size}</p>
+                            <p className="text-base text-[#263544]/70">
+                              รองเท้า: EU {variants[item.shoeVariantId].size}
+                              {item.shoeSubstitute && shoeBusy(item) && ' · ไซส์นี้ไม่ว่าง ร้านจัดหาคู่ใกล้เคียงให้'}
+                            </p>
                           )}
                           {!!line?.shoeDiscount && (
                             <p className="text-base text-[#263544]/70">ไม่รับรองเท้า (−{formatBaht(line.shoeDiscount)})</p>
@@ -347,7 +362,11 @@ export default function CartPage() {
                           {STATUS_MESSAGE[status]}
                           {v && status !== 'closed' && (
                             <Link href={`/costumes/${v.productId}`} className="font-semibold underline">
-                              {status === 'pieces_changed' ? 'เลือกชิ้นใหม่' : status === 'bad_days' ? 'เลือกใหม่' : 'เลือกวันใหม่'}
+                              {status === 'pieces_changed'
+                                ? 'เลือกชิ้นใหม่'
+                                : status === 'bad_days' || status === 'shoe_busy'
+                                  ? 'เลือกใหม่'
+                                  : 'เลือกวันใหม่'}
                             </Link>
                           )}
                         </div>

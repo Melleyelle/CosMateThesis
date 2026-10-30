@@ -22,6 +22,21 @@ export type OrderLine = {
   // รองเท้าที่มากับชุด (Step 19): id รายการชุดที่รองเท้านี้ติดมาด้วย และชื่อชุดนั้น · null = รายการปกติ
   parentLineId: string | null
   bundledWith: string | null
+  // รองเท้าไซส์ที่เลือกไม่ว่างตอนจอง ร้านต้องจัดหาคู่ใกล้เคียงให้ (Step 29) · null = ไม่ต้องจัดหา
+  shoeSourcing: ShoeSourcing | null
+}
+
+// ค่ารองเท้าที่หาไม่ได้ รวมเข้ายอดคืนเงินตอนตรวจรับคืน (admin_receive_and_inspect ของ Step 29)
+export function shoeRefundOf(order: OrderSummary): number {
+  return order.lines.reduce((sum, l) => sum + (l.shoeSourcing?.status === 'refund' ? l.shoeSourcing.amount : 0), 0)
+}
+
+export type ShoeSourcingStatus = 'pending' | 'sourced' | 'refund'
+export type ShoeSourcing = {
+  status: ShoeSourcingStatus
+  size: string | null
+  amount: number // หาไม่ได้ = คืนค่ารองเท้าเท่านี้ (ราคาชิ้นรองเท้าตอนจอง)
+  note: string | null // โน้ตของแอดมิน (ดึงเฉพาะฝั่งแอดมิน)
 }
 
 export type OrderSummary = {
@@ -118,6 +133,10 @@ type OrderRow = {
         deposit_amount: number | string
         laundry_fee: number | string
         pieces?: { name: string }[] | null
+        shoe_sourcing_status?: ShoeSourcingStatus | null
+        shoe_sourcing_size?: string | null
+        shoe_sourcing_amount?: number | string | null
+        shoe_sourcing_note?: string | null
         product_items?: { item_code: string } | null
         product_variants: {
           size: string
@@ -138,19 +157,27 @@ const ORDER_COLUMNS = `
 `
 // ship_carrier ต้องรัน SQL Step 20 ก่อน
 
-// parent_item_id ต้องรัน SQL Step 19 ก่อน
-const LINE_COLUMNS = `
+// parent_item_id ต้องรัน SQL Step 19 ก่อน · shoe_sourcing_* ต้องรัน Step 29 (ยังไม่รัน = ดึงแบบไม่มี ดู selectOrders)
+// โน้ตจัดหารองเท้าเป็นของร้าน ดึงเฉพาะฝั่งแอดมิน
+function lineColumns(admin: boolean, sourcing: boolean): string {
+  return `
   id, parent_item_id, start_date, end_date, rental_price, rental_days, base_rental_price, extra_day_rate, extra_days_fee,
   deposit_amount, laundry_fee, pieces,
+  ${sourcing ? `shoe_sourcing_status, shoe_sourcing_size, shoe_sourcing_amount,${admin ? ' shoe_sourcing_note,' : ''}` : ''}
+  ${admin ? 'product_items ( item_code ),' : ''}
   product_variants ( size, products ( id, name, cover_image_url ) )
 `
+}
 
-const LINE_COLUMNS_ADMIN = `
-  id, parent_item_id, start_date, end_date, rental_price, rental_days, base_rental_price, extra_day_rate, extra_days_fee,
-  deposit_amount, laundry_fee, pieces,
-  product_items ( item_code ),
-  product_variants ( size, products ( id, name, cover_image_url ) )
-`
+// ลองดึงพร้อมคอลัมน์ Step 29 ก่อน ถ้าฐานข้อมูลยังไม่มีคอลัมน์ก็ดึงใหม่แบบเดิม
+async function selectOrders<T>(
+  admin: boolean,
+  run: (columns: string) => PromiseLike<{ data: T; error: { message: string } | null }>,
+): Promise<{ data: T; error: { message: string } | null }> {
+  const res = await run(`${ORDER_COLUMNS}, order_items ( ${lineColumns(admin, true)} )`)
+  if (!res.error || !res.error.message.includes('shoe_sourcing')) return res
+  return run(`${ORDER_COLUMNS}, order_items ( ${lineColumns(admin, false)} )`)
+}
 
 function daysInclusive(start: string, end: string): number {
   return Math.round((Date.parse(end) - Date.parse(start)) / 86_400_000) + 1
@@ -219,6 +246,14 @@ function orderLines(items: NonNullable<OrderRow['order_items']>): OrderLine[] {
         pieceNames: i.pieces && i.pieces.length > 0 ? i.pieces.map((p) => p.name) : null,
         parentLineId: i.parent_item_id ?? null,
         bundledWith: i.parent_item_id ? (nameById.get(i.parent_item_id) ?? 'ชุด') : null,
+        shoeSourcing: i.shoe_sourcing_status
+          ? {
+              status: i.shoe_sourcing_status,
+              size: i.shoe_sourcing_size ?? null,
+              amount: Number(i.shoe_sourcing_amount ?? 0),
+              note: i.shoe_sourcing_note ?? null,
+            }
+          : null,
       }))
   const parents = lines.filter((l) => !l.parentLineId).sort((a, b) => a.startDate.localeCompare(b.startDate))
   return parents.flatMap((p) => [p, ...lines.filter((l) => l.parentLineId === p.id)])
@@ -229,11 +264,9 @@ export async function fetchOrder(orderId: string): Promise<{ data: OrderSummary 
   const supabase = createClient()
   if (!supabase) return { data: null, error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
 
-  const { data, error } = await supabase
-    .from('orders')
-    .select(`${ORDER_COLUMNS}, order_items ( ${LINE_COLUMNS} )`)
-    .eq('id', orderId)
-    .maybeSingle()
+  const { data, error } = await selectOrders(false, (columns) =>
+    supabase.from('orders').select(columns).eq('id', orderId).maybeSingle(),
+  )
 
   if (error) return { data: null, error: error.message }
   if (!data) return { data: null, error: 'ไม่พบออเดอร์นี้' }
@@ -251,11 +284,9 @@ export async function fetchMyOrders(): Promise<{ data: OrderSummary[]; error: st
   } = await supabase.auth.getUser()
   if (!user) return { data: [], error: 'กรุณาเข้าสู่ระบบ' }
 
-  const { data, error } = await supabase
-    .from('orders')
-    .select(`${ORDER_COLUMNS}, order_items ( ${LINE_COLUMNS} )`)
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
+  const { data, error } = await selectOrders(false, (columns) =>
+    supabase.from('orders').select(columns).eq('user_id', user.id).order('created_at', { ascending: false }),
+  )
 
   if (error) return { data: [], error: error.message }
   return { data: ((data ?? []) as unknown as OrderRow[]).map(mapOrder), error: null }
@@ -266,11 +297,9 @@ export async function fetchOrdersOfMemberForAdmin(userId: string): Promise<{ dat
   const supabase = createClient()
   if (!supabase) return { data: [], error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
 
-  const { data, error } = await supabase
-    .from('orders')
-    .select(`${ORDER_COLUMNS}, order_items ( ${LINE_COLUMNS_ADMIN} )`)
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
+  const { data, error } = await selectOrders(true, (columns) =>
+    supabase.from('orders').select(columns).eq('user_id', userId).order('created_at', { ascending: false }),
+  )
 
   if (error) return { data: [], error: error.message }
   return { data: ((data ?? []) as unknown as OrderRow[]).map(mapOrder), error: null }
@@ -282,10 +311,9 @@ export async function fetchAllOrdersForAdmin(): Promise<{ data: OrderSummary[]; 
   if (!supabase) return { data: [], error: 'Supabase ยังไม่ได้ถูกตั้งค่าใน environment ของโปรเจค' }
 
   // ต้องรัน Step 10 และ 13 แล้ว (คอลัมน์ refund_* / cancel_reason)
-  const { data, error } = await supabase
-    .from('orders')
-    .select(`${ORDER_COLUMNS}, order_items ( ${LINE_COLUMNS_ADMIN} )`)
-    .order('created_at', { ascending: false })
+  const { data, error } = await selectOrders(true, (columns) =>
+    supabase.from('orders').select(columns).order('created_at', { ascending: false }),
+  )
 
   if (error) return { data: [], error: error.message }
   return { data: ((data ?? []) as unknown as OrderRow[]).map(mapOrder), error: null }

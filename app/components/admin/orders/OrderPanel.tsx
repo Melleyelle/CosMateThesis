@@ -32,7 +32,7 @@ import { StatusBadge, primaryButtonClass, secondaryButtonClass } from '@/app/com
 import WebcamCapture from '@/app/components/admin/orders/WebcamCapture'
 import IdCardReview from '@/app/components/admin/IdCardReview'
 import { createClient } from '@/utils/client'
-import type { OrderSummary } from '@/utils/customer/fetchOrders'
+import { shoeRefundOf, type OrderLine, type OrderSummary, type ShoeSourcingStatus } from '@/utils/customer/fetchOrders'
 import type { BookingSettings } from '@/utils/customer/bookingSettings'
 import { ADMIN_STATUS_LABEL, orderBadge } from '@/utils/admin/statusTone'
 import { ORDER_STATUS_LABEL } from '@/utils/orderStatus'
@@ -52,6 +52,7 @@ import {
   receiveAndInspect,
   returnByDate,
   setOrderStatus,
+  setShoeSourcing,
   notifyCustomer,
   shipOrder,
   taskOf,
@@ -89,7 +90,7 @@ export default function OrderPanel({ order, settings, today, position, onDone }:
   }, [order.id, detailKey])
 
   return (
-    <section aria-label={`จัดการออเดอร์ ${order.orderNumber}`} className="overflow-hidden rounded-card border border-line bg-white">
+    <section aria-label={`จัดการออเดอร์ ${order.orderNumber}`} className="overflow-hidden rounded-card border border-line-subtle bg-white">
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line-subtle bg-brand-subtle px-5 py-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -108,6 +109,12 @@ export default function OrderPanel({ order, settings, today, position, onDone }:
         </div>
         {position && <span className="text-xs text-muted">{position}</span>}
       </header>
+
+      {order.lines
+        .filter((l) => l.shoeSourcing)
+        .map((l) => (
+          <ShoeSourcingCard key={`${l.id}:${l.shoeSourcing!.status}`} order={order} line={l} onDone={onDone} />
+        ))}
 
       {task === 'id' && <OrderIdReview key={order.id} order={order} onDone={onDone} />}
       {task === 'pack' && <PackForm key={order.id} order={order} onDone={onDone} />}
@@ -338,6 +345,104 @@ function PhotoPicker({
       )}
       {error && <ErrorBox>{error}</ErrorBox>}
       {camera && <WebcamCapture remaining={remaining} busy={busy} onCapture={(f) => add([f])} onClose={() => setCamera(false)} />}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// รองเท้าที่ต้องจัดหา (Step 29): ไซส์ที่ลูกค้าเลือกไม่ว่างตอนจอง ลูกค้ายอมรับคู่ใกล้เคียงแล้ว
+// ร้านโทรคุยเอง → หาได้ = sourced · หาไม่ได้ = refund (คืนค่ารองเท้าตามราคาตอนจอง)
+// ---------------------------------------------------------------------------
+
+function ShoeSourcingCard({ order, line, onDone }: { order: OrderSummary; line: OrderLine; onDone: PanelProps['onDone'] }) {
+  const sourcing = line.shoeSourcing!
+  const [note, setNote] = useState(sourcing.note ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // จบแล้ว = ยอดคืนเงินคำนวณไปแล้ว แก้ไม่ได้ (ตรงกับ SHOE_SOURCING_LOCKED)
+  const closed = order.status === 'completed' || order.status === 'cancelled' || order.status === 'expired'
+  const shoe = `รองเท้า${sourcing.size ? ` ไซส์ ${sourcing.size}` : ''}`
+
+  async function save(status: ShoeSourcingStatus) {
+    setSaving(true)
+    setError(null)
+    const { error: err } = await setShoeSourcing(line.id, status, note)
+    setSaving(false)
+    if (err) return setError(translateRpcError(err))
+    onDone(
+      status === 'sourced'
+        ? `บันทึกว่าจัดหา${shoe}ได้แล้ว`
+        : status === 'refund'
+          ? `บันทึกว่าหา${shoe}ไม่ได้ · ต้องคืน ${formatBaht(sourcing.amount)}`
+          : 'ย้อนกลับไปรอจัดหารองเท้า',
+    )
+  }
+
+  if (sourcing.status !== 'pending') {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-subtle px-5 py-3 text-sm">
+        <p className="min-w-0 text-ink">
+          {sourcing.status === 'sourced' ? (
+            <>
+              <CheckCircleIcon size={16} weight="fill" className="mr-1 inline text-success" />
+              จัดหา{shoe}ให้ {line.productName} ได้แล้ว
+            </>
+          ) : (
+            <>
+              <WarningCircleIcon size={16} weight="fill" className="mr-1 inline text-warning" />
+              หา{shoe}ไม่ได้ · ต้องคืนค่ารองเท้า <span className="font-bold">{formatBaht(sourcing.amount)}</span> ให้ลูกค้า
+            </>
+          )}
+          {sourcing.note && <span className="block text-secondary">โน้ต: {sourcing.note}</span>}
+        </p>
+        {!closed && (
+          <button type="button" onClick={() => save('pending')} disabled={saving} className={secondaryButtonClass}>
+            แก้ไข
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3 border-b border-line-subtle bg-warning-subtle px-5 py-4">
+      <div className="flex items-start gap-2.5">
+        <WarningIcon size={20} weight="fill" className="mt-0.5 flex-none text-warning" />
+        <div className="min-w-0">
+          <p className="font-semibold text-ink">
+            ต้องจัดหา{shoe}ให้ {line.productName}
+          </p>
+          <p className="text-sm text-secondary">
+            ไซส์นี้ไม่ว่างตอนจอง ลูกค้ายอมรับคู่ใกล้เคียงแล้ว · โทรคุยกับลูกค้า {order.shipPhone} ก่อนส่ง · หาไม่ได้คืนค่ารองเท้า{' '}
+            {formatBaht(sourcing.amount)}
+          </p>
+        </div>
+      </div>
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="โน้ตภายในร้าน เช่น ยืมคู่ EU 40 สีดำจากร้าน… / ลูกค้าโอเคแล้ว"
+        aria-label="โน้ตการจัดหารองเท้า"
+        maxLength={300}
+        className="h-11 w-full rounded-control border border-line bg-white px-4 text-base text-ink outline-none placeholder:text-muted focus:ring-[3px] focus:ring-brand/25"
+      />
+      {error && <ErrorBox>{error}</ErrorBox>}
+      {!closed && (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => save('sourced')} disabled={saving} className={primaryButtonClass}>
+            <CheckIcon size={16} weight="bold" />
+            จัดหาได้แล้ว
+          </button>
+          <button
+            type="button"
+            onClick={() => confirm(`หา${shoe}ไม่ได้ และคืนค่ารองเท้า ${formatBaht(sourcing.amount)} ให้ลูกค้า?`) && save('refund')}
+            disabled={saving}
+            className={secondaryButtonClass}
+          >
+            หาไม่ได้ · คืน {formatBaht(sourcing.amount)}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -691,13 +796,16 @@ function InspectForm({
   }))
   const total = lost ? deposit : lateFee + lines.reduce((s, l) => s + l.value, 0)
   const over = total > deposit
-  const refund = Math.max(0, deposit - total)
+  // ค่ารองเท้าที่หาไม่ได้คืนพร้อมมัดจำ (ไม่ใช่มัดจำ จึงไม่ถูกหัก แม้สูญหาย) · ยังรอจัดหาอยู่ = ต้องปิดงานจัดหาก่อน
+  const shoeRefund = shoeRefundOf(order)
+  const shoePending = order.lines.some((l) => l.shoeSourcing?.status === 'pending')
+  const refund = Math.max(0, deposit - total) + shoeRefund
   const broken = !lost && (on.damage || on.missing_part)
   const needPhoto = !lost && photos.length === 0
   const condition = lost ? 'ปลดระวาง · ลูกค้าถูกตั้งเป็น blacklist' : broken ? (severity === 'major' ? 'ชำรุดหนัก · ส่งซ่อม ปิดรับจอง' : 'ชำรุดเล็กน้อย · ซ่อมก่อนให้เช่าต่อ') : 'พร้อมเช่าต่อ'
 
   async function submit() {
-    if (over || needPhoto) return
+    if (over || needPhoto || shoePending) return
     if (lost && !confirm(`ยืนยันว่า ${order.orderNumber} สูญหาย/ไม่คืนชุด?\nริบมัดจำ ${formatBaht(deposit)} · ชุดถูกปลดระวาง · ลูกค้าถูกตั้งเป็น blacklist`)) return
     const deductions: DeductionInput[] = lost
       ? [{ type: 'lost', amount: 0, note: note.lost, orderItemId: itemOf.lost || null }]
@@ -914,6 +1022,7 @@ function InspectForm({
               ))}
             </>
           )}
+          {shoeRefund > 0 && <Row label="+ คืนค่ารองเท้า (หาคู่ใกล้เคียงไม่ได้)" value={formatBaht(shoeRefund)} />}
           <div className="mt-1 flex justify-between border-t border-dashed border-line-subtle pt-2 text-lg font-bold">
             <span>โอนคืนลูกค้า</span>
             <span className="text-brand-strong">{formatBaht(refund)}</span>
@@ -924,10 +1033,11 @@ function InspectForm({
           </p>
         </div>
 
+        {shoePending && <ErrorBox>ยังมีรองเท้าที่รอจัดหา กด &quot;จัดหาได้แล้ว&quot; หรือ &quot;หาไม่ได้&quot; ด้านบนก่อน ยอดคืนเงินขึ้นกับข้อนี้</ErrorBox>}
         {error && <ErrorBox>{error}</ErrorBox>}
       </div>
       <Footer hint={needPhoto ? <>ยังขาด: <b className="text-ink">ถ่ายรูปตอนเปิดกล่อง</b></> : 'ออเดอร์จะปิดเป็นเสร็จสิ้น ลูกค้ารีวิวได้ และขึ้นคิว "รอคืนเงิน"'}>
-        <button type="button" onClick={submit} disabled={saving || over || needPhoto} className={primaryButtonClass}>
+        <button type="button" onClick={submit} disabled={saving || over || needPhoto || shoePending} className={primaryButtonClass}>
           {saving ? 'กำลังบันทึก…' : lostOnly ? 'ยืนยันสูญหาย' : 'ยืนยันผลตรวจ · ไปถัดไป'}
         </button>
       </Footer>
@@ -1015,6 +1125,7 @@ function RefundForm({ order, detail, onDone }: { order: OrderSummary; detail: Or
             {(detail?.deductions ?? []).map((d, i) => (
               <Row key={i} label={`− ${DEDUCTION_LABEL[d.type] ?? d.type}${d.note ? ` · ${d.note}` : ''}`} value={formatBaht(d.amount)} />
             ))}
+            {shoeRefundOf(order) > 0 && <Row label="+ คืนค่ารองเท้า (หาคู่ใกล้เคียงไม่ได้)" value={formatBaht(shoeRefundOf(order))} />}
           </div>
         ) : (
           order.cancelReason && <p className="text-sm text-secondary">เหตุผลที่ยกเลิก: {order.cancelReason}</p>
@@ -1239,6 +1350,8 @@ function maskAccount(no: string): string {
 function RefundInfo({ order, detail }: { order: OrderSummary; detail: OrderDetail | null }) {
   const what = order.status === 'completed' ? 'มัดจำ' : 'เงิน'
   const deductions = order.status === 'completed' ? (detail?.deductions ?? []) : []
+  // ยกเลิกหลังจ่ายคืน grand_total ทั้งก้อนอยู่แล้ว · แยกบรรทัดค่ารองเท้าเฉพาะยอดคืนหลังตรวจรับคืน
+  const shoeRefund = order.status === 'completed' ? shoeRefundOf(order) : 0
 
   let state: { tone: string; icon: ReactNode; title: string } | null = null
   if (order.refundStatus === 'transferred')
@@ -1266,9 +1379,9 @@ function RefundInfo({ order, detail }: { order: OrderSummary; detail: OrderDetai
           {hasRefund && <p className="text-lg font-bold tabular-nums">{formatBaht(order.refundAmount ?? 0)}</p>}
         </div>
 
-        {(deductions.length > 0 || showAccount || order.refundedAt) && (
+        {(deductions.length > 0 || shoeRefund > 0 || showAccount || order.refundedAt) && (
           <div className="flex flex-col gap-3 px-4 py-3">
-            {deductions.length > 0 && (
+            {(deductions.length > 0 || shoeRefund > 0) && (
               <dl className="flex flex-col gap-1">
                 <MoneyRow label="มัดจำ" value={order.depositTotal} />
                 {deductions.map((d, i) => (
@@ -1280,11 +1393,17 @@ function RefundInfo({ order, detail }: { order: OrderSummary; detail: OrderDetai
                     <dd className="tabular-nums text-danger">−{formatBaht(d.amount)}</dd>
                   </div>
                 ))}
+                {shoeRefund > 0 && (
+                  <div className="flex items-baseline justify-between gap-4">
+                    <dt className="text-secondary">คืนค่ารองเท้า (หาคู่ใกล้เคียงไม่ได้)</dt>
+                    <dd className="tabular-nums text-ink">+{formatBaht(shoeRefund)}</dd>
+                  </div>
+                )}
               </dl>
             )}
 
             {showAccount && (
-              <div className={deductions.length > 0 ? 'border-t border-line-subtle pt-3' : ''}>
+              <div className={deductions.length > 0 || shoeRefund > 0 ? 'border-t border-line-subtle pt-3' : ''}>
                 <p className="text-xs text-muted">{order.refundStatus === 'transferred' ? 'โอนเข้าบัญชี' : 'บัญชีรับเงินคืน'}</p>
                 <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
                   <span className="font-semibold text-ink">{order.refundBank}</span>

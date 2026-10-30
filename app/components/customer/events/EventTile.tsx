@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { CalendarBlankIcon, CameraIcon, MapPinIcon } from '@phosphor-icons/react'
 import { parseISODate } from '@/utils/dateUtils'
-import { EVENT_TONE, isEventOngoing, type CosEvent } from '@/utils/customer/events'
+import { EVENT_TONE, isEventOngoing, type CalendarEvent, type CosEvent } from '@/utils/customer/events'
 import InterestButton, { InterestCount } from './InterestButton'
 
 // ช่วงวันที่แบบอ่านง่าย: "ส. 8 พ.ย. 2569" / "ส. 8 – อา. 9 พ.ย. 2569" / "ศ. 31 ต.ค. – อา. 2 พ.ย. 2569"
@@ -19,24 +19,35 @@ export function formatEventRange(startDate: string, endDate: string): string {
   return `${wd(s)} ${dm(s)} – ${wd(e)} ${dm(e)} ${year}`
 }
 
-// ป้ายวันที่ทรงสี่เหลี่ยม (ใช้ตอนไม่มีรูปปก และมุมรูปปก)
-export function DateBadge({ event, size = 'md' }: { event: CosEvent; size?: 'md' | 'lg' }) {
+// ป้ายวันที่ทรงสี่เหลี่ยม (ใช้ตอนไม่มีรูปปก มุมรูปปก และรายการหน้าหลัก) · งานคร่อมเดือนแสดงทั้งสองเดือน
+export function DateBadge({
+  event,
+  size = 'md',
+}: {
+  event: Pick<CalendarEvent, 'startDate' | 'endDate' | 'tone'>
+  size?: 'md' | 'list' | 'lg'
+}) {
   const s = parseISODate(event.startDate)
   const e = parseISODate(event.endDate)
   const sameDay = event.startDate === event.endDate
-  const big = size === 'lg'
+  const month = (d: Date) => d.toLocaleDateString('th-TH', { month: 'short' })
+  const box = { md: 'h-16 w-16', list: 'h-20 w-20', lg: 'h-24 w-24' }[size]
+  const day = {
+    md: sameDay ? 'text-[22px]' : 'text-[18px]',
+    list: sameDay ? 'text-[28px]' : 'text-[22px]',
+    lg: 'text-[28px]',
+  }[size]
   return (
     <span
-      className={`flex flex-shrink-0 flex-col items-center justify-center rounded-control border border-line ${EVENT_TONE[event.tone].bg} ${
-        big ? 'h-24 w-24' : 'h-16 w-16'
-      }`}
+      className={`flex flex-shrink-0 flex-col items-center justify-center rounded-control border border-line ${EVENT_TONE[event.tone].bg} ${box}`}
     >
-      <span className={`font-extrabold leading-none text-ink ${big ? 'text-[28px]' : sameDay ? 'text-[22px]' : 'text-[18px]'}`}>
+      <span className={`font-extrabold leading-none text-ink ${day}`}>
         {s.getDate()}
         {!sameDay && `–${e.getDate()}`}
       </span>
-      <span className="mt-1 text-caption font-semibold text-secondary">
-        {s.toLocaleDateString('th-TH', { month: 'short' })}
+      <span className={`mt-1 font-semibold text-secondary ${size === 'list' ? 'text-body-sm' : 'text-caption'}`}>
+        {month(s)}
+        {s.getMonth() !== e.getMonth() && `–${month(e)}`}
       </span>
     </span>
   )
@@ -49,12 +60,12 @@ interface EventTileProps {
   onInterestChange: (next: { interested: boolean; count: number }) => void
 }
 
-// การ์ดงานอีเวนต์ design v2: เส้น 1px · รูป 16:9 คั่นด้วยเส้นใต้รูป · hover ยก (.lift) เฉพาะส่วนที่เป็นลิงก์
+// การ์ดงานอีเวนต์ design v2: เส้น 1px · รูป 16:9 คั่นด้วยเส้นใต้รูป · hover ยกทั้งการ์ด + เงาแข็ง (.lift) เหมือนการ์ดสินค้า
 export default function EventTile({ event, past, interested, onInterestChange }: EventTileProps) {
   const href = `/events/${event.id}`
   const ongoing = !past && isEventOngoing(event)
   return (
-    <article className="flex h-full flex-col overflow-hidden rounded-card border border-line bg-surface">
+    <article className="lift flex h-full flex-col overflow-hidden rounded-card border border-line bg-surface">
       <Link href={href} className="group focus-ring flex flex-1 flex-col" aria-label={event.name}>
         <div className="relative aspect-[16/9] overflow-hidden border-b border-line bg-sunken">
           {event.coverImageUrl ? (

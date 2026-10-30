@@ -318,6 +318,8 @@ function CheckoutInner() {
         rental_days: r.rentalDays,
         ...(r.pieces ? { pieces: r.pieces } : {}),
         ...(r.shoeVariantId ? { shoe_variant_id: r.shoeVariantId } : {}),
+        // ยอมรับคู่ใกล้เคียง (Step 29) · ส่งเฉพาะตอนเลือก ฐานข้อมูลที่ยังไม่ได้รัน Step 29 จะไม่สนใจค่านี้
+        ...(r.shoeVariantId && r.shoeSubstitute ? { shoe_substitute: true } : {}),
       })),
       p_ship_name: address.name.trim(),
       p_ship_phone: address.phone,
@@ -723,7 +725,12 @@ function CheckoutInner() {
                     {l.variant?.productName ?? 'ชุดที่ปิดให้เช่าแล้ว'}
                   </p>
                   {l.variant && <p className="text-[#263544]/80">ไซส์: {l.variant.size}</p>}
-                  {l.shoe && <p className="text-[#263544]/80">รองเท้า: EU {l.shoe.size}</p>}
+                  {l.shoe && (
+                    <p className="text-[#263544]/80">
+                      รองเท้า: EU {l.shoe.size}
+                      {l.request.shoeSubstitute && ' · ถ้าไซส์นี้ไม่ว่าง ร้านจัดหาคู่ใกล้เคียงให้'}
+                    </p>
+                  )}
                   {!!l.price?.shoeDiscount && (
                     <p className="text-[#263544]/80">ไม่รับรองเท้า (−{formatBaht(l.price.shoeDiscount)})</p>
                   )}

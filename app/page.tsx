@@ -20,8 +20,9 @@ import EmptyState from '@/app/components/EmptyState'
 import CostumeGridCard, { CARD_MEDIA } from '@/app/components/customer/CostumeGridCard'
 import Reveal from '@/app/components/Reveal'
 import { fetchCatalog, type CatalogCostume } from '@/utils/customer/fetchCatalog'
-import { fetchEvents, type CalendarEvent } from '@/utils/customer/events'
-import { todayISO } from '@/utils/dateUtils'
+import { DateBadge } from '@/app/components/customer/events/EventTile'
+import { fetchEvents, isEventOngoing, type CalendarEvent } from '@/utils/customer/events'
+import { parseISODate, todayISO } from '@/utils/dateUtils'
 import { fetchSizeStock, type SizeStock } from '@/utils/sizeStock'
 
 const delay = (ms: number) => ({ '--d': `${ms}ms` }) as CSSProperties
@@ -39,6 +40,7 @@ export default function HomePage() {
   // null = กำลังโหลดจำนวนต่อไซส์ (การ์ดจองพื้นที่ไว้ก่อน)
   const [sizeStock, setSizeStock] = useState<Map<string, SizeStock[]> | null>(null)
   const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [eventsLoading, setEventsLoading] = useState(true)
   const nearTop = useSyncExternalStore(subscribeScroll, isNearTop, () => true)
 
   useEffect(() => {
@@ -56,6 +58,7 @@ export default function HomePage() {
           .sort((a, b) => a.startDate.localeCompare(b.startDate))
           .slice(0, 4),
       )
+      setEventsLoading(false)
     })
   }, [])
 
@@ -220,54 +223,71 @@ export default function HomePage() {
 
       {/* ===== อีเวนต์ที่กำลังจะมาถึง (ข้อมูลตัวอย่างชุดเดียวกับปฏิทินหน้าชุด) ===== */}
       <section className="mt-24">
-        <div className="grid items-center gap-8 lg:grid-cols-[200px_1fr]">
-          <Reveal className="hidden lg:block">
-            <Image
-              src="/images/dec-1.png"
-              alt=""
-              width={432}
-              height={868}
-              className="wobble mx-auto h-64 w-auto select-none"
-            />
-          </Reveal>
+        {/* ลำดับสายตา: หัวข้อ → รายการงาน → Facebook · มาสคอตแสดงเฉพาะจอใหญ่ รายการชิดขอบขวาของหน้า */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center">
+          <Image
+            src="/images/dec-1.png"
+            alt=""
+            width={432}
+            height={868}
+            className="wobble mx-auto hidden h-80 w-auto select-none lg:block xl:h-96"
+          />
 
-          <div>
+          <div className="min-w-0">
             <Reveal>
-              <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+              <div className="mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
                 <div>
                   <p className="text-base font-semibold text-[#E5457F]">ปฏิทินสายคอส</p>
                   <h2 className="mt-1 text-2xl font-bold text-[#263544] sm:text-3xl">อีเวนต์ที่กำลังจะมาถึง</h2>
                 </div>
-                <button
-                  type="button"
-                  className="lift focus-ring inline-flex items-center gap-2 rounded-full border border-line bg-surface px-5 py-2.5 text-base font-semibold text-ink"
-                >
-                  <FacebookLogoIcon size={22} weight="fill" className="text-[#1877F2]" />
-                  ติดตามอีเวนต์บน Facebook
-                </button>
                 <Link
                   href="/events"
                   className="group inline-flex items-center gap-1 text-base font-semibold text-[#E5457F]"
                 >
-                  ดูอีเวนต์ทั้งหมด
-                  <ArrowRightIcon size={18} className="transition group-hover:translate-x-0.5" />
+                  ดูอีเวนต์เพิ่มเติม
+                  <ArrowRightIcon size={16} className="transition group-hover:translate-x-1" />
                 </Link>
               </div>
             </Reveal>
 
-            {events.length === 0 ? (
-              <p className="rounded-2xl bg-[#F7F7F8] px-4 py-10 text-center text-base text-[#263544]/60">
+            {eventsLoading ? (
+              <div className="divide-y divide-line-subtle rounded-card border border-line" aria-busy="true" aria-label="กำลังโหลด">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-4 px-4 py-3">
+                    <div className="h-20 w-20 flex-shrink-0 animate-pulse rounded-control bg-sunken" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-5 w-3/5 animate-pulse rounded bg-sunken" />
+                      <div className="h-4 w-2/5 animate-pulse rounded bg-sunken" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : events.length === 0 ? (
+              <p className="rounded-card border border-line px-4 py-10 text-center text-base text-secondary">
                 ยังไม่มีอีเวนต์ในช่วงนี้
               </p>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
+              <ul className="divide-y divide-line-subtle overflow-hidden rounded-card border border-line bg-surface">
                 {events.map((ev, i) => (
-                  <Reveal key={ev.id} delay={i * 100}>
-                    <EventCard event={ev} />
-                  </Reveal>
+                  <li key={ev.id}>
+                    <Reveal delay={i * 100}>
+                      <EventRow event={ev} />
+                    </Reveal>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
+
+            {/* ปุ่มยังไม่ผูกการทำงาน — รอลิงก์เพจ Facebook ของร้าน */}
+            <Reveal className="mt-4 flex justify-end">
+              <button
+                type="button"
+                className="lift focus-ring inline-flex w-full items-center justify-center gap-2 rounded-full border border-line bg-surface px-5 py-2.5 text-base font-semibold text-ink sm:w-auto"
+              >
+                <FacebookLogoIcon size={22} weight="fill" className="text-[#1877F2]" />
+                ติดตามข่าวสารบน Facebook
+              </button>
+            </Reveal>
           </div>
         </div>
       </section>
@@ -403,43 +423,25 @@ function PickCard({ image, title, cta }: { image: string; title: [string, string
   )
 }
 
-const EVENT_BG: Record<CalendarEvent['tone'], string> = {
-  pink: 'bg-[#FDE3EE]',
-  purple: 'bg-[#EDE6FA]',
-  yellow: 'bg-[#FFF3B0]',
-}
-
-function EventCard({ event }: { event: CalendarEvent }) {
-  const start = new Date(`${event.startDate}T00:00:00`)
-  const end = new Date(`${event.endDate}T00:00:00`)
-  const sameDay = event.startDate === event.endDate
+// แถวในกรอบเดียว: hover เป็นพื้น sunken · วงโฟกัสอยู่ด้านในเพราะกรอบตัดขอบ (overflow-hidden)
+function EventRow({ event }: { event: CalendarEvent }) {
+  const weekday = (iso: string) => parseISODate(iso).toLocaleDateString('th-TH', { weekday: 'long' })
   return (
     <Link
       href={`/events/${event.id}`}
-      className="lift focus-ring flex h-full items-center gap-4 rounded-card border border-line bg-white p-4"
+      className="flex items-center gap-4 px-4 py-3 outline-none transition-colors hover:bg-sunken focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-brand/45"
     >
-      <span
-        className={`flex h-20 w-20 flex-shrink-0 flex-col items-center justify-center rounded-xl border border-line ${EVENT_BG[event.tone]}`}
-      >
-        <span
-          className={`${sameDay ? 'text-2xl' : 'text-xl'} font-extrabold leading-none text-[#263544]`}
-        >
-          {start.getDate()}
-          {!sameDay && `–${end.getDate()}`}
-        </span>
-        <span className="mt-1 text-sm font-semibold text-[#263544]/70">
-          {start.toLocaleDateString('th-TH', { month: 'short' })}
-        </span>
-      </span>
-      <div className="min-w-0">
-        <p className="truncate text-lg font-bold text-[#263544]">{event.name}</p>
-        <p className="mt-0.5 flex items-center gap-1 text-base text-[#263544]/65">
-          <MapPinIcon size={16} className="flex-shrink-0 text-[#E5457F]" />
-          <span className="truncate">{event.location}</span>
+      <DateBadge event={event} size="list" />
+      <div className="min-w-0 flex-1">
+        <p className="line-clamp-2 text-lg font-bold text-ink">{event.name}</p>
+        <p className="text-base text-secondary">
+          {weekday(event.startDate)}
+          {event.startDate !== event.endDate && ` – ${weekday(event.endDate)}`}
+          {isEventOngoing(event) && <span className="font-semibold text-brand-strong"> · กำลังจัดอยู่</span>}
         </p>
-        <p className="text-sm text-[#263544]/50">
-          {start.toLocaleDateString('th-TH', { weekday: 'long' })}
-          {!sameDay && ` – ${end.toLocaleDateString('th-TH', { weekday: 'long' })}`}
+        <p className="flex items-center gap-1 text-base text-secondary">
+          <MapPinIcon size={16} className="flex-shrink-0 text-brand" aria-hidden />
+          <span className="truncate">{event.location}</span>
         </p>
       </div>
     </Link>

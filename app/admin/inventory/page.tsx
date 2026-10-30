@@ -262,7 +262,7 @@ export default function InventoryPage() {
                 onClick={() => setView('grid')}
                 aria-label="มุมมองการ์ด"
                 title="มุมมองการ์ด"
-                className={`rounded-full p-2 transition ${view === 'grid' ? 'bg-[#263544] text-white' : 'text-[#9AA3AF] hover:text-[#263544]'}`}
+                className={`rounded-full p-2 transition ${view === 'grid' ? 'bg-brand text-white' : 'text-[#9AA3AF] hover:text-[#263544]'}`}
               >
                 <GridFourIcon size={16} />
               </button>
@@ -273,7 +273,7 @@ export default function InventoryPage() {
                 onClick={() => setView('list')}
                 aria-label="มุมมองตาราง"
                 title="มุมมองตาราง"
-                className={`rounded-full p-2 transition ${view === 'list' ? 'bg-[#263544] text-white' : 'text-[#9AA3AF] hover:text-[#263544]'}`}
+                className={`rounded-full p-2 transition ${view === 'list' ? 'bg-brand text-white' : 'text-[#9AA3AF] hover:text-[#263544]'}`}
               >
                 <ListIcon size={16} />
               </button>

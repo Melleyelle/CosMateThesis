@@ -168,7 +168,7 @@ export default function IdCardReview({ userId, bookerName, note, onDone }: Props
                     type="button"
                     onClick={() => setReason(r)}
                     className={`rounded-full border px-3 py-1 text-xs ${
-                      reason === r ? 'border-[#263544] bg-[#263544] text-white' : 'border-[#D5D9E0] bg-white text-[#263544]'
+                      reason === r ? 'border-brand bg-brand text-white' : 'border-[#D5D9E0] bg-white text-[#263544]'
                     }`}
                   >
                     {r}
