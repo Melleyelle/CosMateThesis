@@ -78,8 +78,6 @@ export type OrderSummary = {
   handoverTo: string | null
   handedOverAt: string | null
   returnMethod: 'ship' | 'walk_in' | null
-  // awaiting_id (Step 25): ร้านต้องตรวจบัตรให้เสร็จก่อนเวลานี้ ไม่งั้นออเดอร์หมดอายุเอง
-  idReviewExpiresAt: string | null
   lines: OrderLine[]
 }
 
@@ -118,7 +116,6 @@ type OrderRow = {
   handover_to?: string | null
   handed_over_at?: string | null
   return_method?: 'ship' | 'walk_in' | null
-  id_review_expires_at?: string | null
   order_items:
     | {
         id: string
@@ -153,7 +150,7 @@ const ORDER_COLUMNS = `
   refund_account_name, refund_bank, refund_account_number,
   cancel_reason, refund_status, refund_amount, refunded_at,
   ship_carrier, ship_tracking_no, return_carrier, return_tracking_no, return_submitted_at,
-  delivery_method, handover_to, handed_over_at, return_method, id_review_expires_at
+  delivery_method, handover_to, handed_over_at, return_method
 `
 // ship_carrier ต้องรัน SQL Step 20 ก่อน
 
@@ -219,7 +216,6 @@ function mapOrder(o: OrderRow): OrderSummary {
     handoverTo: o.handover_to ?? null,
     handedOverAt: o.handed_over_at ?? null,
     returnMethod: o.return_method ?? null,
-    idReviewExpiresAt: o.id_review_expires_at ?? null,
     lines: orderLines(o.order_items ?? []),
   }
 }

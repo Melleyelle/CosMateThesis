@@ -7,7 +7,7 @@ import { dayDiff, shipByDate } from '@/utils/admin/fetchDashboard'
 import { toISODate } from '@/utils/dateUtils'
 
 // งานที่แผงขวาต้องแสดงให้ออเดอร์นี้
-export type OrderTask = 'id' | 'slip' | 'pack' | 'inspect' | 'refund' | 'lost' | 'view'
+export type OrderTask = 'slip' | 'pack' | 'inspect' | 'refund' | 'lost' | 'view'
 
 export const OVERDUE_LOST_DAYS = 7 // ตรงกับ app_settings.overdue_lost_days
 
@@ -25,7 +25,6 @@ export function lateDays(order: OrderSummary, today: string): number {
 
 export function taskOf(order: OrderSummary, today: string): OrderTask {
   if (order.refundStatus === 'pending' || order.refundStatus === 'failed') return 'refund'
-  if (order.status === 'awaiting_id') return 'id' // เช่าครั้งแรก รอร้านตรวจรูปบัตร (Step 25)
   if (order.status === 'manual_review') return 'slip'
   if (order.status === 'paid') return 'pack'
   if (order.status === 'returned' || order.status === 'inspecting') return 'inspect'
@@ -34,27 +33,16 @@ export function taskOf(order: OrderSummary, today: string): OrderTask {
   return 'view'
 }
 
-// เวลาที่เหลือให้ร้านตรวจบัตร (awaiting_id) · เหลือไม่ถึง 3 ชม. = แดง
-export function idReviewLeft(expiresAt: string | null, now = Date.now()): { text: string; tone: 'urgent' | 'late' } {
-  if (!expiresAt) return { text: 'ตรวจบัตร', tone: 'urgent' }
-  const mins = Math.floor((Date.parse(expiresAt) - now) / 60_000)
-  if (mins <= 0) return { text: 'เลยเวลาตรวจแล้ว', tone: 'late' }
-  const h = Math.floor(mins / 60)
-  return { text: h > 0 ? `เหลือ ${h} ชม. ${mins % 60} นาที` : `เหลือ ${mins} นาที`, tone: mins < 180 ? 'late' : 'urgent' }
-}
-
 // เส้นตายที่แอดมินควรเห็นในแถวรายการ
 export function dueOf(
   order: OrderSummary,
   s: BookingSettings,
   today: string,
-  now = Date.now(),
 ): { text: string; tone: 'urgent' | 'late' | 'normal'; sortKey: string } {
   const task = taskOf(order, today)
   if (task === 'refund') {
     return { text: `โอนคืน ฿${(order.refundAmount ?? 0).toLocaleString('th-TH')}`, tone: order.refundStatus === 'failed' ? 'late' : 'normal', sortKey: order.updatedAt }
   }
-  if (task === 'id') return { ...idReviewLeft(order.idReviewExpiresAt, now), sortKey: order.idReviewExpiresAt ?? order.createdAt }
   if (task === 'slip') return { text: 'ตรวจสลิป', tone: 'urgent', sortKey: order.createdAt }
   if (task === 'pack') {
     const pickup = order.deliveryMethod === 'pickup'
@@ -225,7 +213,7 @@ export async function uploadEvidence(orderId: string, stage: 'pack' | 'return', 
   const blob = await shrinkImage(file)
   const path = `${orderId}/${stage}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`
   const { error } = await supabase.storage.from('order-evidence').upload(path, blob, { contentType: 'image/jpeg', upsert: false })
-  return error ? { path: null, error: 'อัปโหลดรูปไม่สำเร็จ' } : { path, error: null }
+  return error ? { path: null, error: `อัปโหลดรูปไม่สำเร็จ: ${error.message}` } : { path, error: null }
 }
 
 // ---------------------------------------------------------------------------

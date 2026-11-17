@@ -7,13 +7,12 @@ import AdminLayout from '../../components/admin/AdminLayout'
 import { EmptyState, Metric, MetricStrip, PageHeader, Segmented, StatusBadge } from '../../components/admin/ui'
 import DateRangeFilter, { inDateRange, type DateRange } from '../../components/admin/inventory/DateRangeFilter'
 import { fetchMembers, type Member } from '@/utils/admin/fetchMembers'
-import IdCardReview, { ID_STATUS_BADGE } from '../../components/admin/IdCardReview'
 import MemberDrawer from '../../components/admin/members/MemberDrawer'
 import { createClient } from '@/utils/client'
 import { addDays, formatDateTime, todayISO } from '@/utils/dateUtils'
 import type { Tone } from '@/utils/admin/statusTone'
 
-type View = 'all' | 'with_orders' | 'no_orders' | 'id_pending' | 'restricted'
+type View = 'all' | 'with_orders' | 'no_orders' | 'restricted'
 
 function memberStatus(m: Member): { label: string; tone: Tone } {
   if (m.trustLevel === 'blacklisted') return { label: 'แบล็กลิสต์', tone: 'problem' }
@@ -31,7 +30,6 @@ export default function AdminMembersPage() {
   const [range, setRange] = useState<DateRange>({ from: '', to: '' })
   const [view, setView] = useState<View>('all')
   // ตรวจรูปบัตรของสมาชิกที่ส่งไว้ล่วงหน้า (ออเดอร์ที่รอตรวจบัตรอยู่ในหน้าออเดอร์ด้วย)
-  const [reviewing, setReviewing] = useState<Member | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   // แผงรายละเอียด: เก็บ id ไว้ โหลดรายการใหม่แล้วแผงยังแสดงข้อมูลล่าสุดของคนเดิม
   const [openId, setOpenId] = useState<string | null>(null)
@@ -88,7 +86,6 @@ export default function AdminMembersPage() {
     all: base.length,
     with_orders: base.filter((m) => m.orderCount > 0).length,
     no_orders: base.filter((m) => m.orderCount === 0).length,
-    id_pending: base.filter((m) => m.idStatus === 'pending').length,
     restricted: base.filter(isRestricted).length,
   }
 
@@ -97,11 +94,9 @@ export default function AdminMembersPage() {
       ? m.orderCount > 0
       : view === 'no_orders'
         ? m.orderCount === 0
-        : view === 'id_pending'
-          ? m.idStatus === 'pending'
-          : view === 'restricted'
-            ? isRestricted(m)
-            : true,
+        : view === 'restricted'
+          ? isRestricted(m)
+          : true,
   )
 
   return (
@@ -162,7 +157,6 @@ export default function AdminMembersPage() {
               { value: 'all', label: 'ทั้งหมด', count: viewCounts.all },
               { value: 'with_orders', label: 'เคยสั่งเช่า', count: viewCounts.with_orders },
               { value: 'no_orders', label: 'ยังไม่เคยสั่ง', count: viewCounts.no_orders },
-              { value: 'id_pending', label: 'รอตรวจบัตร', count: viewCounts.id_pending },
               { value: 'restricted', label: 'ถูกจำกัด', count: viewCounts.restricted },
             ]}
           />
@@ -195,7 +189,6 @@ export default function AdminMembersPage() {
                     <th className="px-4 py-3 font-medium">สมัครเมื่อ</th>
                     <th className="px-4 py-3 font-medium">เข้าใช้ล่าสุด</th>
                     <th className="px-4 py-3 text-right font-medium">ออเดอร์</th>
-                    <th className="px-4 py-3 font-medium">บัตรประชาชน</th>
                     <th className="px-5 py-3 font-medium">สถานะ</th>
                   </tr>
                 </thead>
@@ -249,24 +242,6 @@ export default function AdminMembersPage() {
                             <span className="text-[#9AA3AF]">0</span>
                           )}
                         </td>
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-2 whitespace-nowrap">
-                            <StatusBadge tone={ID_STATUS_BADGE[m.idStatus].tone}>{ID_STATUS_BADGE[m.idStatus].label}</StatusBadge>
-                            {m.idStatus === 'pending' && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setNotice(null)
-                                  setReviewing(m)
-                                }}
-                                className="text-xs font-semibold text-[#E5457F] hover:underline"
-                              >
-                                ตรวจ
-                              </button>
-                            )}
-                          </div>
-                        </td>
                         <td className="px-5 py-3.5">
                           <span className="flex items-center justify-between gap-2 whitespace-nowrap">
                             <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
@@ -288,46 +263,12 @@ export default function AdminMembersPage() {
           member={opened}
           isSelf={opened.id === selfId}
           nameOf={nameOf}
-          onReviewId={() => {
-            setNotice(null)
-            setReviewing(opened)
-          }}
           onChanged={(msg) => {
             setNotice(msg)
             load()
           }}
           onClose={closeDrawer}
         />
-      )}
-
-      {reviewing && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`ตรวจบัตรของ ${reviewing.email ?? 'สมาชิก'}`}
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
-          onClick={(e) => e.target === e.currentTarget && setReviewing(null)}
-        >
-          <div className="max-h-full w-full max-w-2xl overflow-y-auto rounded-2xl bg-white">
-            <div className="flex items-center justify-between border-b border-[#EEEDF2] px-5 py-3">
-              <p className="font-semibold text-[#263544]">
-                {[reviewing.firstName, reviewing.lastName].filter(Boolean).join(' ') || reviewing.email}
-              </p>
-              <button type="button" onClick={() => setReviewing(null)} aria-label="ปิด" className="rounded-full p-1.5 text-[#6B7280] hover:bg-[#F3F4F6]">
-                <XIcon size={18} />
-              </button>
-            </div>
-            <IdCardReview
-              userId={reviewing.id}
-              bookerName={[reviewing.firstName, reviewing.lastName].filter(Boolean).join(' ') || null}
-              onDone={(msg) => {
-                setReviewing(null)
-                setNotice(msg)
-                load()
-              }}
-            />
-          </div>
-        </div>
       )}
     </AdminLayout>
   )

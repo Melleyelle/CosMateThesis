@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { CaretLeftIcon, CaretRightIcon, MapPinIcon } from '@phosphor-icons/react'
 import { addDays, formatThaiDateWithWeekday, todayISO, toISODate } from '@/utils/dateUtils'
-import { eventsByDate, type CalendarEvent } from '@/utils/customer/events'
+import { EVENT_TONE, eventsByDate, type CalendarEvent } from '@/utils/customer/events'
 
 type Timeline = { receiveDate: string; returnBy: string; lateFrom: string }
 
@@ -51,7 +51,7 @@ function shiftMonth(month: string, amount: number): string {
 const navButtonClass =
   'focus-ring flex h-11 w-11 items-center justify-center rounded-full text-ink transition hover:bg-sunken disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent'
 
-// ปฏิทินเลือกวันใส่ชุด — สีตาม design system: ชมพู = ช่วงเช่าที่เลือก · ฟ้า (info) = งานอีเวนต์
+// ปฏิทินเลือกวันใส่ชุด — สีตาม design system: ชมพู = ช่วงเช่าที่เลือก · งานอีเวนต์ = สีที่แอดมินเลือกให้งานนั้น (จุดเล็ก ไม่ปนกับช่วงเช่า)
 export default function BookingCalendar({
   unavailable,
   occupied,
@@ -109,6 +109,7 @@ export default function BookingCalendar({
   const monthEvents = events.filter(
     (ev) => ev.startDate.slice(0, 7) === visibleMonth || ev.endDate.slice(0, 7) === visibleMonth,
   )
+  const legendTones = [...new Set(events.map((ev) => ev.tone))]
 
   return (
     <div className="rounded-card border border-line bg-surface p-4 sm:p-5">
@@ -159,6 +160,8 @@ export default function BookingCalendar({
             .filter(Boolean)
             .join('·')
           const sizesHere = bookedSizes.get(date) ?? []
+          // หลายงานสีเดียวกันในวันเดียว แสดงจุดเดียว
+          const eventTones = [...new Set(dayEvents?.map((e) => e.tone))]
 
           const tone = isUse
             ? 'bg-brand text-white font-bold'
@@ -207,8 +210,12 @@ export default function BookingCalendar({
                   <span className="mt-0.5 whitespace-nowrap text-caption font-medium leading-none">จองแล้ว</span>
                 )
               )}
-              {dayEvents && (
-                <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-info ring-1 ring-white" aria-hidden="true" />
+              {eventTones.length > 0 && (
+                <span className="absolute right-1.5 top-1.5 flex gap-0.5" aria-hidden="true">
+                  {eventTones.map((t) => (
+                    <span key={t} className={`h-1.5 w-1.5 rounded-full ring-1 ring-white ${EVENT_TONE[t].dot}`} />
+                  ))}
+                </span>
               )}
             </button>
           )
@@ -242,7 +249,16 @@ export default function BookingCalendar({
 
       {/* คำอธิบายสี */}
       <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-body-sm text-secondary">
-        {events.length > 0 && <Legend swatch="bg-info" label="มีงานอีเวนต์" dot />}
+        {events.length > 0 && (
+          <span className="flex items-center gap-1.5">
+            <span className="flex gap-0.5">
+              {legendTones.map((t) => (
+                <span key={t} className={`h-1.5 w-1.5 rounded-full ${EVENT_TONE[t].dot}`} />
+              ))}
+            </span>
+            มีงานอีเวนต์
+          </span>
+        )}
         <Legend swatch="bg-sunken ring-1 ring-inset ring-line-subtle" label="ไซส์ที่เลือกถูกจองแล้ว" />
         {multiSize && (
           <span className="flex items-center gap-1.5">
@@ -262,7 +278,7 @@ export default function BookingCalendar({
             <ul className="space-y-2">
               {monthEvents.map((ev) => (
                 <li key={ev.id} className="flex items-center gap-3 rounded-control border border-line-subtle p-2.5">
-                  <span className="shrink-0 rounded-control bg-info-subtle px-2 py-1 text-center text-body-sm font-bold leading-tight text-info">
+                  <span className={`shrink-0 rounded-control px-2 py-1 text-center text-body-sm font-bold leading-tight ${EVENT_TONE[ev.tone].chip}`}>
                     {formatThaiDateWithWeekday(ev.startDate)}
                     {ev.endDate !== ev.startDate && (
                       <span className="block font-medium">ถึง {formatThaiDateWithWeekday(ev.endDate)}</span>
@@ -292,10 +308,10 @@ export default function BookingCalendar({
   )
 }
 
-function Legend({ swatch, label, dot = false }: { swatch: string; label: string; dot?: boolean }) {
+function Legend({ swatch, label }: { swatch: string; label: string }) {
   return (
     <span className="flex items-center gap-1.5">
-      <span className={`${swatch} ${dot ? 'h-1.5 w-1.5 rounded-full' : 'h-3 w-3 rounded'}`} />
+      <span className={`${swatch} h-3 w-3 rounded`} />
       {label}
     </span>
   )

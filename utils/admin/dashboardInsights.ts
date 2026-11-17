@@ -62,7 +62,7 @@ export function depositsHeld(data: DashboardData, today: string, days = 7) {
 // ออเดอร์ที่หมดอายุเพราะไม่จ่ายในเวลา (ไม่นับที่ยังรอชำระอยู่ เพราะยังไม่รู้ผล)
 export function expiredRate(orders: OrderSummary[], today: string, days = 30) {
   const since = addDays(today, -(days - 1))
-  const recent = orders.filter((o) => createdDay(o) >= since && o.status !== 'pending_payment' && o.status !== 'awaiting_id')
+  const recent = orders.filter((o) => createdDay(o) >= since && o.status !== 'pending_payment')
   const expired = recent.filter((o) => o.status === 'expired').length
   return { expired, total: recent.length, rate: recent.length ? expired / recent.length : null }
 }

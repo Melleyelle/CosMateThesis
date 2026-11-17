@@ -6,14 +6,14 @@
 
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { CheckCircleIcon, IdentificationCardIcon, MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react'
+import { CheckCircleIcon, MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react'
 import AdminLayout from '../../components/admin/AdminLayout'
-import { EmptyState, Metric, MetricStrip, PageHeader, Segmented, StatusBadge, primaryButtonClass } from '../../components/admin/ui'
+import { EmptyState, Metric, MetricStrip, PageHeader, Segmented, StatusBadge } from '../../components/admin/ui'
 import DateRangeFilter, { inDateRange, type DateRange } from '../../components/admin/inventory/DateRangeFilter'
 import OrderPanel from '../../components/admin/orders/OrderPanel'
 import { fetchAllOrdersForAdmin, type OrderSummary } from '@/utils/customer/fetchOrders'
 import { orderBadge } from '@/utils/admin/statusTone'
-import { dueOf, idReviewLeft, taskOf, type OrderTask } from '@/utils/admin/orderOps'
+import { dueOf, taskOf, type OrderTask } from '@/utils/admin/orderOps'
 import { addDays, formatThaiDate, formatThaiDateWithWeekday, toISODate, todayISO } from '@/utils/dateUtils'
 import { DEFAULT_BOOKING_SETTINGS, fetchBookingSettings, type BookingSettings } from '@/utils/customer/bookingSettings'
 
@@ -27,7 +27,6 @@ type TabDef = {
 }
 
 const TABS: TabDef[] = [
-  { value: 'id_review', label: 'ตรวจบัตร', group: 'todo', note: 'เช่าครั้งแรก รอร้านอนุมัติก่อนจ่าย', match: (_, t) => t === 'id' },
   { value: 'review', label: 'ตรวจยอดชำระ', group: 'todo', note: 'สลิปที่รอร้านยืนยัน', match: (_, t) => t === 'slip' },
   { value: 'to_ship', label: 'รอแพ็กส่ง', group: 'todo', note: 'ชำระแล้ว ต้องแพ็กและส่ง', match: (_, t) => t === 'pack' },
   // ซ้อนกับคิวอื่นได้ (เช่น รอแพ็กส่ง) — งานนี้ต้องจบก่อนส่งของ
@@ -91,12 +90,6 @@ function AdminOrdersInner() {
   const tabFromUrl = useRef(initialTab !== null)
   const panelRef = useRef<HTMLDivElement>(null)
   const today = todayISO()
-  // นาฬิกาสำหรับเวลาที่เหลือตรวจบัตร — อัปเดตทุกนาที
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 60_000)
-    return () => clearInterval(t)
-  }, [])
 
   const apply = useCallback(([res, s]: Awaited<ReturnType<typeof fetchPageData>>) => {
     setSettings(s)
@@ -127,17 +120,8 @@ function AdminOrdersInner() {
           .toLowerCase()
           .includes(keyword)
       })
-      .map((o) => ({ order: o, task: taskOf(o, today), due: dueOf(o, settings, today, now) }))
-  }, [orders, search, range, settings, today, now])
-
-  // ออเดอร์รอตรวจบัตรทั้งหมด (ไม่สนตัวกรอง) เรียงตามเวลาที่เหลือ — ใช้แจ้งเตือนตอนอยู่คิวอื่น
-  const idChecks = useMemo(
-    () =>
-      orders
-        .filter((o) => o.status === 'awaiting_id')
-        .sort((a, b) => (a.idReviewExpiresAt ?? a.createdAt).localeCompare(b.idReviewExpiresAt ?? b.createdAt)),
-    [orders],
-  )
+      .map((o) => ({ order: o, task: taskOf(o, today), due: dueOf(o, settings, today) }))
+  }, [orders, search, range, settings, today])
 
   const counts = useMemo(() => Object.fromEntries(TABS.map((t) => [t.value, base.filter((r) => t.match(r.order, r.task)).length])), [base])
 
@@ -202,11 +186,6 @@ function AdminOrdersInner() {
     <AdminLayout>
       <div className="theme-v2 px-5 py-7 sm:px-8">
         <PageHeader title="ออเดอร์" description="กดคิวงานด้านล่าง เลือกออเดอร์ทางซ้าย แล้วทำงานในแผงขวา ทำเสร็จระบบไปออเดอร์ถัดไปให้เอง" />
-
-        {/* ตรวจบัตรมีเส้นตาย (เลยแล้วออเดอร์หมดอายุเอง) → เตือนเด่น ๆ ตอนแอดมินอยู่คิวอื่น */}
-        {!loading && idChecks.length > 0 && tab !== 'id_review' && (
-          <IdCheckBanner count={idChecks.length} left={idReviewLeft(idChecks[0].idReviewExpiresAt, now)} onOpen={() => changeTab('id_review')} />
-        )}
 
         {/* คิวงานที่ร้านต้องทำ — แบบเดียวกับตัวเลขสรุปหน้าคลังชุด กดช่องเพื่อเปิดคิว · มีงานค้าง = ตัวเลขสีส้ม */}
         <div className="mb-6">
@@ -303,13 +282,12 @@ function AdminOrdersInner() {
                   <EmptyState>{orders.length === 0 ? 'ยังไม่มีออเดอร์ในระบบ' : current.group === 'todo' ? 'คิวนี้ว่างแล้ว' : 'ไม่มีออเดอร์ในกลุ่มนี้'}</EmptyState>
                 </div>
               ) : (
-                list.map(({ order: o, due, task }, i) => {
+                list.map(({ order: o, due }, i) => {
                   const active = o.id === selectedId
                   const first = o.lines[0]
                   const badge = orderBadge(o)
-                  const idCheck = task === 'id'
                   const item = first ? `${first.productName}${first.size ? ` · ${first.size}` : ''}${o.lines.length > 1 ? ` +${o.lines.length - 1}` : ''}` : '—'
-                  const dueText = due.text && !idCheck && (
+                  const dueText = due.text && (
                     <span className={`whitespace-nowrap text-xs font-semibold ${due.tone === 'late' ? 'text-danger' : due.tone === 'urgent' ? 'text-warning' : 'text-secondary'}`}>
                       {due.text}
                     </span>
@@ -329,23 +307,15 @@ function AdminOrdersInner() {
                         onClick={() => select(o.id)}
                         aria-current={active ? 'true' : undefined}
                         className={`flex flex-none flex-col gap-0.5 overflow-hidden rounded-card border px-4 text-left transition ${compact ? 'py-2' : 'py-3'} ${
-                          active ? 'border-line-subtle bg-brand-subtle' : idCheck ? 'border-[#F2D49B] bg-white hover:border-line' : 'border-line-subtle bg-white hover:border-line'
+                          active ? 'border-line-subtle bg-brand-subtle' : 'border-line-subtle bg-white hover:border-line'
                         }`}
                       >
-                        {/* แถบหัวการ์ด: บอกว่าต้องตรวจบัตร + เวลาที่เหลือ เห็นได้แม้อยู่แท็บ "ทั้งหมด" */}
-                        {idCheck && (
-                          <span className={`-mx-4 mb-2 flex items-center gap-2 border-b border-[#F2D49B] bg-warning-subtle px-4 py-2 text-xs font-semibold text-warning ${compact ? '-mt-2' : '-mt-3'}`}>
-                            <IdentificationCardIcon size={16} weight="fill" className="flex-none" />
-                            <span className="flex-1">ตรวจบัตรประชาชน · เช่าครั้งแรก</span>
-                            <span className={`whitespace-nowrap tabular-nums ${due.tone === 'late' ? 'text-danger' : ''}`}>{due.text}</span>
-                          </span>
-                        )}
                         {compact ? (
                           // แท็บดูย้อนหลัง: 2 บรรทัด ไล่ดูได้มากกว่าต่อจอ
                           <>
                             <span className="flex items-center justify-between gap-2">
                               <span className="font-mono text-sm font-bold text-ink">{o.orderNumber}</span>
-                              {!idCheck && <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>}
+                              <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
                             </span>
                             <span className="flex items-baseline justify-between gap-2">
                               <span className="min-w-0 truncate text-sm text-secondary">
@@ -409,25 +379,5 @@ function AdminOrdersInner() {
         )}
       </div>
     </AdminLayout>
-  )
-}
-
-function IdCheckBanner({ count, left, onOpen }: { count: number; left: { text: string; tone: 'urgent' | 'late' }; onOpen: () => void }) {
-  return (
-    <div role="status" className="mb-5 flex flex-wrap items-center gap-3 rounded-card border border-[#F2D49B] bg-warning-subtle px-4 py-3">
-      <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white text-warning ring-1 ring-inset ring-[#F2D49B]">
-        <IdentificationCardIcon size={22} weight="fill" />
-      </span>
-      <div className="min-w-0 flex-[1_1_240px]">
-        <p className="font-semibold text-ink">ลูกค้าเช่าครั้งแรกรอตรวจบัตรประชาชน {count} ออเดอร์</p>
-        <p className="text-sm text-secondary">
-          ออเดอร์ที่ใกล้หมดเวลาสุด{' '}
-          <b className={left.tone === 'late' ? 'text-danger' : 'text-warning'}>{left.text}</b> · ตรวจไม่ทัน ออเดอร์จะหมดอายุเองและวันที่จองไว้จะถูกปล่อย
-        </p>
-      </div>
-      <button type="button" onClick={onOpen} className={primaryButtonClass}>
-        ไปตรวจบัตร
-      </button>
-    </div>
   )
 }

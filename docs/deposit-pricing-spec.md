@@ -1,5 +1,7 @@
 # ระบบค่าเช่าและค่ามัดจำชุด (v2)
 
+> **หมายเหตุ:** ส่วนการยืนยันตัวตนด้วยรูปบัตร (ข้อ 6 และสถานะ `awaiting_id`) เลิกใช้แล้วใน Step 34 ([sql/cosmate_step34_remove_id_cards.sql](sql/cosmate_step34_remove_id_cards.sql))
+>
 > **สถานะ:** ลงระบบแล้วใน SQL Step 25a ([sql/cosmate_step25a_awaiting_id_status.sql](sql/cosmate_step25a_awaiting_id_status.sql) เพิ่มสถานะ `awaiting_id` ใน enum · รันก่อน) และ Step 25 ([sql/cosmate_step25_phase_pricing_id_cards.sql](sql/cosmate_step25_phase_pricing_id_cards.sql)) แทน v1 (Step 21)
 > ดูส่วน [การลงระบบจริง](#การลงระบบจริง-cosmate) ท้ายเอกสารสำหรับสิ่งที่ปรับให้เข้ากับโครงสร้างของ CosMate
 

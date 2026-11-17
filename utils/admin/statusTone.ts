@@ -31,7 +31,6 @@ export const TONE_DOT: Record<Tone, string> = {
 }
 
 export const ORDER_STATUS_TONE: Record<OrderStatus, Tone> = {
-  awaiting_id: 'action',
   pending_payment: 'waiting',
   manual_review: 'action',
   paid: 'action',
@@ -46,7 +45,6 @@ export const ORDER_STATUS_TONE: Record<OrderStatus, Tone> = {
 
 // ชื่อสถานะแบบสั้นสำหรับแอดมิน (บอกงานที่ต้องทำ)
 export const ADMIN_STATUS_LABEL: Record<OrderStatus, string> = {
-  awaiting_id: 'ตรวจบัตร',
   pending_payment: 'รอลูกค้าชำระ',
   manual_review: 'ตรวจยอดชำระ',
   paid: 'รอแพ็กส่ง',

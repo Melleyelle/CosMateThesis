@@ -8,7 +8,6 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProhibitIcon, PauseCircleIcon, CheckCircleIcon, WarningIcon, XIcon } from '@phosphor-icons/react'
 import { StatusBadge, primaryButtonClass, secondaryButtonClass } from '@/app/components/admin/ui'
-import { ID_STATUS_BADGE } from '@/app/components/admin/IdCardReview'
 import type { Member } from '@/utils/admin/fetchMembers'
 import {
   ACCESS_ACTION_LABEL,
@@ -28,7 +27,7 @@ import { translateRpcError } from '@/utils/bookingErrors'
 import { formatBaht, formatDateTime, todayISO } from '@/utils/dateUtils'
 
 // ออเดอร์ที่ยังไม่จบ — ระงับ/แบล็กลิสต์ไม่ยกเลิกให้ แอดมินต้องตามดูเอง
-const OPEN_STATUSES = ['awaiting_id', 'pending_payment', 'manual_review', 'paid', 'shipped', 'active', 'returned', 'inspecting']
+const OPEN_STATUSES = ['pending_payment', 'manual_review', 'paid', 'shipped', 'active', 'returned', 'inspecting']
 // ออเดอร์ที่ลูกค้าจ่ายเงินแล้ว → นับเป็นยอดใช้จ่าย
 const PAID_STATUSES = ['paid', 'shipped', 'active', 'returned', 'inspecting', 'completed']
 
@@ -50,12 +49,11 @@ type Props = {
   member: Member
   isSelf: boolean
   nameOf: (userId: string | null) => string
-  onReviewId: () => void
   onChanged: (message: string) => void
   onClose: () => void
 }
 
-export default function MemberDrawer({ member, isSelf, nameOf, onReviewId, onChanged, onClose }: Props) {
+export default function MemberDrawer({ member, isSelf, nameOf, onChanged, onClose }: Props) {
   const [orders, setOrders] = useState<OrderSummary[] | null>(null)
   const [ordersError, setOrdersError] = useState<string | null>(null)
   const [admin, setAdmin] = useState<{ note: MemberNote | null; log: AccessLog[]; missing: boolean } | null>(null)
@@ -108,7 +106,6 @@ export default function MemberDrawer({ member, isSelf, nameOf, onReviewId, onCha
     }
   }, [orders, today])
 
-  const idBadge = ID_STATUS_BADGE[member.idStatus]
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -162,15 +159,6 @@ export default function MemberDrawer({ member, isSelf, nameOf, onReviewId, onCha
               <dd className="text-[#263544]">{formatDateTime(member.createdAt)}</dd>
               <dt className="text-[#6B7280]">เข้าใช้ล่าสุด</dt>
               <dd className="text-[#263544]">{member.lastSignInAt ? formatDateTime(member.lastSignInAt) : '—'}</dd>
-              <dt className="text-[#6B7280]">บัตรประชาชน</dt>
-              <dd className="flex items-center gap-2">
-                <StatusBadge tone={idBadge.tone}>{idBadge.label}</StatusBadge>
-                {member.idStatus === 'pending' && (
-                  <button type="button" onClick={onReviewId} className="text-xs font-semibold text-[#E5457F] hover:underline">
-                    ตรวจบัตร
-                  </button>
-                )}
-              </dd>
             </dl>
           </Section>
 

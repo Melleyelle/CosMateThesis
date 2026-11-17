@@ -469,7 +469,7 @@ export default function CartPage() {
 
       {recommended.length > 0 && (
         <section className="mt-12 border-t border-line pt-10">
-          <h2 className="mb-6 text-2xl font-bold text-[#263544]">ชุดที่คุณอาจสนใจ</h2>
+          <h2 className="mb-6 text-2xl font-bold text-brand">ชุดที่คุณอาจสนใจ</h2>
           <div className="grid grid-cols-2 gap-x-5 gap-y-8 lg:grid-cols-4">
             {recommended.map((c) => (
               <CostumeGridCard
